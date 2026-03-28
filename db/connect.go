@@ -25,7 +25,10 @@ func NewConnectionFactory(cfg *config.Config) *ConnectionFactory {
 
 // Open creates a new database connection
 func (cf *ConnectionFactory) Open() (*sql.DB, error) {
-	dsn := cf.cfg.DSNString()
+	dsn := cf.cfg.ConnectionString()
+
+	// Log the actual DSN being used
+	fmt.Printf("Opening connection with DSN: %s\n", dsn)
 
 	// Open connection
 	db, err := sql.Open("firebirdsql", dsn)
@@ -83,9 +86,9 @@ func (cf *ConnectionFactory) TestConnection(db *sql.DB) error {
 	return nil
 }
 
-// GetDSN returns the DSN string for debugging
+// GetDSN returns the full connection string for the firebirdsql driver
 func (cf *ConnectionFactory) GetDSN() string {
-	return cf.cfg.DSNString()
+	return cf.cfg.ConnectionString()
 }
 
 // ConnectionInfo returns connection details for logging

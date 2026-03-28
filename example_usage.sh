@@ -13,7 +13,7 @@ echo
 
 # Example 2: Read-heavy test with custom connection settings
 echo "2. Read-heavy test with custom connection settings"
-echo "./fb-loadgen --profile read-heavy --conn \"localhost/3055:./EMPLOYEE.FDB\" --user SYSDBA --pass masterkey --conn-init 5 --conn-peak 50"
+echo "./fb-loadgen --profile read-heavy --dsn \"localhost/3055:./EMPLOYEE.FDB\" --user SYSDBA --pass masterkey --conn-init 5 --conn-peak 50"
 echo
 
 # Example 3: Spike testing
@@ -43,7 +43,7 @@ echo
 
 echo "=== Common Options ==="
 echo "--profile: write-heavy | read-heavy | spike (required)"
-echo "--conn: Database connection string"
+echo "--dsn: Database connection string"
 echo "--user: Database username"
 echo "--pass: Database password"
 echo "--conn-init: Initial number of connections"

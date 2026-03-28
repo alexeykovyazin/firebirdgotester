@@ -1,0 +1,21 @@
+
+=== FINAL LOAD TEST REPORT ===
+
+Summary:
+Total: 0, Success: 0.0%, TPS: 0.0, Lat: avg=0s min=0s max=0s p50=0s p95=0s p99=0s, Workers: 0/50, Profile: read-heavy
+
+Operation Distribution:
+  (none)
+
+Error Distribution:
+  (none)
+
+Latency Distribution:
+  (no data)
+
+System Configuration:
+  Profile: read-heavy
+  Scheduler: Phase: cooldown (138.3%), Workers: 0, Elapsed: 2m57.6589259s
+  Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
+
+Test Duration: 2m57.9118636s

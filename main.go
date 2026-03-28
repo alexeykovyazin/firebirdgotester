@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -26,12 +25,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Parse command line flags
-	outputFile := flag.String("output", "", "Output file for reports")
-	outputFormat := flag.String("format", "text", "Output format (text, json, csv)")
-	flag.Parse()
-
-	// Load configuration
+	// Load configuration (this handles all flag parsing)
 	cfg, err := config.ParseFlags()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
@@ -49,10 +43,18 @@ func main() {
 	// Create connection factory
 	connFactory := db.NewConnectionFactory(cfg)
 
-	// Create cache
-	cache, err := ops.NewCache(connFactory)
-	if err != nil {
-		log.Fatalf("Failed to create cache: %v", err)
+	// Create cache (skip in dry-run mode)
+	var cache *ops.Cache
+	if !cfg.DryRun {
+		cache, err = ops.NewCache(connFactory)
+		if err != nil {
+			log.Fatalf("Failed to create cache: %v", err)
+		}
+	} else {
+		fmt.Println("Dry-run mode: will connect, load cache, and exit without running load")
+		fmt.Println(cfg.String())
+		fmt.Printf("Actual connection string: %s\n", cfg.ConnectionString())
+		return
 	}
 
 	// Create operations
@@ -79,15 +81,15 @@ func main() {
 
 	// Create reporter
 	var outputFileHandle *os.File
-	if *outputFile != "" {
-		outputFileHandle, err = os.Create(*outputFile)
+	if cfg.CSV != "" {
+		outputFileHandle, err = os.Create(cfg.CSV)
 		if err != nil {
 			log.Fatalf("Failed to create output file: %v", err)
 		}
 		defer outputFileHandle.Close()
 	}
 
-	reporter := metrics.NewReporter(metricsCollector, outputFileHandle, *outputFormat, 5*time.Second)
+	reporter := metrics.NewReporter(metricsCollector, outputFileHandle, "text", 5*time.Second)
 	reporter.Start()
 	defer reporter.Stop()
 
@@ -99,7 +101,8 @@ func main() {
 	// Wait for interrupt signal to gracefully shutdown
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")
 	fmt.Printf("Profile: %s\n", cfg.Profile)
-	fmt.Printf("Connection: %s\n", cfg.DSNString())
+	fmt.Printf("Connection: %s\n", cfg.DSN)
+	fmt.Printf("Actual connection string: %s\n", cfg.ConnectionString())
 	fmt.Printf("Warmup: %ds, Main: %ds, Cooldown: %ds\n", cfg.Warmup, cfg.Main, cfg.Cooldown)
 	fmt.Printf("Initial connections: %d, Peak connections: %d\n", cfg.ConnInit, cfg.ConnPeak)
 
@@ -145,8 +148,8 @@ func main() {
 	fmt.Print(finalReport)
 
 	// Generate additional reports if requested
-	if *outputFile != "" {
-		baseFilename := *outputFile
+	if cfg.CSV != "" {
+		baseFilename := cfg.CSV
 		if len(baseFilename) > 4 && baseFilename[len(baseFilename)-4:] == ".txt" {
 			baseFilename = baseFilename[:len(baseFilename)-4]
 		}

@@ -31,50 +31,152 @@ go build
 ### Basic Usage
 
 ```bash
-# Run with default settings
+# Run write-heavy profile with defaults (localhost:3055)
 ./fb-loadgen --profile write-heavy
 
-# Custom connection string
-./fb-loadgen --profile read-heavy --conn "localhost/3055:./EMPLOYEE.FDB" --user SYSDBA --pass masterkey
+# Custom connection settings
+./fb-loadgen --profile read-heavy \
+    --dsn "localhost/3055:./EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey
 
 # Spike testing with custom timing
-./fb-loadgen --profile spike --warmup 10 --main 60 --cooldown 10 --spike-cycles 2 --spike-hold 5
+./fb-loadgen --profile spike \
+    --warmup 10 \
+    --main 60 \
+    --cooldown 10 \
+    --spike-cycles 2 \
+    --spike-hold 5
 
 # Output to CSV
-./fb-loadgen --profile write-heavy --csv results.csv --report-every 10
+./fb-loadgen --profile write-heavy \
+    --csv results.csv \
+    --report-every 10
+
+# Dry-run mode to verify configuration
+./fb-loadgen --profile write-heavy --dry-run
+```
+
+### Complete Example Workflow
+
+```bash
+# 1. Test configuration without running load
+./fb-loadgen --profile write-heavy \
+    --dsn "localhost/3055:./EMPLOYEE.FDB" \
+    --conn-init 5 \
+    --conn-peak 20 \
+    --dry-run
+
+# 2. Run short warmup test
+./fb-loadgen --profile write-heavy \
+    --dsn "localhost/3055:./EMPLOYEE.FDB" \
+    --warmup 10 \
+    --main 30 \
+    --cooldown 10 \
+    --conn-init 5 \
+    --conn-peak 10
+
+# 3. Full production run with CSV output
+./fb-loadgen --profile read-heavy \
+    --dsn "192.168.1.100:3050/var/firebird/employee.fdb" \
+    --user myuser \
+    --pass mypassword \
+    --warmup 60 \
+    --main 300 \
+    --cooldown 30 \
+    --conn-init 10 \
+    --conn-peak 50 \
+    --csv ./results/loadtest_$(date +%Y%m%d_%H%M%S).csv \
+    --report-every 15
+
+# 4. Spike profile for stress testing
+./fb-loadgen --profile spike \
+    --dsn "localhost/3055:./EMPLOYEE.FDB" \
+    --warmup 30 \
+    --main 120 \
+    --cooldown 20 \
+    --conn-init 5 \
+    --conn-peak 40 \
+    --spike-cycles 3 \
+    --spike-hold 15 \
+    --think-ms 20
+```
+
+### Local vs Remote Connections
+
+```bash
+# Local Firebird server
+./fb-loadgen --profile write-heavy \
+    --dsn "localhost/3050:/var/lib/firebird/employee.fdb"
+
+# Remote Firebird server
+./fb-loadgen --profile write-heavy \
+    --dsn "firebird.example.com/3050:/data/employee.fdb" \
+    --user appuser \
+    --pass secret123
+
+# Using standard host:port format
+./fb-loadgen --profile read-heavy \
+    --dsn "192.168.1.100:3055/./EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey
 ```
 
 ## Command Line Options
 
 ### Connection
-- `--dsn`: Firebird DSN (default: "localhost/3055:./EMPLOYEE.FDB")
-- `--user`: DB user (default: "SYSDBA")
-- `--pass`: DB password (default: "masterkey")
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dsn` | Firebird DSN (supports formats: `host/port:database`, `host:port/database`, `host/database`) | `localhost/3055:./EMPLOYEE.FDB` |
+| `--user` | Database user | `SYSDBA` |
+| `--pass` | Database password | `masterkey` |
+
+**DSN Format Examples:**
+- `localhost/3055:./EMPLOYEE.FDB` - Non-standard format (host/port:database)
+- `localhost:3055/./EMPLOYEE.FDB` - Standard format (host:port/database)
+- `192.168.1.100/3050/var/firebird/employee.fdb` - Remote server
 
 ### Profile
-- `--profile`: Simulation profile (required: write-heavy|read-heavy|spike)
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--profile` | Simulation profile: `write-heavy`, `read-heavy`, or `spike` | (required) |
 
 ### Connection Scaling
-- `--conn-init`: Initial number of connections (default: 2)
-- `--conn-peak`: Peak number of connections (default: 20)
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--conn-init` | Initial number of connections during warmup | `2` |
+| `--conn-peak` | Peak number of connections during main phase | `20` |
 
 ### Timing (all in seconds)
-- `--warmup`: Ramp-up period (default: 30)
-- `--main`: Main steady-state period (default: 120)
-- `--cooldown`: Graceful disconnect period (default: 20)
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--warmup` | Ramp-up / heat period before main load | `30` |
+| `--main` | Main steady-state load period | `120` |
+| `--cooldown` | Graceful disconnect / ramp-down period | `20` |
 
 ### Spike Profile Extras
-- `--spike-cycles`: Number of spike cycles (default: 3)
-- `--spike-hold`: Seconds to sustain peak (default: 10)
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--spike-cycles` | Number of spike cycles during main period | `3` |
+| `--spike-hold` | Seconds to sustain peak connections before dropping | `10` |
 
 ### Output
-- `--csv`: CSV output file (default: "results.csv")
-- `--report-every`: Console report interval in seconds (default: 5)
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--csv` | Path to CSV output file | `results.csv` |
+| `--report-every` | Console report interval in seconds | `5` |
 
 ### Misc
-- `--think-ms`: Worker think time between ops in ms (default: 50)
-- `--tx-timeout`: Statement timeout in seconds (default: 10)
-- `--dry-run`: Connect, list what would run, exit (default: false)
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--think-ms` | Worker think time between operations in ms | `50` |
+| `--tx-timeout` | Statement timeout in seconds | `10` |
+| `--dry-run` | Connect, list what would run, exit without load | `false` |
+
+### Help
+| Flag | Description |
+|------|-------------|
+| `--help`, `-h` | Show help message with all options |
 
 ## Workload Profiles
 

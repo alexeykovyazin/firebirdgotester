@@ -140,10 +140,101 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// DSNString builds the full DSN string for firebirdsql
+// ConnectionString builds the complete connection string for the firebirdsql driver.
+// The firebirdsql driver expects: [user[:password]@]host[:port]/path[?params]
+// It parses the DSN field which may be in formats like:
+//   - "localhost/3055:./EMPLOYEE.FDB" (host/port:database)
+//   - "localhost:3055/./EMPLOYEE.FDB" (host:port/database)
+//   - "localhost/./EMPLOYEE.FDB" (host/database)
+func (c *Config) ConnectionString() string {
+	host, port, database := c.parseDSN(c.DSN)
+	return fmt.Sprintf("%s:%s@%s:%d/%s", c.User, c.Pass, host, port, database)
+}
+
+// parseDSN extracts host, port, and database path from a DSN string.
+// Supports multiple input formats and returns defaults for missing components.
+func (c *Config) parseDSN(dsn string) (host string, port int, database string) {
+	host = "localhost"
+	port = 3050
+	database = dsn
+
+	// Handle formats:
+	// 1. "host/port:database" - non-standard but common format
+	// 2. "host:port/database" - standard firebirdsql format
+	// 3. "host/database" - host with default port
+	// 4. "database" - just database path with defaults
+
+	// Find the database part (after the last colon that's followed by a path)
+	// and the host/port part (before it)
+
+	// Try to find host/port separator
+	var hostPort string
+
+	// Check for "/port:" format (non-standard)
+	if idx := strings.Index(dsn, "/"); idx != -1 && idx < len(dsn)-1 {
+		rest := dsn[idx+1:]
+		if colonIdx := strings.Index(rest, ":"); colonIdx != -1 {
+			// Format: "host/port:database"
+			hostPort = dsn[:idx]
+			portStr := rest[:colonIdx]
+			database = rest[colonIdx+1:]
+
+			// Parse port
+			if p, err := parsePort(portStr); err == nil {
+				port = p
+			}
+
+			host = hostPort
+			return
+		} else {
+			// Format: "host/port" without database, or just "host/database"
+			hostPort = dsn[:idx]
+			afterSlash := rest
+
+			// Check if it's port number or just database
+			if p, err := parsePort(afterSlash); err == nil && p > 0 {
+				port = p
+				database = dsn[idx+1:]
+			} else {
+				// It's "host/database" format
+				host = hostPort
+				database = afterSlash
+			}
+			return
+		}
+	}
+
+	// Check for ":port/" format (standard)
+	if idx := strings.Index(dsn, ":"); idx != -1 {
+		rest := dsn[idx+1:]
+		if slashIdx := strings.Index(rest, "/"); slashIdx != -1 {
+			// Format: "host:port/database"
+			host = dsn[:idx]
+			portStr := rest[:slashIdx]
+			database = rest[slashIdx+1:]
+
+			if p, err := parsePort(portStr); err == nil {
+				port = p
+			}
+			return
+		}
+	}
+
+	// Fallback: just a database path or host
+	database = dsn
+	return
+}
+
+// parsePort converts a string port to integer, returns error on failure
+func parsePort(s string) (int, error) {
+	var port int
+	_, err := fmt.Sscanf(s, "%d", &port)
+	return port, err
+}
+
+// DSNString returns the raw DSN field value (legacy compatibility)
 func (c *Config) DSNString() string {
-	// Format: user:pass@host/port:path
-	return fmt.Sprintf("%s:%s@%s", c.User, c.Pass, c.DSN)
+	return c.DSN
 }
 
 // String returns a human-readable summary of the configuration
