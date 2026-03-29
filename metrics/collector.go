@@ -58,11 +58,12 @@ type MetricsCollector struct {
 }
 
 // NewMetricsCollector creates a new metrics collector
-func NewMetricsCollector(scheduler *ramp.Scheduler, profile profile.Profile, cache *ops.Cache) *MetricsCollector {
+// workerMetrics must be the same instance passed to the scheduler/workers
+func NewMetricsCollector(scheduler *ramp.Scheduler, profile profile.Profile, cache *ops.Cache, workerMetrics *worker.MetricsCollector) *MetricsCollector {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &MetricsCollector{
-		workerMetrics:  worker.NewMetricsCollector(),
+		workerMetrics:  workerMetrics, // Use shared instance from scheduler
 		scheduler:      scheduler,
 		profile:        profile,
 		cache:          cache,
