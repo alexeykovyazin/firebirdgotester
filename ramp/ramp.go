@@ -122,8 +122,33 @@ func (s *Scheduler) run() {
 			return
 		case <-ticker.C:
 			s.update()
+			// Check if test is complete
+			if s.isComplete() {
+				return
+			}
 		}
 	}
+}
+
+// isComplete checks if the test run has completed
+func (s *Scheduler) isComplete() bool {
+	// Check if cooldown phase is complete
+	if s.currentPhase == PhaseCooldown {
+		// Check if cooldown duration has elapsed
+		warmup := time.Duration(s.config.Warmup) * time.Second
+		main := time.Duration(s.config.Main) * time.Second
+		cooldown := time.Duration(s.config.Cooldown) * time.Second
+		totalDuration := warmup + main + cooldown
+
+		if s.elapsedTime >= totalDuration {
+			// Cooldown complete - check if all workers are stopped
+			s.workerMutex.RLock()
+			allStopped := len(s.workers) == 0
+			s.workerMutex.RUnlock()
+			return allStopped
+		}
+	}
+	return false
 }
 
 // update updates the scheduler state based on elapsed time
@@ -323,6 +348,11 @@ func (s *Scheduler) GetElapsedTime() time.Duration {
 	return s.elapsedTime
 }
 
+// Done returns a channel that's closed when the scheduler has completed all phases
+func (s *Scheduler) Done() <-chan struct{} {
+	return s.ctx.Done()
+}
+
 // GetPhaseProgress returns the progress of the current phase (0.0 to 1.0)
 func (s *Scheduler) GetPhaseProgress() float64 {
 	switch s.currentPhase {
@@ -350,7 +380,11 @@ func (s *Scheduler) GetPhaseProgress() float64 {
 		if cooldown <= 0 {
 			return 1.0
 		}
-		return float64(elapsedInCooldown) / float64(cooldown)
+		progress := float64(elapsedInCooldown) / float64(cooldown)
+		if progress > 1.0 {
+			progress = 1.0
+		}
+		return progress
 
 	default:
 		return 1.0

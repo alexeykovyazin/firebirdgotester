@@ -74,8 +74,8 @@ func main() {
 	// Create scheduler
 	scheduler := ramp.NewScheduler(cfg, connFactory, cache, profile, workerMetrics)
 
-	// Create metrics collector
-	metricsCollector := metrics.NewMetricsCollector(scheduler, profile, cache)
+	// Create metrics collector with shared workerMetrics
+	metricsCollector := metrics.NewMetricsCollector(scheduler, profile, cache, workerMetrics)
 	metricsCollector.Start()
 	defer metricsCollector.Stop()
 
@@ -125,18 +125,22 @@ func main() {
 		}
 	}()
 
-	// Wait for shutdown signal
-	<-sigChan
-
-	// Initiate graceful shutdown
-	fmt.Println("\nInitiating graceful shutdown...")
-	cancel()
+	// Wait for either scheduler completion or interrupt signal
+	// Scheduler completes automatically when all phases (warmup + main + cooldown) finish
+	select {
+	case <-sigChan:
+		fmt.Println("\nReceived interrupt signal, initiating graceful shutdown...")
+		cancel()
+	case <-scheduler.Done():
+		fmt.Println("\nScheduler completed all phases, initiating shutdown...")
+		cancel()
+	}
 
 	// Give operations a chance to complete
 	fmt.Println("Waiting for active operations to complete...")
 	time.Sleep(2 * time.Second)
 
-	// Stop scheduler
+	// Stop scheduler if not already stopped
 	fmt.Println("Stopping scheduler...")
 	if err := scheduler.Stop(); err != nil {
 		log.Printf("Error during scheduler shutdown: %v", err)

@@ -1,30 +1,30 @@
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:05+01:00
-Elapsed: 5.0006367s
-Interval: 1.000057s
+Timestamp: 2026-03-29T12:20:25+02:00
+Elapsed: 5.0245342s
+Interval: 24.1312ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 1445
+  Success: 41 (2.8%)
+  Errors: 1404
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 287.6
+  Interval TPS: 59881.0
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
 
 Concurrency:
-  Current Workers: 10
-  Max Workers: 10
+  Current Workers: 11
+  Max Workers: 11
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: warmup (15.5%), Workers: 11, Elapsed: 4.6589774s
+  Scheduler: Phase: warmup (15.5%), Workers: 11, Elapsed: 4.6468784s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -37,21 +37,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:10+01:00
-Elapsed: 10.0010413s
-Interval: 640.3µs
+Timestamp: 2026-03-29T12:20:30+02:00
+Elapsed: 10.0246264s
+Interval: 24.423ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 4325
+  Success: 111 (2.6%)
+  Errors: 4214
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 431.4
+  Interval TPS: 117921.6
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -62,7 +62,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: warmup (32.2%), Workers: 19, Elapsed: 9.6586177s
+  Scheduler: Phase: warmup (32.2%), Workers: 19, Elapsed: 9.6467999s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -75,21 +75,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:15+01:00
-Elapsed: 15.0011514s
-Interval: 952.2µs
+Timestamp: 2026-03-29T12:20:35+02:00
+Elapsed: 15.0252263s
+Interval: 24.1822ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 8598
+  Success: 211 (2.5%)
+  Errors: 8387
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 572.2
+  Interval TPS: 176700.2
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -100,7 +100,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: warmup (48.9%), Workers: 26, Elapsed: 14.6587627s
+  Scheduler: Phase: warmup (48.8%), Workers: 26, Elapsed: 14.6466901s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -113,21 +113,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:20+01:00
-Elapsed: 20.0013145s
-Interval: 1.2034ms
+Timestamp: 2026-03-29T12:20:40+02:00
+Elapsed: 20.025158s
+Interval: 24.6404ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 14189
+  Success: 363 (2.6%)
+  Errors: 13826
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 708.6
+  Interval TPS: 226903.8
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -138,7 +138,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: warmup (65.5%), Workers: 34, Elapsed: 19.6589836s
+  Scheduler: Phase: warmup (65.5%), Workers: 34, Elapsed: 19.6469066s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -151,21 +151,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:25+01:00
-Elapsed: 25.001003s
-Interval: 528.4µs
+Timestamp: 2026-03-29T12:20:45+02:00
+Elapsed: 25.0247179s
+Interval: 24.5748ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 21267
+  Success: 542 (2.5%)
+  Errors: 20725
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 849.8
+  Interval TPS: 288018.6
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -176,7 +176,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: warmup (82.2%), Workers: 41, Elapsed: 24.658863s
+  Scheduler: Phase: warmup (82.2%), Workers: 41, Elapsed: 24.6464464s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -189,21 +189,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:30+01:00
-Elapsed: 30.0006729s
-Interval: 563.4µs
+Timestamp: 2026-03-29T12:20:50+02:00
+Elapsed: 30.0246329s
+Interval: 24.0338ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 29654
+  Success: 750 (2.5%)
+  Errors: 28904
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 987.7
+  Interval TPS: 348966.9
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -214,7 +214,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: warmup (98.9%), Workers: 49, Elapsed: 29.6589661s
+  Scheduler: Phase: warmup (98.8%), Workers: 49, Elapsed: 29.6465625s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -227,21 +227,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:35+01:00
-Elapsed: 35.000752s
-Interval: 562µs
+Timestamp: 2026-03-29T12:20:55+02:00
+Elapsed: 35.0244585s
+Interval: 24.0116ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 38919
+  Success: 984 (2.5%)
+  Errors: 37935
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1111.2
+  Interval TPS: 385855.2
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -252,7 +252,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (3.9%), Workers: 50, Elapsed: 34.6586029s
+  Scheduler: Phase: main (3.9%), Workers: 50, Elapsed: 34.6464961s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -265,21 +265,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:40+01:00
-Elapsed: 40.0008723s
-Interval: 547.2µs
+Timestamp: 2026-03-29T12:21:00+02:00
+Elapsed: 40.0247845s
+Interval: 24.4008ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 48207
+  Success: 1215 (2.5%)
+  Errors: 46992
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1204.4
+  Interval TPS: 380643.3
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -290,7 +290,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (8.0%), Workers: 50, Elapsed: 39.6587078s
+  Scheduler: Phase: main (8.0%), Workers: 50, Elapsed: 39.646927s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -303,21 +303,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:45+01:00
-Elapsed: 45.000791s
-Interval: 528.8µs
+Timestamp: 2026-03-29T12:21:05+02:00
+Elapsed: 45.0243676s
+Interval: 23.7012ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 57490
+  Success: 1448 (2.5%)
+  Errors: 56042
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1276.9
+  Interval TPS: 391667.9
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -328,7 +328,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (12.2%), Workers: 50, Elapsed: 44.6587501s
+  Scheduler: Phase: main (12.2%), Workers: 50, Elapsed: 44.6468041s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -341,21 +341,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:50+01:00
-Elapsed: 50.0011044s
-Interval: 653.3µs
+Timestamp: 2026-03-29T12:21:10+02:00
+Elapsed: 50.0246653s
+Interval: 24.2099ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 66734
+  Success: 1680 (2.5%)
+  Errors: 65054
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1334.0
+  Interval TPS: 381827.3
+  Average Latency: 670ms
+  Min Latency: 10ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -366,7 +366,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (16.4%), Workers: 50, Elapsed: 49.6590866s
+  Scheduler: Phase: main (16.4%), Workers: 50, Elapsed: 49.6468787s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -379,21 +379,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:53:55+01:00
-Elapsed: 55.0007984s
-Interval: 512.3µs
+Timestamp: 2026-03-29T12:21:15+02:00
+Elapsed: 55.0251659s
+Interval: 24.984ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 76021
+  Success: 1922 (2.5%)
+  Errors: 74099
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1381.6
+  Interval TPS: 371717.9
+  Average Latency: 670ms
+  Min Latency: 10ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -404,7 +404,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (20.5%), Workers: 50, Elapsed: 54.6590266s
+  Scheduler: Phase: main (20.5%), Workers: 50, Elapsed: 54.6473196s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -417,21 +417,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:00+01:00
-Elapsed: 1m0.0006927s
-Interval: 524.9µs
+Timestamp: 2026-03-29T12:21:20+02:00
+Elapsed: 1m0.0246244s
+Interval: 24.0518ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 85333
+  Success: 2202 (2.6%)
+  Errors: 83131
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1421.6
+  Interval TPS: 387164.4
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -442,7 +442,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (24.7%), Workers: 50, Elapsed: 59.6589564s
+  Scheduler: Phase: main (24.7%), Workers: 50, Elapsed: 59.6471634s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -455,21 +455,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:05+01:00
-Elapsed: 1m5.0009136s
-Interval: 553.7µs
+Timestamp: 2026-03-29T12:21:25+02:00
+Elapsed: 1m5.0244464s
+Interval: 24.0767ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 94702
+  Success: 2431 (2.6%)
+  Errors: 92271
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1456.4
+  Interval TPS: 389131.4
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -480,7 +480,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (28.9%), Workers: 50, Elapsed: 1m4.658902s
+  Scheduler: Phase: main (28.9%), Workers: 50, Elapsed: 1m4.6466136s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -493,21 +493,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:10+01:00
-Elapsed: 1m10.0006929s
-Interval: 551.1µs
+Timestamp: 2026-03-29T12:21:30+02:00
+Elapsed: 1m10.0246241s
+Interval: 24.0928ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 104043
+  Success: 2685 (2.6%)
+  Errors: 101358
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1485.8
+  Interval TPS: 387709.2
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -518,7 +518,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (33.0%), Workers: 50, Elapsed: 1m9.6588726s
+  Scheduler: Phase: main (33.0%), Workers: 50, Elapsed: 1m9.6469275s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -531,21 +531,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:15+01:00
-Elapsed: 1m15.0010608s
-Interval: 983µs
+Timestamp: 2026-03-29T12:21:35+02:00
+Elapsed: 1m15.0246426s
+Interval: 24.5276ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 113423
+  Success: 2901 (2.6%)
+  Errors: 110522
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1511.8
+  Interval TPS: 382426.3
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -556,7 +556,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (37.2%), Workers: 50, Elapsed: 1m14.6588962s
+  Scheduler: Phase: main (37.2%), Workers: 50, Elapsed: 1m14.6467139s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -569,21 +569,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:20+01:00
-Elapsed: 1m20.0009854s
-Interval: 612.7µs
+Timestamp: 2026-03-29T12:21:40+02:00
+Elapsed: 1m20.0245025s
+Interval: 23.7029ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 122691
+  Success: 3131 (2.6%)
+  Errors: 119560
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1533.2
+  Interval TPS: 391007.0
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -594,7 +594,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (41.4%), Workers: 50, Elapsed: 1m19.6594477s
+  Scheduler: Phase: main (41.4%), Workers: 50, Elapsed: 1m19.6465867s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -607,21 +607,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:25+01:00
-Elapsed: 1m25.0006978s
-Interval: 521.4µs
+Timestamp: 2026-03-29T12:21:45+02:00
+Elapsed: 1m25.0248367s
+Interval: 24.3244ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 132065
+  Success: 3353 (2.5%)
+  Errors: 128712
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1553.3
+  Interval TPS: 385374.4
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -632,7 +632,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (45.5%), Workers: 50, Elapsed: 1m24.658944s
+  Scheduler: Phase: main (45.5%), Workers: 50, Elapsed: 1m24.6466053s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -645,21 +645,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:30+01:00
-Elapsed: 1m30.0006986s
-Interval: 1.0002224s
+Timestamp: 2026-03-29T12:21:50+02:00
+Elapsed: 1m30.0243207s
+Interval: 24.1241ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 141416
+  Success: 3594 (2.5%)
+  Errors: 137822
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1570.9
+  Interval TPS: 387620.7
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -670,7 +670,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (49.7%), Workers: 50, Elapsed: 1m29.658809s
+  Scheduler: Phase: main (49.7%), Workers: 50, Elapsed: 1m29.6467524s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -683,21 +683,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:35+01:00
-Elapsed: 1m35.0005955s
-Interval: 1.000071s
+Timestamp: 2026-03-29T12:21:55+02:00
+Elapsed: 1m35.024266s
+Interval: 24.2343ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 150771
+  Success: 3838 (2.5%)
+  Errors: 146933
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1586.7
+  Interval TPS: 386023.1
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -708,7 +708,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (53.9%), Workers: 50, Elapsed: 1m34.6589778s
+  Scheduler: Phase: main (53.9%), Workers: 50, Elapsed: 1m34.6467555s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -721,21 +721,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:40+01:00
-Elapsed: 1m40.0008568s
-Interval: 518.5µs
+Timestamp: 2026-03-29T12:22:00+02:00
+Elapsed: 1m40.0247359s
+Interval: 24.2628ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 160114
+  Success: 4079 (2.5%)
+  Errors: 156035
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1600.7
+  Interval TPS: 385075.1
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -746,7 +746,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (58.0%), Workers: 50, Elapsed: 1m39.6590879s
+  Scheduler: Phase: main (58.0%), Workers: 50, Elapsed: 1m39.6467192s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -759,21 +759,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:45+01:00
-Elapsed: 1m45.0007815s
-Interval: 546.9µs
+Timestamp: 2026-03-29T12:22:05+02:00
+Elapsed: 1m45.0248267s
+Interval: 24.3821ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 169416
+  Success: 4313 (2.5%)
+  Errors: 165103
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1613.1
+  Interval TPS: 381509.4
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -784,7 +784,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (62.2%), Workers: 50, Elapsed: 1m44.6586338s
+  Scheduler: Phase: main (62.2%), Workers: 50, Elapsed: 1m44.646824s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -797,21 +797,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:50+01:00
-Elapsed: 1m50.0008252s
-Interval: 519.2µs
+Timestamp: 2026-03-29T12:22:10+02:00
+Elapsed: 1m50.0245002s
+Interval: 24.2086ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 178562
+  Success: 4562 (2.6%)
+  Errors: 174000
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1622.9
+  Interval TPS: 377799.6
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -822,7 +822,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (66.4%), Workers: 50, Elapsed: 1m49.6589087s
+  Scheduler: Phase: main (66.4%), Workers: 50, Elapsed: 1m49.6466462s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -835,21 +835,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:54:55+01:00
-Elapsed: 1m55.0005482s
-Interval: 522.8µs
+Timestamp: 2026-03-29T12:22:15+02:00
+Elapsed: 1m55.0242983s
+Interval: 23.8605ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 187919
+  Success: 4797 (2.6%)
+  Errors: 183122
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1633.7
+  Interval TPS: 392154.4
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -860,7 +860,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (70.5%), Workers: 50, Elapsed: 1m54.6587157s
+  Scheduler: Phase: main (70.5%), Workers: 50, Elapsed: 1m54.6465115s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -873,21 +873,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:00+01:00
-Elapsed: 2m0.0006247s
-Interval: 564.6µs
+Timestamp: 2026-03-29T12:22:20+02:00
+Elapsed: 2m0.0248209s
+Interval: 24.5576ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 197188
+  Success: 5028 (2.5%)
+  Errors: 192160
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1642.9
+  Interval TPS: 377439.2
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -898,7 +898,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (74.7%), Workers: 50, Elapsed: 1m59.6587106s
+  Scheduler: Phase: main (74.7%), Workers: 50, Elapsed: 1m59.646763s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -911,21 +911,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:05+01:00
-Elapsed: 2m5.0005373s
-Interval: 1.0001953s
+Timestamp: 2026-03-29T12:22:25+02:00
+Elapsed: 2m5.0246729s
+Interval: 24.541ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 206476
+  Success: 5246 (2.5%)
+  Errors: 201230
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1651.5
+  Interval TPS: 378468.7
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -936,7 +936,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (78.9%), Workers: 50, Elapsed: 2m4.6589466s
+  Scheduler: Phase: main (78.9%), Workers: 50, Elapsed: 2m4.6474515s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -949,21 +949,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:10+01:00
-Elapsed: 2m10.0008633s
-Interval: 561.4µs
+Timestamp: 2026-03-29T12:22:30+02:00
+Elapsed: 2m10.0246807s
+Interval: 24.0154ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 215806
+  Success: 5496 (2.5%)
+  Errors: 210310
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1659.7
+  Interval TPS: 388500.7
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -974,7 +974,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (83.0%), Workers: 50, Elapsed: 2m9.6588411s
+  Scheduler: Phase: main (83.0%), Workers: 50, Elapsed: 2m9.6465723s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -987,21 +987,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:15+01:00
-Elapsed: 2m15.000578s
-Interval: 533.3µs
+Timestamp: 2026-03-29T12:22:35+02:00
+Elapsed: 2m15.0249045s
+Interval: 24.628ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 224883
+  Success: 5747 (2.6%)
+  Errors: 219136
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1665.5
+  Interval TPS: 368564.2
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1012,7 +1012,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (87.2%), Workers: 50, Elapsed: 2m14.6590937s
+  Scheduler: Phase: main (87.2%), Workers: 50, Elapsed: 2m14.6471016s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1025,21 +1025,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:20+01:00
-Elapsed: 2m20.000722s
-Interval: 592.9µs
+Timestamp: 2026-03-29T12:22:40+02:00
+Elapsed: 2m20.0246152s
+Interval: 24.4582ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 234148
+  Success: 5997 (2.6%)
+  Errors: 228151
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1672.2
+  Interval TPS: 378809.6
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1050,7 +1050,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (91.4%), Workers: 50, Elapsed: 2m19.6590628s
+  Scheduler: Phase: main (91.4%), Workers: 50, Elapsed: 2m19.6468047s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1063,21 +1063,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:25+01:00
-Elapsed: 2m25.0010049s
-Interval: 546.3µs
+Timestamp: 2026-03-29T12:22:45+02:00
+Elapsed: 2m25.0247893s
+Interval: 24.2837ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 243387
+  Success: 6283 (2.6%)
+  Errors: 237104
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1678.2
+  Interval TPS: 380461.0
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1088,7 +1088,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (95.5%), Workers: 50, Elapsed: 2m24.6587546s
+  Scheduler: Phase: main (95.5%), Workers: 50, Elapsed: 2m24.6463991s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1101,21 +1101,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:30+01:00
-Elapsed: 2m30.0007419s
-Interval: 544.1µs
+Timestamp: 2026-03-29T12:22:50+02:00
+Elapsed: 2m30.0244423s
+Interval: 24.2665ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 252656
+  Success: 6515 (2.6%)
+  Errors: 246141
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1684.1
+  Interval TPS: 381966.9
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1126,7 +1126,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: main (99.7%), Workers: 50, Elapsed: 2m29.6589361s
+  Scheduler: Phase: main (99.7%), Workers: 50, Elapsed: 2m29.6466692s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1139,21 +1139,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:35+01:00
-Elapsed: 2m35.0005365s
-Interval: 0s
+Timestamp: 2026-03-29T12:22:55+02:00
+Elapsed: 2m35.0246816s
+Interval: 24.6558ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 261070
+  Success: 6727 (2.6%)
+  Errors: 254343
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: NaN
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1684.1
+  Interval TPS: 341258.4
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1164,7 +1164,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: cooldown (23.3%), Workers: 39, Elapsed: 2m34.6588583s
+  Scheduler: Phase: cooldown (23.2%), Workers: 39, Elapsed: 2m34.6468162s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1177,21 +1177,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:40+01:00
-Elapsed: 2m40.001024s
-Interval: 1.000403s
+Timestamp: 2026-03-29T12:23:00+02:00
+Elapsed: 2m40.0245443s
+Interval: 1.0242663s
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 267197
+  Success: 6872 (2.6%)
+  Errors: 260325
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1669.7
+  Interval TPS: 5981.8
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1202,7 +1202,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: cooldown (48.3%), Workers: 26, Elapsed: 2m39.658663s
+  Scheduler: Phase: cooldown (48.2%), Workers: 26, Elapsed: 2m39.6464472s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1215,21 +1215,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:45+01:00
-Elapsed: 2m45.0006492s
-Interval: 580.9µs
+Timestamp: 2026-03-29T12:23:05+02:00
+Elapsed: 2m45.0242728s
+Interval: 23.4688ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 270936
+  Success: 6968 (2.6%)
+  Errors: 263968
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1641.8
+  Interval TPS: 159317.9
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1240,7 +1240,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: cooldown (73.3%), Workers: 14, Elapsed: 2m44.6592905s
+  Scheduler: Phase: cooldown (73.2%), Workers: 14, Elapsed: 2m44.6470554s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
@@ -1253,21 +1253,21 @@ Latency Distribution:
   (no data)
 
 === Load Test Report ===
-Timestamp: 2026-03-28T16:55:50+01:00
-Elapsed: 2m50.0009638s
-Interval: 573.7µs
+Timestamp: 2026-03-29T12:23:10+02:00
+Elapsed: 2m50.0246948s
+Interval: 24.3448ms
 
 Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
+  Total: 272319
+  Success: 7009 (2.6%)
+  Errors: 265310
 
 Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
+  Total TPS: 1601.6
+  Interval TPS: 56808.8
+  Average Latency: 668ms
+  Min Latency: 5ms
+  Max Latency: 1s
   P50 Latency: 0s
   P95 Latency: 0s
   P99 Latency: 0s
@@ -1278,45 +1278,7 @@ Concurrency:
 
 System:
   Profile: read-heavy
-  Scheduler: Phase: cooldown (98.3%), Workers: 1, Elapsed: 2m49.6591623s
-  Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
-
-Operation Distribution:
-  (none)
-
-Error Distribution:
-  (none)
-
-Latency Distribution:
-  (no data)
-
-=== Load Test Report ===
-Timestamp: 2026-03-28T16:55:55+01:00
-Elapsed: 2m55.001021s
-Interval: 658.3µs
-
-Operations:
-  Total: 0
-  Success: 0 (0.0%)
-  Errors: 0
-
-Performance:
-  Total TPS: 0.0
-  Interval TPS: 0.0
-  Average Latency: 0s
-  Min Latency: 0s
-  Max Latency: 0s
-  P50 Latency: 0s
-  P95 Latency: 0s
-  P99 Latency: 0s
-
-Concurrency:
-  Current Workers: 0
-  Max Workers: 50
-
-System:
-  Profile: read-heavy
-  Scheduler: Phase: cooldown (123.3%), Workers: 0, Elapsed: 2m54.6589868s
+  Scheduler: Phase: cooldown (98.2%), Workers: 1, Elapsed: 2m49.6472196s
   Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
 
 Operation Distribution:
