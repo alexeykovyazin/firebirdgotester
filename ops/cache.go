@@ -261,6 +261,14 @@ func (c *Cache) RandomCountry() string {
 	return countries[c.rng.Intn(len(countries))]
 }
 
+// RandomCitySimple returns a random city name
+func (c *Cache) RandomCitySimple() string {
+	cities := []string{"Springfield", "Shelbyville", "Ogdenville", "North Haverbrook", "Capital City",
+		"Metropolis", "Gotham", "Star City", "Central City", "National City",
+		"Boston", "Chicago", "Seattle", "Portland", "Denver"}
+	return cities[c.rng.Intn(len(cities))]
+}
+
 // RandomOrderStatus returns a random order status
 func (c *Cache) RandomOrderStatus() string {
 	statuses := []string{"new", "open", "shipped", "waiting"}

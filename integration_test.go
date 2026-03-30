@@ -24,7 +24,7 @@ func TestBasicExecution(t *testing.T) {
 	// Run the load generator with dry-run mode
 	cmd := exec.CommandContext(ctx, "./fb-loadgen",
 		"--profile", "write-heavy",
-		"--conn", "localhost/3055:./EMPLOYEE.FDB",
+		"--dsn", "localhost/3055:./EMPLOYEE.FDB",
 		"--warmup", "5",
 		"--main", "10",
 		"--cooldown", "5",
@@ -84,18 +84,18 @@ func TestConfigValidation(t *testing.T) {
 	}{
 		{
 			name:    "valid config",
-			args:    []string{"--profile", "write-heavy", "--conn", "test"},
+			args:    []string{"--profile", "write-heavy", "--dsn", "test"},
 			wantErr: false,
 		},
 		{
 			name:    "missing profile",
-			args:    []string{"--conn", "test"},
+			args:    []string{"--dsn", "test"},
 			wantErr: true,
 			errMsg:  "profile is required",
 		},
 		{
 			name:    "invalid profile",
-			args:    []string{"--profile", "invalid", "--conn", "test"},
+			args:    []string{"--profile", "invalid", "--dsn", "test"},
 			wantErr: true,
 			errMsg:  "invalid profile",
 		},
