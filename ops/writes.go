@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"fb-loadgen/db"
@@ -30,6 +31,10 @@ func NewWriteOperations(connFactory *db.ConnectionFactory, cache *Cache) *WriteO
 func (wo *WriteOperations) InsertCustomer(ctx context.Context, tx *sql.Tx) error {
 	// Generate customer data
 	customerName := wo.cache.RandomName()
+	// CUSTOMER column is VARCHAR(25), need to truncate
+	if len(customerName) > 25 {
+		customerName = customerName[:25]
+	}
 	address1, address2, city, state, country, postalCode := wo.generateCustomerAddress()
 	onHold := wo.cache.RandomOnHold()
 
@@ -63,12 +68,14 @@ func (wo *WriteOperations) InsertSales(ctx context.Context, tx *sql.Tx) error {
 	orderStatus := wo.cache.RandomOrderStatus()
 	paid := wo.cache.RandomPaid()
 	discount := wo.cache.RandomDiscount()
+	totalValue := float64(wo.rng.Intn(10000) + 100) // Random value between 100 and 10100
 
-	// Insert sales order
+	// Insert sales order - note SALES.SALES_REP is the FK to EMPLOYEE, not EMP_NO
+	// SALES table requires: PO_NUMBER, CUST_NO, ORDER_STATUS, TOTAL_VALUE (others have defaults)
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO SALES (PO_NUMBER, CUST_NO, EMP_NO, ORDER_STATUS, PAID, DISCOUNT)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, poNumber, custNo, empNo, orderStatus, paid, discount)
+		INSERT INTO SALES (PO_NUMBER, CUST_NO, SALES_REP, ORDER_STATUS, PAID, DISCOUNT, TOTAL_VALUE)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, poNumber, custNo, empNo, orderStatus, paid, discount, totalValue)
 	if err != nil {
 		return fmt.Errorf("failed to insert sales: %w", err)
 	}
@@ -91,11 +98,11 @@ func (wo *WriteOperations) UpdateSalesStatus(ctx context.Context, tx *sql.Tx) er
 	var poNumber string
 	var currentStatus string
 
+	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
 		SELECT PO_NUMBER, ORDER_STATUS 
 		FROM SALES 
-		ORDER BY RAND() 
-		LIMIT 1
+		ROWS 1
 	`).Scan(&poNumber, &currentStatus)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -138,12 +145,12 @@ func (wo *WriteOperations) CallShipOrder(ctx context.Context, tx *sql.Tx) error 
 	// Get a random sales order that can be shipped
 	var poNumber string
 
+	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
 		SELECT PO_NUMBER 
 		FROM SALES 
 		WHERE ORDER_STATUS IN ('new', 'open', 'waiting')
-		ORDER BY RAND() 
-		LIMIT 1
+		ROWS 1
 	`).Scan(&poNumber)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -153,12 +160,39 @@ func (wo *WriteOperations) CallShipOrder(ctx context.Context, tx *sql.Tx) error 
 	}
 
 	// Call SHIP_ORDER procedure
+	// Note: SHIP_ORDER can raise CUSTOMER_CHECK exception if customer has overdue balance
+	// This is expected business logic and should be handled gracefully
 	_, err = tx.ExecContext(ctx, "EXECUTE PROCEDURE SHIP_ORDER(?)", poNumber)
 	if err != nil {
+		errStr := err.Error()
+		// Check for expected exceptions
+		if contains(errStr, "CUSTOMER_CHECK") ||
+			contains(errStr, "ORDER_ALREADY_SHIPPED") ||
+			contains(errStr, "customer_check") ||
+			contains(errStr, "order_already_shipped") {
+			// Expected business logic error - not a real failure
+			return nil
+		}
 		return fmt.Errorf("failed to call SHIP_ORDER(%s): %w", poNumber, err)
 	}
 
 	return nil
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsIgnoreCase(s, substr))
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	s = strings.ToLower(s)
+	substr = strings.ToLower(substr)
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // UpdateEmployeeSalary updates the salary of a random employee
@@ -168,12 +202,12 @@ func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx)
 	var jobCode string
 	var currentSalary float64
 
+	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
 		SELECT E.EMP_NO, E.JOB_CODE, E.SALARY
 		FROM EMPLOYEE E
 		JOIN JOB J ON E.JOB_CODE = J.JOB_CODE
-		ORDER BY RAND() 
-		LIMIT 1
+		ROWS 1
 	`).Scan(&empNo, &jobCode, &currentSalary)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -234,11 +268,11 @@ func (wo *WriteOperations) DeleteEmpProj(ctx context.Context, tx *sql.Tx) error 
 	var empNo int
 	var projId string
 
+	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
 		SELECT EMP_NO, PROJ_ID 
 		FROM EMPLOYEE_PROJECT 
-		ORDER BY RAND() 
-		LIMIT 1
+		ROWS 1
 	`).Scan(&empNo, &projId)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -301,9 +335,21 @@ func (wo *WriteOperations) UpdateDeptBudget(ctx context.Context, tx *sql.Tx) err
 // generateCustomerAddress generates random customer address data
 func (wo *WriteOperations) generateCustomerAddress() (address1, address2, city, state, country, postalCode string) {
 	address1 = wo.cache.RandomAddress()
-	address2 = ""                    // Optional
-	city = wo.cache.RandomAddress()  // Reuse address generation for city
-	state = wo.cache.RandomCountry() // Simplified
+	// Truncate to fit ADDRESSLINE domain (VARCHAR(30))
+	if len(address1) > 30 {
+		address1 = address1[:30]
+	}
+	address2 = "" // Optional, leave empty
+	city = wo.cache.RandomCitySimple()
+	// Truncate to fit VARCHAR(25)
+	if len(city) > 25 {
+		city = city[:25]
+	}
+	state = wo.cache.RandomCountry() // Simplified - use country as state
+	// Truncate to fit VARCHAR(15)
+	if len(state) > 15 {
+		state = state[:15]
+	}
 	country = wo.cache.RandomCountry()
 	postalCode = fmt.Sprintf("%05d", wo.rng.Intn(99999))
 	return
@@ -407,4 +453,13 @@ func (wo *WriteOperations) ExecuteRandomRareWriteOperation(ctx context.Context, 
 
 	op := ops[wo.rng.Intn(len(ops))]
 	return op.Function(ctx, tx)
+}
+
+// TruncateString truncates a string to the specified length
+func truncateString(s string, maxLen int) string {
+	s = strings.TrimSpace(s)
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
 }
