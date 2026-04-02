@@ -97,18 +97,29 @@ func (sp *SpikeProfile) Name() string {
 // During spike phases, it returns write-heavy operations
 // During between-spike phases, it returns read-heavy operations
 func (sp *SpikeProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
+	op, _ := sp.NextOpWithName()
+	return op
+}
+
+// NextOpWithName returns the next operation and its name
+func (sp *SpikeProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
 	if sp.inSpikePhase {
 		// During spike: use write-heavy operations
-		return sp.getWriteHeavyOperation()
+		return sp.getWriteHeavyOperationWithName()
 	} else {
 		// Between spikes: use read-heavy operations
-		op, _ := sp.selector.Select()
-		return op
+		return sp.selector.Select()
 	}
 }
 
 // getWriteHeavyOperation returns a write-heavy operation
 func (sp *SpikeProfile) getWriteHeavyOperation() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
+	op, _ := sp.getWriteHeavyOperationWithName()
+	return op
+}
+
+// getWriteHeavyOperationWithName returns a write-heavy operation and its name
+func (sp *SpikeProfile) getWriteHeavyOperationWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
 	// Create a temporary weighted selector for write-heavy operations
 	writeOpsWeights := []OpWeight{
 		{
@@ -161,8 +172,7 @@ func (sp *SpikeProfile) getWriteHeavyOperation() func(ctx context.Context, tx *s
 	}
 
 	selector := NewWeightedSelector(writeOpsWeights)
-	op, _ := selector.Select()
-	return op
+	return selector.Select()
 }
 
 // UpdateSpikePhase updates the current spike phase based on elapsed time

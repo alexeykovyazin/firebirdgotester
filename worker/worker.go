@@ -13,6 +13,9 @@ import (
 	"fb-loadgen/profile"
 )
 
+// DebugEnabled controls debug output
+var DebugEnabled = false
+
 // Worker represents a single worker goroutine that executes database operations
 type Worker struct {
 	id            int
@@ -36,6 +39,9 @@ type Worker struct {
 // NewWorker creates a new worker instance
 func NewWorker(id int, ctx context.Context, connFactory *db.ConnectionFactory, cache *ops.Cache, profile profile.Profile, config *config.Config, metrics *MetricsCollector) *Worker {
 	workerCtx, cancel := context.WithCancel(ctx)
+
+	// Enable debug output if configured
+	DebugEnabled = config.Debug
 
 	return &Worker{
 		id:            id,
@@ -121,12 +127,19 @@ func (w *Worker) run() {
 func (w *Worker) executeOperation() error {
 	startTime := time.Now()
 
+	if DebugEnabled {
+		fmt.Printf("[Worker-%d] Starting operation...\n", w.id)
+	}
+
 	// Begin transaction with timeout
 	ctx, cancel := context.WithTimeout(w.ctx, w.txTimeout)
 	defer cancel()
 
 	tx, err := w.dbConn.BeginTx(ctx, nil)
 	if err != nil {
+		if DebugEnabled {
+			fmt.Printf("[Worker-%d] FAILED to begin transaction: %v\n", w.id, err)
+		}
 		return fmt.Errorf("worker %d failed to begin transaction: %w", w.id, err)
 	}
 	defer tx.Rollback()
@@ -137,6 +150,12 @@ func (w *Worker) executeOperation() error {
 		return fmt.Errorf("worker %d got nil operation from profile", w.id)
 	}
 
+	opName := ""
+
+	if DebugEnabled {
+		fmt.Printf("[Worker-%d] Executing operation...\n", w.id)
+	}
+
 	// Execute the operation
 	if err := op(ctx, tx, w.cache); err != nil {
 		// Classify and handle the error
@@ -144,10 +163,16 @@ func (w *Worker) executeOperation() error {
 		if isExpected {
 			// Expected error - just record it
 			w.metrics.RecordTransaction(false, time.Since(startTime))
+			if DebugEnabled {
+				fmt.Printf("[Worker-%d] Operation %s FAILED (expected): %v\n", w.id, opName, classifiedErr)
+			}
 			return classifiedErr
 		} else {
 			// Unexpected error - log it and return
 			w.metrics.RecordTransaction(false, time.Since(startTime))
+			if DebugEnabled {
+				fmt.Printf("[Worker-%d] Operation %s FAILED (unexpected): %v\n", w.id, opName, err)
+			}
 			return fmt.Errorf("worker %d unexpected error: %w", w.id, classifiedErr)
 		}
 	}
@@ -155,11 +180,17 @@ func (w *Worker) executeOperation() error {
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		w.metrics.RecordTransaction(false, time.Since(startTime))
+		if DebugEnabled {
+			fmt.Printf("[Worker-%d] Operation %s FAILED to commit: %v\n", w.id, opName, err)
+		}
 		return fmt.Errorf("worker %d failed to commit transaction: %w", w.id, err)
 	}
 
 	// Record successful transaction
 	w.metrics.RecordTransaction(true, time.Since(startTime))
+	if DebugEnabled {
+		fmt.Printf("[Worker-%d] Operation %s SUCCESS (%.2fms)\n", w.id, opName, float64(time.Since(startTime).Microseconds())/1000.0)
+	}
 	return nil
 }
 

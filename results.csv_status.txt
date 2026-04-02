@@ -1,6 +1,6 @@
 System Status:
   Profile:             read-heavy
-  Scheduler:           Phase: cooldown (100.0%), Workers: 0, Elapsed: 2m50.1467633s
-  Cache:               Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
-  Test Duration:       2m52.5515673s
+  Scheduler:           Phase: cooldown (100.0%), Workers: 0, Elapsed: 27m12.5844061s
+  Cache:               Cache: 22 depts, 104 emps, 16 projs, 14114 custs, 15 jobs
+  Test Duration:       27m25.1561857s
   Last Report:         0s ago

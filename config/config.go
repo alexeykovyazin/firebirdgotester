@@ -39,6 +39,7 @@ type Config struct {
 	ThinkMs   int
 	TxTimeout int
 	DryRun    bool
+	Debug     bool
 }
 
 // ParseFlags parses CLI flags and returns a validated Config
@@ -46,7 +47,7 @@ func ParseFlags() (*Config, error) {
 	cfg := &Config{}
 
 	// Connection flags
-	flag.StringVar(&cfg.DSN, "dsn", "localhost/3055:./EMPLOYEE.FDB", "Firebird DSN")
+	flag.StringVar(&cfg.DSN, "dsn", "localhost/3055:E:\\Projects_2026\\firebirdgotester\\EMPLOYEE.FDB", "Firebird DSN")
 	flag.StringVar(&cfg.User, "user", "SYSDBA", "DB user")
 	flag.StringVar(&cfg.Pass, "pass", "masterkey", "DB password")
 
@@ -74,6 +75,7 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.ThinkMs, "think-ms", 50, "Worker think time between ops in ms")
 	flag.IntVar(&cfg.TxTimeout, "tx-timeout", 10, "Statement timeout in seconds")
 	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Connect, list what would run, exit")
+	flag.BoolVar(&cfg.Debug, "debug", false, "Enable debug output for each operation")
 
 	flag.Parse()
 
@@ -159,65 +161,61 @@ func (c *Config) parseDSN(dsn string) (host string, port int, database string) {
 	database = dsn
 
 	// Handle formats:
-	// 1. "host/port:database" - non-standard but common format
-	// 2. "host:port/database" - standard firebirdsql format
-	// 3. "host/database" - host with default port
-	// 4. "database" - just database path with defaults
+	// 1. "host:port/database" - standard firebirdsql format
+	// 2. "host/port:database" - non-standard but common format
+	// 3. "host:port" - host with port, database is empty
+	// 4. "host/database" - host with default port
+	// 5. "database" - just database path with defaults
 
-	// Find the database part (after the last colon that's followed by a path)
-	// and the host/port part (before it)
+	// First check for ":port/" format (standard) - this takes priority
+	// because "host:port" should be parsed before checking for "host/port"
+	if slashIdx := strings.Index(dsn, "/"); slashIdx != -1 {
+		beforeSlash := dsn[:slashIdx]
+		afterSlash := dsn[slashIdx+1:]
 
-	// Try to find host/port separator
-	var hostPort string
+		// Check if beforeSlash contains a colon (host:port format)
+		if colonIdx := strings.Index(beforeSlash, ":"); colonIdx != -1 {
+			// Format: "host:port/database"
+			host = beforeSlash[:colonIdx]
+			portStr := beforeSlash[colonIdx+1:]
+			database = afterSlash
 
-	// Check for "/port:" format (non-standard)
-	if idx := strings.Index(dsn, "/"); idx != -1 && idx < len(dsn)-1 {
-		rest := dsn[idx+1:]
-		if colonIdx := strings.Index(rest, ":"); colonIdx != -1 {
-			// Format: "host/port:database"
-			hostPort = dsn[:idx]
-			portStr := rest[:colonIdx]
-			database = rest[colonIdx+1:]
-
-			// Parse port
 			if p, err := parsePort(portStr); err == nil {
 				port = p
 			}
-
-			host = hostPort
 			return
-		} else {
-			// Format: "host/port" without database, or just "host/database"
-			hostPort = dsn[:idx]
-			afterSlash := rest
+		}
 
-			// Check if it's port number or just database
-			if p, err := parsePort(afterSlash); err == nil && p > 0 {
+		// Format without colon before slash - "host/port:database" or "host/database"
+		// Check if afterSlash contains a colon (port:database format)
+		if colonIdx := strings.Index(afterSlash, ":"); colonIdx != -1 {
+			// Format: "host/port:database"
+			host = beforeSlash
+			portStr := afterSlash[:colonIdx]
+			database = afterSlash[colonIdx+1:]
+
+			if p, err := parsePort(portStr); err == nil {
 				port = p
-				database = dsn[idx+1:]
-			} else {
-				// It's "host/database" format
-				host = hostPort
-				database = afterSlash
 			}
 			return
 		}
+
+		// Format: "host/database" (no colons)
+		host = beforeSlash
+		database = afterSlash
+		return
 	}
 
-	// Check for ":port/" format (standard)
-	if idx := strings.Index(dsn, ":"); idx != -1 {
-		rest := dsn[idx+1:]
-		if slashIdx := strings.Index(rest, "/"); slashIdx != -1 {
-			// Format: "host:port/database"
-			host = dsn[:idx]
-			portStr := rest[:slashIdx]
-			database = rest[slashIdx+1:]
+	// No slash found - check for "host:port" format without database
+	if colonIdx := strings.Index(dsn, ":"); colonIdx != -1 {
+		host = dsn[:colonIdx]
+		portStr := dsn[colonIdx+1:]
 
-			if p, err := parsePort(portStr); err == nil {
-				port = p
-			}
-			return
+		if p, err := parsePort(portStr); err == nil {
+			port = p
 		}
+		database = ""
+		return
 	}
 
 	// Fallback: just a database path or host
@@ -280,6 +278,7 @@ func PrintUsage() {
 	fmt.Fprintf(os.Stderr, "  --think-ms      int      Worker think time between ops in ms (default: 50)\n")
 	fmt.Fprintf(os.Stderr, "  --tx-timeout    int      Statement timeout in seconds (default: 10)\n")
 	fmt.Fprintf(os.Stderr, "  --dry-run       bool     Connect, list what would run, exit (default: false)\n")
+	fmt.Fprintf(os.Stderr, "  --debug         bool     Enable debug output for each operation (default: false)\n")
 }
 
 // ValidateDryRun performs validation specific to dry-run mode

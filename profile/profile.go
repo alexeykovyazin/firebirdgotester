@@ -18,6 +18,9 @@ type Profile interface {
 	// NextOp returns the next operation to execute
 	NextOp() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error
 
+	// NextOpWithName returns the next operation and its name
+	NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string)
+
 	// Weights returns the operation weights for this profile
 	Weights() []OpWeight
 }
@@ -104,6 +107,11 @@ func (bp *BaseProfile) Weights() []OpWeight {
 func (bp *BaseProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
 	op, _ := bp.selector.Select()
 	return op
+}
+
+// NextOpWithName returns the next operation and its name
+func (bp *BaseProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
+	return bp.selector.Select()
 }
 
 // ProfileFactory creates profiles

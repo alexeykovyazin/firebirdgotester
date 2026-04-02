@@ -1,1 +1,1 @@
-Total: 272325, Success: 2.6%, TPS: 1579.0, Lat: avg=668ms min=5ms max=1s p50=0s p95=0s p99=0s, Workers: 0/50, Profile: read-heavy
+Total: 224921, Success: 99.1%, TPS: 136.7, Lat: avg=8ms min=5ms max=10ms p50=0s p95=0s p99=0s, Workers: 0/20, Profile: read-heavy

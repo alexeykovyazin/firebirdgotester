@@ -1,14 +1,14 @@
 Performance Summary:
-  Total Operations:    272325
-  Successful:          7009 (2.6%)
-  Failed:              265316
-  Total TPS:           1578.3
+  Total Operations:    224921
+  Successful:          222963 (99.1%)
+  Failed:              1958
+  Total TPS:           136.7
   Interval TPS:        0.0
-  Average Latency:     668ms
+  Average Latency:     8ms
   50th Percentile:     0s
   95th Percentile:     0s
   99th Percentile:     0s
   Min Latency:         5ms
-  Max Latency:         1s
-  Max Workers:         50
+  Max Latency:         10ms
+  Max Workers:         20
   Current Workers:     0

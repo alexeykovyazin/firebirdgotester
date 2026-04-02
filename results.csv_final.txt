@@ -2,7 +2,7 @@
 === FINAL LOAD TEST REPORT ===
 
 Summary:
-Total: 272325, Success: 2.6%, TPS: 1578.8, Lat: avg=668ms min=5ms max=1s p50=0s p95=0s p99=0s, Workers: 0/50, Profile: read-heavy
+Total: 224921, Success: 99.1%, TPS: 136.7, Lat: avg=8ms min=5ms max=10ms p50=0s p95=0s p99=0s, Workers: 0/20, Profile: read-heavy
 
 Operation Distribution:
   (none)
@@ -15,7 +15,7 @@ Latency Distribution:
 
 System Configuration:
   Profile: read-heavy
-  Scheduler: Phase: cooldown (100.0%), Workers: 0, Elapsed: 2m50.1467633s
-  Cache: Cache: 22 depts, 104 emps, 16 projs, 15 custs, 15 jobs
+  Scheduler: Phase: cooldown (100.0%), Workers: 0, Elapsed: 27m12.5844061s
+  Cache: Cache: 22 depts, 104 emps, 16 projs, 14114 custs, 15 jobs
 
-Test Duration: 2m52.4847003s
+Test Duration: 27m25.0826711s
