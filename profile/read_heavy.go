@@ -84,6 +84,11 @@ func (rp *ReadHeavyProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cache
 	return op
 }
 
+// NextOpWithName returns the next operation and its name
+func (rp *ReadHeavyProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
+	return rp.selector.Select()
+}
+
 // Weights returns the operation weights for read-heavy profile
 func (rp *ReadHeavyProfile) Weights() []OpWeight {
 	return rp.BaseProfile.Weights()

@@ -82,6 +82,11 @@ func (wp *WriteHeavyProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cach
 	return op
 }
 
+// NextOpWithName returns the next operation and its name
+func (wp *WriteHeavyProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
+	return wp.selector.Select()
+}
+
 // Weights returns the operation weights for write-heavy profile
 func (wp *WriteHeavyProfile) Weights() []OpWeight {
 	return wp.BaseProfile.Weights()

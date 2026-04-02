@@ -60,46 +60,74 @@ go build
 ### Complete Example Workflow
 
 ```bash
-# 1. Test configuration without running load
+# 1. Build the application
+go build -o fb-loadgen.exe .
+
+# 2. Test configuration without running load
 ./fb-loadgen --profile write-heavy \
     --dsn "localhost/3055:./EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey \
     --conn-init 5 \
     --conn-peak 20 \
     --dry-run
 
-# 2. Run short warmup test
+# 3. Run short warmup test
 ./fb-loadgen --profile write-heavy \
     --dsn "localhost/3055:./EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey \
     --warmup 10 \
     --main 30 \
     --cooldown 10 \
     --conn-init 5 \
     --conn-peak 10
 
-# 3. Full production run with CSV output
-./fb-loadgen --profile read-heavy \
-    --dsn "192.168.1.100:3050/var/firebird/employee.fdb" \
-    --user myuser \
-    --pass mypassword \
-    --warmup 60 \
-    --main 300 \
-    --cooldown 30 \
-    --conn-init 10 \
-    --conn-peak 50 \
-    --csv ./results/loadtest_$(date +%Y%m%d_%H%M%S).csv \
-    --report-every 15
-
-# 4. Spike profile for stress testing
-./fb-loadgen --profile spike \
-    --dsn "localhost/3055:./EMPLOYEE.FDB" \
+# 4. Full production run with CSV output (all parameters)
+./fb-loadgen \
+    --dsn "localhost/3055:e:/Projects_2026/firebirdgotester/EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey \
+    --profile write-heavy \
+    --conn-init 2 \
+    --conn-peak 20 \
     --warmup 30 \
     --main 120 \
     --cooldown 20 \
+    --csv results.csv \
+    --report-every 5 \
+    --think-ms 50 \
+    --tx-timeout 10
+
+# 5. Read-heavy profile
+./fb-loadgen \
+    --dsn "localhost/3055:e:/Projects_2026/firebirdgotester/EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey \
+    --profile read-heavy \
+    --conn-init 2 \
+    --conn-peak 20 \
+    --warmup 30 \
+    --main 120 \
+    --cooldown 20 \
+    --csv results.csv \
+    --report-every 5
+
+# 6. Spike profile for stress testing
+./fb-loadgen \
+    --dsn "localhost/3055:e:/Projects_2026/firebirdgotester/EMPLOYEE.FDB" \
+    --user SYSDBA \
+    --pass masterkey \
+    --profile spike \
     --conn-init 5 \
     --conn-peak 40 \
+    --warmup 30 \
+    --main 120 \
+    --cooldown 20 \
     --spike-cycles 3 \
     --spike-hold 15 \
-    --think-ms 20
+    --think-ms 20 \
+    --csv spike_results.csv
 ```
 
 ### Local vs Remote Connections
