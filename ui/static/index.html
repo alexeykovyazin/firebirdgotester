@@ -164,6 +164,7 @@
     <span class="stat">Σ conns <b id="sumConns">0</b></span>
     <span class="stat">Σ TPS <b id="sumTps">0</b></span>
     <span class="stat">Budget <b id="sumBudget">0/0</b></span>
+    <span class="stat">Per DB max <b id="sumPerDb">0</b></span>
   </div>
   <div class="filters">
     <label>Status
@@ -211,7 +212,7 @@
         <label>Spike cycles <input type="number" id="dSpikeCycles" data-field="spikeCycles" min="0" /></label>
         <label>Spike hold <input type="number" id="dSpikeHold" data-field="spikeHold" min="0" /></label>
         <label>Min conns <input type="number" id="dConnMin" data-field="connMin" min="1" /></label>
-        <label>Max conns <input type="number" id="dConnMax" data-field="connMax" min="1" /></label>
+        <label>Max conns <input type="number" id="dConnMax" data-field="connMax" min="1" title="Set automatically: max total ÷ databases" readonly /></label>
       </div>
       <div class="row"><div class="label">Elapsed / success</div><div class="value" id="dElapsed"></div></div>
       <div class="row"><div class="label">Latency p50 / p95 / p99</div><div class="value" id="dLatency"></div></div>

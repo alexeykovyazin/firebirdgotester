@@ -3,7 +3,9 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -86,19 +88,34 @@ func (w *Worker) Start() error {
 	return nil
 }
 
-// Stop stops the worker and closes the database connection
+// Stop stops the worker and closes the database connection.
+// In-flight Firebird calls may ignore context cancel, so the connection is
+// closed asynchronously and Wait is bounded to avoid hanging Ctrl-C / Stop.
 func (w *Worker) Stop() error {
 	if !w.running {
 		return nil
 	}
-
+	w.running = false
 	w.cancel()
-	w.wg.Wait()
 
-	if w.dbConn != nil {
-		return w.connFactory.Close(w.dbConn)
+	conn := w.dbConn
+	w.dbConn = nil
+	if conn != nil {
+		go func() { _ = w.connFactory.Close(conn) }()
 	}
-	return nil
+
+	done := make(chan struct{})
+	go func() {
+		w.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("worker %d stop timed out", w.id)
+	}
 }
 
 // run is the main worker loop
@@ -116,6 +133,9 @@ func (w *Worker) run() {
 			}
 
 			if err := w.executeOperation(); err != nil {
+				if isCancelErr(err) || w.ctx.Err() != nil {
+					return
+				}
 				w.metrics.RecordError(err)
 			}
 
@@ -144,6 +164,9 @@ func (w *Worker) executeOperation() error {
 
 	tx, err := w.dbConn.BeginTx(ctx, nil)
 	if err != nil {
+		if isCancelErr(err) || w.ctx.Err() != nil {
+			return err
+		}
 		if DebugEnabled {
 			fmt.Printf("[Worker-%d] FAILED to begin transaction: %v\n", w.id, err)
 		}
@@ -166,6 +189,9 @@ func (w *Worker) executeOperation() error {
 
 	// Execute the operation
 	if err := op(ctx, tx, w.cache); err != nil {
+		if isCancelErr(err) || w.ctx.Err() != nil {
+			return err
+		}
 		isExpected, classifiedErr := ops.ClassifyError(err)
 		w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
 		kind := "unexpected"
@@ -187,6 +213,9 @@ func (w *Worker) executeOperation() error {
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
+		if isCancelErr(err) || w.ctx.Err() != nil {
+			return err
+		}
 		w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
 		w.metrics.LogSQLError(w.id, opName, "commit", err)
 		if DebugEnabled {
@@ -201,6 +230,21 @@ func (w *Worker) executeOperation() error {
 		fmt.Printf("[Worker-%d] Operation %s SUCCESS (%.2fms)\n", w.id, opName, float64(time.Since(startTime).Microseconds())/1000.0)
 	}
 	return nil
+}
+
+// isCancelErr reports shutdown/cancel noise that should not be logged as SQL failures.
+func isCancelErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "operation was cancelled") ||
+		strings.Contains(s, "context canceled") ||
+		strings.Contains(s, "transaction has already been committed") ||
+		strings.Contains(s, "transaction has already been rolled back")
 }
 
 // cleanup performs cleanup when the worker stops

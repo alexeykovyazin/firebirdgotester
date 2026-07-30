@@ -7,6 +7,26 @@ import (
 	"fb-loadgen/discover"
 )
 
+func TestEvenPerDBMax(t *testing.T) {
+	cases := []struct {
+		total, n, want int
+	}{
+		{30, 0, 30},
+		{30, 1, 30},
+		{30, 2, 15},
+		{30, 3, 10},
+		{30, 4, 7},
+		{30, 40, 1},
+		{0, 5, 1},
+		{1, 5, 1},
+	}
+	for _, c := range cases {
+		if got := EvenPerDBMax(c.total, c.n); got != c.want {
+			t.Fatalf("EvenPerDBMax(%d,%d)=%d want %d", c.total, c.n, got, c.want)
+		}
+	}
+}
+
 func TestIDFromAbsPathDistinct(t *testing.T) {
 	a := IDFromAbsPath(`E:\data\prod\EMPLOYEE.FDB`)
 	b := IDFromAbsPath(`E:\data\staging\EMPLOYEE.FDB`)

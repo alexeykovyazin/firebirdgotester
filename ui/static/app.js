@@ -140,6 +140,9 @@ function renderFleet(fleet) {
   $("sumConns").textContent = fleet.totalConns || 0;
   $("sumTps").textContent = (fleet.totalTps || 0).toFixed(1);
   $("sumBudget").textContent = `${fleet.budgetUsed || 0}/${fleet.budgetLimit || 0}`;
+  const per = fleet.perDbMax || 0;
+  const dbs = fleet.databases || 0;
+  $("sumPerDb").textContent = dbs ? `${per} (${dbs} DBs)` : String(per);
 }
 
 function syncTable(sessions) {
@@ -243,7 +246,7 @@ function fillDrawer(s) {
   $("dAbsPath").textContent = s.absPath || "";
   $("dDsn").textContent = s.dsn || "";
   const canEdit = editable(s.status);
-  ["dWarmup", "dMain", "dCooldown", "dThinkMs", "dTxTimeout", "dSpikeCycles", "dSpikeHold", "dConnMin", "dConnMax"].forEach((id) => {
+  ["dWarmup", "dMain", "dCooldown", "dThinkMs", "dTxTimeout", "dSpikeCycles", "dSpikeHold", "dConnMin"].forEach((id) => {
     $(id).disabled = !canEdit;
   });
   $("dWarmup").value = s.warmup;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -62,21 +63,53 @@ func runUI(cfg *config.Config) {
 		log.Printf("Initial discover warning: %v", err)
 	}
 
-	srv := ui.NewWithToken(manager, cfg.UIToken)
+	uiSrv := ui.NewWithToken(manager, cfg.UIToken)
+	httpSrv := &http.Server{
+		Addr:    cfg.UIAddr,
+		Handler: uiSrv.Handler(),
+	}
 
 	go func() {
-		if err := srv.ListenAndServe(cfg.UIAddr); err != nil {
+		fmt.Printf("Web UI listening on http://%s\n", normalizeUIAddr(cfg.UIAddr))
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("UI server failed: %v", err)
 		}
 	}()
 
-	sigChan := make(chan os.Signal, 1)
+	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	fmt.Println("\nShutting down UI; stopping active sessions...")
-	_ = manager.StopAll()
-	time.Sleep(500 * time.Millisecond)
+	fmt.Println("\nShutting down UI; stopping active sessions... (Ctrl+C again to force exit)")
+
+	go func() {
+		<-sigChan
+		fmt.Println("\nForced exit.")
+		os.Exit(1)
+	}()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	_ = httpSrv.Shutdown(shutdownCtx)
+	shutdownCancel()
+
+	done := make(chan struct{})
+	go func() {
+		_ = manager.StopAll()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		fmt.Println("Session stop timed out; exiting.")
+	}
 	fmt.Println("Shutdown complete.")
+	os.Exit(0)
+}
+
+func normalizeUIAddr(addr string) string {
+	if len(addr) > 0 && addr[0] == ':' {
+		return "localhost" + addr
+	}
+	return addr
 }
 
 func runCLI(cfg *config.Config) {
@@ -178,12 +211,25 @@ func runCLI(cfg *config.Config) {
 		cancel()
 	}
 
+	go func() {
+		<-sigChan
+		fmt.Println("\nForced exit.")
+		os.Exit(1)
+	}()
+
 	fmt.Println("Waiting for active operations to complete...")
 	time.Sleep(2 * time.Second)
 
 	fmt.Println("Stopping scheduler...")
-	if err := scheduler.Stop(); err != nil {
-		log.Printf("Error during scheduler shutdown: %v", err)
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- scheduler.Stop() }()
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			log.Printf("Error during scheduler shutdown: %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		fmt.Println("Scheduler stop timed out; continuing shutdown.")
 	}
 
 	fmt.Println("\nGenerating final report...")
