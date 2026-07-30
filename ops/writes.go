@@ -92,51 +92,70 @@ func (wo *WriteOperations) InsertSales(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// UpdateSalesStatus updates the status of a random sales order
+// UpdateSalesStatus updates the status of a random sales order.
+// Shipping is only applied when the customer is not ON_HOLD (SALES CHECK INTEG_80).
 func (wo *WriteOperations) UpdateSalesStatus(ctx context.Context, tx *sql.Tx) error {
-	// Get a random sales order
 	var poNumber string
 	var currentStatus string
+	var onHold sql.NullString
 
-	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
-		SELECT PO_NUMBER, ORDER_STATUS 
-		FROM SALES 
+		SELECT S.PO_NUMBER, S.ORDER_STATUS, C.ON_HOLD
+		FROM SALES S
+		JOIN CUSTOMER C ON C.CUST_NO = S.CUST_NO
+		WHERE S.ORDER_STATUS IN ('new', 'open', 'waiting')
+		ORDER BY RAND()
 		ROWS 1
-	`).Scan(&poNumber, &currentStatus)
+	`).Scan(&poNumber, &currentStatus, &onHold)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("no sales orders found to update")
+			return nil // nothing progressable
 		}
 		return fmt.Errorf("failed to get random sales order: %w", err)
 	}
 
-	// Determine next status based on current status
 	nextStatus := wo.getNextOrderStatus(currentStatus)
 	if nextStatus == currentStatus {
-		// No transition available, skip this update
 		return nil
 	}
 
-	// Update sales status
-	result, err := tx.ExecContext(ctx, `
-		UPDATE SALES 
-		SET ORDER_STATUS = ? 
-		WHERE PO_NUMBER = ?
-	`, nextStatus, poNumber)
-	if err != nil {
-		return fmt.Errorf("failed to update sales status: %w", err)
+	// Cannot mark shipped while customer is on hold (CHECK / CHECK_28 / INTEG_80).
+	if nextStatus == "shipped" && onHold.Valid && strings.TrimSpace(onHold.String) == "*" {
+		// Advance only as far as open when blocked from shipping.
+		if currentStatus == "new" {
+			nextStatus = "open"
+		} else {
+			return nil
+		}
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
+	var result sql.Result
+	var errExec error
+	if nextStatus == "shipped" {
+		result, errExec = tx.ExecContext(ctx, `
+			UPDATE SALES 
+			SET ORDER_STATUS = ?, SHIP_DATE = COALESCE(SHIP_DATE, CURRENT_TIMESTAMP)
+			WHERE PO_NUMBER = ?
+			  AND EXISTS (
+				SELECT 1 FROM CUSTOMER C
+				WHERE C.CUST_NO = SALES.CUST_NO
+				  AND (C.ON_HOLD IS NULL OR C.ON_HOLD <> '*')
+			  )
+		`, nextStatus, poNumber)
+	} else {
+		result, errExec = tx.ExecContext(ctx, `
+			UPDATE SALES 
+			SET ORDER_STATUS = ? 
+			WHERE PO_NUMBER = ?
+		`, nextStatus, poNumber)
+	}
+	if errExec != nil {
+		return fmt.Errorf("failed to update sales status: %w", errExec)
+	}
+
+	if _, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
-	if rowsAffected != 1 {
-		return fmt.Errorf("expected 1 row affected, got %d", rowsAffected)
-	}
-
 	return nil
 }
 
@@ -145,16 +164,18 @@ func (wo *WriteOperations) CallShipOrder(ctx context.Context, tx *sql.Tx) error 
 	// Get a random sales order that can be shipped
 	var poNumber string
 
-	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
-		SELECT PO_NUMBER 
-		FROM SALES 
-		WHERE ORDER_STATUS IN ('new', 'open', 'waiting')
+		SELECT S.PO_NUMBER 
+		FROM SALES S
+		JOIN CUSTOMER C ON C.CUST_NO = S.CUST_NO
+		WHERE S.ORDER_STATUS IN ('new', 'open', 'waiting')
+		  AND (C.ON_HOLD IS NULL OR C.ON_HOLD <> '*')
+		ORDER BY RAND()
 		ROWS 1
 	`).Scan(&poNumber)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("no shippable sales orders found")
+			return nil // nothing shippable right now
 		}
 		return fmt.Errorf("failed to get random sales order: %w", err)
 	}
@@ -195,20 +216,21 @@ func containsIgnoreCase(s, substr string) bool {
 	return false
 }
 
-// UpdateEmployeeSalary updates the salary of a random employee
+// UpdateEmployeeSalary updates the salary of a random employee within job band
+// and SALARY_HISTORY percent_change CHECK (±50%).
 func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx) error {
-	// Get a random employee and their job salary range
 	var empNo int
-	var jobCode string
-	var currentSalary float64
+	var minSalary, maxSalary, currentSalary float64
 
-	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
-		SELECT E.EMP_NO, E.JOB_CODE, E.SALARY
+		SELECT E.EMP_NO, J.MIN_SALARY, J.MAX_SALARY, E.SALARY
 		FROM EMPLOYEE E
 		JOIN JOB J ON E.JOB_CODE = J.JOB_CODE
+			AND E.JOB_GRADE = J.JOB_GRADE
+			AND E.JOB_COUNTRY = J.JOB_COUNTRY
+		ORDER BY RAND()
 		ROWS 1
-	`).Scan(&empNo, &jobCode, &currentSalary)
+	`).Scan(&empNo, &minSalary, &maxSalary, &currentSalary)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no employees found to update salary")
@@ -216,16 +238,11 @@ func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx)
 		return fmt.Errorf("failed to get random employee: %w", err)
 	}
 
-	// Get job salary range from cache
-	jobRange, exists := wo.cache.JobSalaries[jobCode]
-	if !exists {
-		return fmt.Errorf("job salary range not found for job code %s", jobCode)
+	newSalary := wo.cache.SalaryWithinPercentCap(currentSalary, minSalary, maxSalary, 45)
+	if newSalary == currentSalary {
+		return nil
 	}
 
-	// Generate new salary within range
-	newSalary := wo.cache.RandomSalaryInRange(jobRange.MinSalary, jobRange.MaxSalary)
-
-	// Update employee salary
 	result, err := tx.ExecContext(ctx, `
 		UPDATE EMPLOYEE 
 		SET SALARY = ? 
@@ -247,14 +264,39 @@ func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx)
 	return nil
 }
 
-// CallAddEmpProj calls the ADD_EMP_PROJ stored procedure
+// CallAddEmpProj calls the ADD_EMP_PROJ stored procedure for a pair that is not yet assigned.
 func (wo *WriteOperations) CallAddEmpProj(ctx context.Context, tx *sql.Tx) error {
-	// Get a random employee and project
 	empNo := wo.cache.RandomEmpNo()
 	projId := wo.cache.RandomProjId()
 
-	// Call ADD_EMP_PROJ procedure
-	_, err := tx.ExecContext(ctx, "EXECUTE PROCEDURE ADD_EMP_PROJ(?, ?)", empNo, projId)
+	var exists int
+	err := tx.QueryRowContext(ctx, `
+		SELECT 1 FROM EMPLOYEE_PROJECT WHERE EMP_NO = ? AND PROJ_ID = ? ROWS 1
+	`, empNo, projId).Scan(&exists)
+	if err == nil {
+		// Already assigned — pick any unassigned pair if possible
+		err2 := tx.QueryRowContext(ctx, `
+			SELECT E.EMP_NO, P.PROJ_ID
+			FROM EMPLOYEE E
+			CROSS JOIN PROJECT P
+			WHERE NOT EXISTS (
+				SELECT 1 FROM EMPLOYEE_PROJECT EP
+				WHERE EP.EMP_NO = E.EMP_NO AND EP.PROJ_ID = P.PROJ_ID
+			)
+			ORDER BY RAND()
+			ROWS 1
+		`).Scan(&empNo, &projId)
+		if err2 == sql.ErrNoRows {
+			return nil // nothing left to assign
+		}
+		if err2 != nil {
+			return fmt.Errorf("failed to find unassigned emp/proj: %w", err2)
+		}
+	} else if err != sql.ErrNoRows {
+		return fmt.Errorf("failed to check emp/proj: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, "EXECUTE PROCEDURE ADD_EMP_PROJ(?, ?)", empNo, projId)
 	if err != nil {
 		return fmt.Errorf("failed to call ADD_EMP_PROJ(%d, %s): %w", empNo, projId, err)
 	}
@@ -264,24 +306,22 @@ func (wo *WriteOperations) CallAddEmpProj(ctx context.Context, tx *sql.Tx) error
 
 // DeleteEmpProj deletes a random employee-project assignment
 func (wo *WriteOperations) DeleteEmpProj(ctx context.Context, tx *sql.Tx) error {
-	// Get a random employee-project assignment
 	var empNo int
 	var projId string
 
-	// Firebird uses ROWS instead of LIMIT
 	err := tx.QueryRowContext(ctx, `
 		SELECT EMP_NO, PROJ_ID 
 		FROM EMPLOYEE_PROJECT 
+		ORDER BY RAND()
 		ROWS 1
 	`).Scan(&empNo, &projId)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("no employee-project assignments found to delete")
+			return nil // nothing to delete
 		}
 		return fmt.Errorf("failed to get random employee-project assignment: %w", err)
 	}
 
-	// Delete employee-project assignment
 	result, err := tx.ExecContext(ctx, `
 		DELETE FROM EMPLOYEE_PROJECT 
 		WHERE EMP_NO = ? AND PROJ_ID = ?
@@ -295,8 +335,9 @@ func (wo *WriteOperations) DeleteEmpProj(ctx context.Context, tx *sql.Tx) error 
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	if rowsAffected != 1 {
-		return fmt.Errorf("expected 1 row affected, got %d", rowsAffected)
+	// Concurrent workers may delete the same row — treat as benign.
+	if rowsAffected == 0 {
+		return nil
 	}
 
 	return nil

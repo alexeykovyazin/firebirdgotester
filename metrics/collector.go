@@ -137,8 +137,24 @@ func (mc *MetricsCollector) updateFromWorkerMetrics() {
 	mc.minLatency = time.Duration(p50) * time.Millisecond
 	mc.maxLatency = time.Duration(p99) * time.Millisecond
 
-	// Note: We can't directly access workerMetrics.latBuckets as it's unexported
-	// The latency buckets will be updated through RecordTransaction calls
+	// Pull per-op counts recorded by workers via NextOpWithName
+	if ops := mc.workerMetrics.GetOpCounts(); len(ops) > 0 {
+		mc.opMutex.Lock()
+		for k, v := range ops {
+			mc.opCounts[k] = v
+		}
+		mc.opMutex.Unlock()
+	}
+
+	// Pull error taxonomy into report-friendly map
+	if es := mc.workerMetrics.ErrorStats(); es != nil {
+		_, _, _, _, counts := es.Snapshot()
+		mc.errorMutex.Lock()
+		for k, v := range counts {
+			mc.errorCounts[k] = int64(v)
+		}
+		mc.errorMutex.Unlock()
+	}
 }
 
 // updateFromScheduler updates metrics from the scheduler
@@ -220,6 +236,9 @@ func (mc *MetricsCollector) getLatencyBucket(latency time.Duration) int {
 
 // GetReport generates a comprehensive metrics report
 func (mc *MetricsCollector) GetReport() *Report {
+	mc.updateFromWorkerMetrics()
+	mc.updateFromScheduler()
+
 	mc.opMutex.RLock()
 	defer mc.opMutex.RUnlock()
 
@@ -244,6 +263,12 @@ func (mc *MetricsCollector) GetReport() *Report {
 
 	// Get latency percentiles
 	p50, p95, p99 := mc.getLatencyPercentiles()
+	if p50 == 0 && mc.workerMetrics != nil {
+		wp50, wp95, wp99 := mc.workerMetrics.GetLatencyPercentiles()
+		p50 = time.Duration(wp50) * time.Millisecond
+		p95 = time.Duration(wp95) * time.Millisecond
+		p99 = time.Duration(wp99) * time.Millisecond
+	}
 
 	// Copy operation counts
 	opCounts := make(map[string]int64)

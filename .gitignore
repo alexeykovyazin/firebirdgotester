@@ -1,0 +1,21 @@
+# Build artifacts
+/fb-loadgen
+/fb-loadgen.exe
+*.exe
+*.test
+
+# Runtime / local settings (may contain credentials)
+fb-loadgen.ui.json
+reports/
+results.csv
+results.csv_*.txt
+*_sql_errors.log
+sql_errors.log
+
+# Firebird database files and journals
+*.FDB
+*.fdb
+*.LogArch/
+*.ReplLog/
+EMPLOYEE.FDB.LogArch/
+EMPLOYEE.FDB.ReplLog/

@@ -13,36 +13,36 @@ import (
 
 // ConnectionFactory handles Firebird database connections
 type ConnectionFactory struct {
-	cfg *config.Config
+	dial DialSettings
 }
 
-// NewConnectionFactory creates a new connection factory
+// NewConnectionFactory creates a factory from CLI/session config.
 func NewConnectionFactory(cfg *config.Config) *ConnectionFactory {
-	return &ConnectionFactory{
-		cfg: cfg,
+	return NewConnectionFactoryDial(DialFromConfig(cfg))
+}
+
+// NewConnectionFactoryDial creates a factory from explicit dial settings.
+func NewConnectionFactoryDial(dial DialSettings) *ConnectionFactory {
+	if dial.TxTimeout <= 0 {
+		dial.TxTimeout = 10 * time.Second
 	}
+	return &ConnectionFactory{dial: dial}
 }
 
 // Open creates a new database connection
 func (cf *ConnectionFactory) Open() (*sql.DB, error) {
-	dsn := cf.cfg.ConnectionString()
+	dsn := cf.dial.DriverDSN
 
-	// Log the actual DSN being used
-	fmt.Printf("Opening connection with DSN: %s\n", dsn)
-
-	// Open connection
 	db, err := sql.Open("firebirdsql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open connection: %w", err)
 	}
 
-	// Set connection limits
-	db.SetMaxOpenConns(1) // Each worker owns one connection
+	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(0) // No limit
+	db.SetConnMaxLifetime(0)
 
-	// Test the connection
-	ctx, cancel := context.WithTimeout(context.Background(), cf.cfg.GetTxTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), cf.dial.TxTimeout)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -63,7 +63,7 @@ func (cf *ConnectionFactory) Close(db *sql.DB) error {
 
 // TestConnection performs a basic query to verify the database is accessible
 func (cf *ConnectionFactory) TestConnection(db *sql.DB) error {
-	ctx, cancel := context.WithTimeout(context.Background(), cf.cfg.GetTxTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), cf.dial.TxTimeout)
 	defer cancel()
 
 	var count int
@@ -72,7 +72,6 @@ func (cf *ConnectionFactory) TestConnection(db *sql.DB) error {
 		return fmt.Errorf("failed to query EMPLOYEE table: %w", err)
 	}
 
-	// Verify we can see the expected tables
 	expectedTables := []string{"CUSTOMER", "SALES", "EMPLOYEE", "EMPLOYEE_PROJECT", "DEPARTMENT"}
 	for _, table := range expectedTables {
 		var exists string
@@ -86,22 +85,56 @@ func (cf *ConnectionFactory) TestConnection(db *sql.DB) error {
 	return nil
 }
 
+// CheckEmployeeSchema verifies the EMPLOYEE table exists (schema gate).
+func (cf *ConnectionFactory) CheckEmployeeSchema() error {
+	db, err := cf.Open()
+	if err != nil {
+		return err
+	}
+	defer cf.Close(db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), cf.dial.TxTimeout)
+	defer cancel()
+
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM EMPLOYEE").Scan(&count); err != nil {
+		return fmt.Errorf("EMPLOYEE schema check failed: %w", err)
+	}
+	return nil
+}
+
+// ValidateSchemaGate opens a connection and runs the full schema validation.
+func (cf *ConnectionFactory) ValidateSchemaGate() error {
+	db, err := cf.Open()
+	if err != nil {
+		return err
+	}
+	defer cf.Close(db)
+	return cf.ValidateSchema(db)
+}
+
 // GetDSN returns the full connection string for the firebirdsql driver
 func (cf *ConnectionFactory) GetDSN() string {
-	return cf.cfg.ConnectionString()
+	return cf.dial.DriverDSN
 }
 
 // ConnectionInfo returns connection details for logging
 func (cf *ConnectionFactory) ConnectionInfo() string {
-	return fmt.Sprintf("Firebird connection: %s (user: %s)", cf.cfg.DSN, cf.cfg.User)
+	return cf.dial.String()
+}
+
+// Dial returns a copy of the dial settings
+func (cf *ConnectionFactory) Dial() DialSettings {
+	return cf.dial
 }
 
 // ValidateSchema checks that the EMPLOYEE database has the expected structure
 func (cf *ConnectionFactory) ValidateSchema(db *sql.DB) error {
-	ctx, cancel := context.WithTimeout(context.Background(), cf.cfg.GetTxTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), cf.dial.TxTimeout)
 	defer cancel()
 
-	// Check that required tables exist and have expected columns
+	// Columns must match the classic Firebird EMPLOYEE sample (see EMPLOYEE_metadata.sql).
+	// Firebird pads RDB$* CHAR names, so comparisons use TRIM.
 	requiredTables := map[string][]string{
 		"CUSTOMER":         {"CUST_NO", "ON_HOLD"},
 		"SALES":            {"PO_NUMBER", "ORDER_STATUS", "PAID"},
@@ -111,23 +144,22 @@ func (cf *ConnectionFactory) ValidateSchema(db *sql.DB) error {
 		"COUNTRY":          {"COUNTRY"},
 		"JOB":              {"JOB_CODE", "MIN_SALARY", "MAX_SALARY"},
 		"PROJECT":          {"PROJ_ID"},
-		"SALARY_HISTORY":   {"EMP_NO", "CHANGEDATE"},
+		"SALARY_HISTORY":   {"EMP_NO", "CHANGE_DATE"},
 	}
 
 	for table, columns := range requiredTables {
-		// Check table exists
 		var tableName string
-		query := fmt.Sprintf("SELECT RDB$RELATION_NAME FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = '%s'", table)
-		err := db.QueryRowContext(ctx, query).Scan(&tableName)
+		query := `SELECT TRIM(RDB$RELATION_NAME) FROM RDB$RELATIONS WHERE TRIM(RDB$RELATION_NAME) = ?`
+		err := db.QueryRowContext(ctx, query, table).Scan(&tableName)
 		if err != nil {
 			return fmt.Errorf("required table %s does not exist: %w", table, err)
 		}
 
-		// Check columns exist
 		for _, column := range columns {
 			var colName string
-			colQuery := fmt.Sprintf("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = '%s' AND RDB$FIELD_NAME = '%s'", table, column)
-			err := db.QueryRowContext(ctx, colQuery).Scan(&colName)
+			colQuery := `SELECT TRIM(RDB$FIELD_NAME) FROM RDB$RELATION_FIELDS
+				WHERE TRIM(RDB$RELATION_NAME) = ? AND TRIM(RDB$FIELD_NAME) = ?`
+			err := db.QueryRowContext(ctx, colQuery, table, column).Scan(&colName)
 			if err != nil {
 				return fmt.Errorf("required column %s.%s does not exist: %w", table, column, err)
 			}
@@ -139,7 +171,7 @@ func (cf *ConnectionFactory) ValidateSchema(db *sql.DB) error {
 
 // GetTableCounts returns row counts for key tables
 func (cf *ConnectionFactory) GetTableCounts(db *sql.DB) (map[string]int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), cf.cfg.GetTxTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), cf.dial.TxTimeout)
 	defer cancel()
 
 	tables := []string{"CUSTOMER", "SALES", "EMPLOYEE", "EMPLOYEE_PROJECT", "DEPARTMENT", "PROJECT"}

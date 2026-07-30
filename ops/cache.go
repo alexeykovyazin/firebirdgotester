@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"fb-loadgen/db"
@@ -16,7 +17,8 @@ type Cache struct {
 	EmpNos      []int
 	ProjIds     []string
 	CustNos     []int
-	JobSalaries map[string]JobSalaryRange // job_code -> min/max salary
+	Countries   []string
+	JobSalaries map[string]JobSalaryRange // job_code -> min/max salary (approx)
 
 	// Random number generator (thread-safe)
 	rng *rand.Rand
@@ -55,6 +57,10 @@ func NewCache(connFactory *db.ConnectionFactory) (*Cache, error) {
 
 	if err := cache.loadCustNos(dbConn); err != nil {
 		return nil, fmt.Errorf("failed to load cust nos: %w", err)
+	}
+
+	if err := cache.loadCountries(dbConn); err != nil {
+		return nil, fmt.Errorf("failed to load countries: %w", err)
 	}
 
 	if err := cache.loadJobSalaries(dbConn); err != nil {
@@ -164,6 +170,32 @@ func (c *Cache) loadCustNos(db *sql.DB) error {
 	return nil
 }
 
+// loadCountries loads valid COUNTRY.COUNTRY values (FK target for CUSTOMER).
+func (c *Cache) loadCountries(db *sql.DB) error {
+	rows, err := db.Query("SELECT COUNTRY FROM COUNTRY")
+	if err != nil {
+		return fmt.Errorf("query countries: %w", err)
+	}
+	defer rows.Close()
+
+	var countries []string
+	for rows.Next() {
+		var country string
+		if err := rows.Scan(&country); err != nil {
+			return fmt.Errorf("scan country: %w", err)
+		}
+		country = strings.TrimSpace(country)
+		if country != "" {
+			countries = append(countries, country)
+		}
+	}
+	if len(countries) == 0 {
+		return fmt.Errorf("no countries found")
+	}
+	c.Countries = countries
+	return nil
+}
+
 // loadJobSalaries loads job salary ranges
 func (c *Cache) loadJobSalaries(db *sql.DB) error {
 	rows, err := db.Query("SELECT JOB_CODE, MIN_SALARY, MAX_SALARY FROM JOB")
@@ -255,10 +287,12 @@ func (c *Cache) RandomAddress() string {
 	return fmt.Sprintf("%d %s, %s", c.rng.Intn(9999)+1000, streets[c.rng.Intn(len(streets))], cities[c.rng.Intn(len(cities))])
 }
 
-// RandomCountry returns a random country
+// RandomCountry returns a random country from the COUNTRY table (valid FK).
 func (c *Cache) RandomCountry() string {
-	countries := []string{"USA", "Canada", "UK", "Germany", "France", "Japan", "Australia", "Brazil"}
-	return countries[c.rng.Intn(len(countries))]
+	if len(c.Countries) == 0 {
+		return "USA"
+	}
+	return c.Countries[c.rng.Intn(len(c.Countries))]
 }
 
 // RandomCitySimple returns a random city name
@@ -269,9 +303,10 @@ func (c *Cache) RandomCitySimple() string {
 	return cities[c.rng.Intn(len(cities))]
 }
 
-// RandomOrderStatus returns a random order status
+// RandomOrderStatus returns a random order status suitable for INSERT
+// (never "shipped" — that requires SHIP_DATE and fails CHECK on SALES).
 func (c *Cache) RandomOrderStatus() string {
-	statuses := []string{"new", "open", "shipped", "waiting"}
+	statuses := []string{"new", "open", "waiting"}
 	return statuses[c.rng.Intn(len(statuses))]
 }
 
@@ -307,10 +342,40 @@ func (c *Cache) RandomPercentChange() float64 {
 	return (c.rng.Float64() * 100) - 50
 }
 
+// SalaryWithinPercentCap returns a new salary within job range and ±maxPct of current.
+// SALARY_HISTORY.percent_change is CHECK'd between -50 and 50.
+func (c *Cache) SalaryWithinPercentCap(current, min, max, maxPct float64) float64 {
+	if current <= 0 {
+		return c.RandomSalaryInRange(min, max)
+	}
+	lo := current * (1 - maxPct/100)
+	hi := current * (1 + maxPct/100)
+	if lo < min {
+		lo = min
+	}
+	if hi > max {
+		hi = max
+	}
+	if lo > hi {
+		// Current salary outside job band or band too narrow — nudge slightly within band.
+		return c.RandomSalaryInRange(min, max)
+	}
+	// Avoid a no-op update (trigger skips equal salaries); ensure at least ~0.5% move when possible.
+	v := c.RandomSalaryInRange(lo, hi)
+	if v == current && hi > lo {
+		if hi-current > current-lo {
+			v = current + (hi-current)*0.1
+		} else {
+			v = current - (current-lo)*0.1
+		}
+	}
+	return v
+}
+
 // CacheStats returns statistics about the cache
 func (c *Cache) CacheStats() string {
-	return fmt.Sprintf("Cache: %d depts, %d emps, %d projs, %d custs, %d jobs",
-		len(c.DeptNos), len(c.EmpNos), len(c.ProjIds), len(c.CustNos), len(c.JobSalaries))
+	return fmt.Sprintf("Cache: %d depts, %d emps, %d projs, %d custs, %d countries, %d jobs",
+		len(c.DeptNos), len(c.EmpNos), len(c.ProjIds), len(c.CustNos), len(c.Countries), len(c.JobSalaries))
 }
 
 // GetStats returns cache statistics (for metrics compatibility)
