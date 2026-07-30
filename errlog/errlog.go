@@ -90,8 +90,16 @@ func (l *Logger) Path() string {
 }
 
 // Log writes one error entry. Nil logger or nil error is a no-op.
+// Shutdown/cancel noise is skipped so Stop does not fill the log.
 func (l *Logger) Log(e Entry) {
 	if l == nil || e.Err == nil {
+		return
+	}
+	msg := strings.ToLower(e.Err.Error())
+	if strings.Contains(msg, "operation was cancelled") ||
+		strings.Contains(msg, "context canceled") ||
+		strings.Contains(msg, "transaction has already been committed") ||
+		strings.Contains(msg, "transaction has already been rolled back") {
 		return
 	}
 	kind := e.Kind

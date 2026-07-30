@@ -200,6 +200,7 @@ func (m *Manager) UpdateConnectionSettings(s config.UISettings, persist bool) er
 		}
 		sess.mu.Unlock()
 	}
+	m.applyEvenConnBudgetLocked()
 	path := m.settingsPath
 	m.mu.Unlock()
 
@@ -291,7 +292,6 @@ func (m *Manager) Discover(subdir string, mask string, recursive *bool, rootOver
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.recursive = rec
 	m.shared.DiscoverRecursive = rec
 
@@ -335,7 +335,11 @@ func (m *Manager) Discover(subdir string, mask string, recursive *bool, rootOver
 		sess.mu.Unlock()
 	}
 
-	return m.snapshotsLocked(), nil
+	m.applyEvenConnBudgetLocked()
+	snaps := m.snapshotsLocked()
+	m.mu.Unlock()
+	m.saveSessionPrefs()
+	return snaps, nil
 }
 
 // List returns snapshots of all sessions.
@@ -354,6 +358,54 @@ func (m *Manager) snapshotsLocked() []Snapshot {
 		return out[i].AbsPath < out[j].AbsPath
 	})
 	return out
+}
+
+// applyEvenConnBudgetLocked sets ConnMax = maxTotal / N for every non-missing
+// editable session so the fleet can start without oversubscribing the budget.
+// Caller must hold m.mu.
+func (m *Manager) applyEvenConnBudgetLocked() {
+	n := 0
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if !s.Missing {
+			n++
+		}
+		s.mu.Unlock()
+	}
+	per := EvenPerDBMax(m.maxTotal, n)
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if s.Missing {
+			s.mu.Unlock()
+			continue
+		}
+		switch s.Status {
+		case StatusIdle, StatusFailed, StatusCompleted:
+			s.Config.ConnMax = per
+			if s.Config.ConnMin > s.Config.ConnMax {
+				s.Config.ConnMin = s.Config.ConnMax
+			}
+			if s.Config.ConnMin < 1 {
+				s.Config.ConnMin = 1
+			}
+		}
+		s.mu.Unlock()
+	}
+}
+
+// PerDBMax returns the even-split ConnMax for the current fleet size.
+func (m *Manager) PerDBMax() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if !s.Missing {
+			n++
+		}
+		s.mu.Unlock()
+	}
+	return EvenPerDBMax(m.maxTotal, n)
 }
 
 func (m *Manager) findByID(id string) (*Session, error) {
@@ -389,9 +441,7 @@ func (m *Manager) Patch(id string, patch map[string]interface{}) (Snapshot, erro
 	if v, ok := asInt(patch["connMin"]); ok {
 		s.Config.ConnMin = v
 	}
-	if v, ok := asInt(patch["connMax"]); ok {
-		s.Config.ConnMax = v
-	}
+	// ConnMax is managed by the even fleet budget (maxTotal / N); ignore client value.
 	if v, ok := asInt(patch["warmup"]); ok {
 		s.Config.Warmup = v
 	}
@@ -413,13 +463,19 @@ func (m *Manager) Patch(id string, patch map[string]interface{}) (Snapshot, erro
 	if v, ok := asInt(patch["txTimeout"]); ok {
 		s.Config.TxTimeout = v
 	}
+	s.Status = StatusIdle
+	s.LastError = ""
+	s.mu.Unlock()
 
+	m.mu.Lock()
+	m.applyEvenConnBudgetLocked()
+	m.mu.Unlock()
+
+	s.mu.Lock()
 	if err := s.Config.Validate(); err != nil {
 		s.mu.Unlock()
 		return Snapshot{}, err
 	}
-	s.Status = StatusIdle
-	s.LastError = ""
 	snap := s.snapshotLocked()
 	s.mu.Unlock()
 
@@ -854,17 +910,29 @@ func (m *Manager) StartAll() []error {
 // StopAll stops all active sessions.
 func (m *Manager) StopAll() []error {
 	ids := m.activeIDs()
-	var errs []error
+	type result struct {
+		rel string
+		err error
+	}
+	ch := make(chan result, len(ids))
 	for _, id := range ids {
-		s, _ := m.findByID(id)
-		rel := id
-		if s != nil {
-			s.mu.Lock()
-			rel = s.Config.RelPath
-			s.mu.Unlock()
-		}
-		if _, err := m.Stop(id); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", rel, err))
+		go func(id string) {
+			s, _ := m.findByID(id)
+			rel := id
+			if s != nil {
+				s.mu.Lock()
+				rel = s.Config.RelPath
+				s.mu.Unlock()
+			}
+			_, err := m.Stop(id)
+			ch <- result{rel, err}
+		}(id)
+	}
+	var errs []error
+	for range ids {
+		r := <-ch
+		if r.err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", r.rel, r.err))
 		}
 	}
 	return errs
@@ -916,6 +984,7 @@ func (m *Manager) Remove(id string) error {
 
 	m.mu.Lock()
 	delete(m.sessions, abs)
+	m.applyEvenConnBudgetLocked()
 	m.mu.Unlock()
 	m.saveSessionPrefs()
 	return nil
@@ -934,6 +1003,9 @@ func (m *Manager) PurgeMissing() int {
 	}
 	for _, abs := range remove {
 		delete(m.sessions, abs)
+	}
+	if len(remove) > 0 {
+		m.applyEvenConnBudgetLocked()
 	}
 	m.mu.Unlock()
 	if len(remove) > 0 {
@@ -995,8 +1067,17 @@ func (m *Manager) ValidateAll() []error {
 // Fleet returns aggregated fleet metrics.
 func (m *Manager) Fleet() FleetSummary {
 	snaps := m.List()
+	dbs := 0
+	for _, s := range snaps {
+		if !s.Missing {
+			dbs++
+		}
+	}
+	limit := m.MaxTotalConns()
 	f := FleetSummary{
-		BudgetLimit: m.MaxTotalConns(),
+		Databases:   dbs,
+		PerDBMax:    EvenPerDBMax(limit, dbs),
+		BudgetLimit: limit,
 		BudgetUsed:  int(m.reserved.Load()),
 		TopErrors:   map[string]int{},
 	}

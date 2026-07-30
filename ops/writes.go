@@ -264,40 +264,39 @@ func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx)
 	return nil
 }
 
-// CallAddEmpProj calls the ADD_EMP_PROJ stored procedure for a pair that is not yet assigned.
+// CallAddEmpProj assigns an employee to a project that is not already linked.
+// Concurrent duplicate inserts are treated as a successful no-op.
 func (wo *WriteOperations) CallAddEmpProj(ctx context.Context, tx *sql.Tx) error {
-	empNo := wo.cache.RandomEmpNo()
-	projId := wo.cache.RandomProjId()
+	var empNo int
+	var projId string
 
-	var exists int
 	err := tx.QueryRowContext(ctx, `
-		SELECT 1 FROM EMPLOYEE_PROJECT WHERE EMP_NO = ? AND PROJ_ID = ? ROWS 1
-	`, empNo, projId).Scan(&exists)
-	if err == nil {
-		// Already assigned — pick any unassigned pair if possible
-		err2 := tx.QueryRowContext(ctx, `
-			SELECT E.EMP_NO, P.PROJ_ID
-			FROM EMPLOYEE E
-			CROSS JOIN PROJECT P
-			WHERE NOT EXISTS (
-				SELECT 1 FROM EMPLOYEE_PROJECT EP
-				WHERE EP.EMP_NO = E.EMP_NO AND EP.PROJ_ID = P.PROJ_ID
-			)
-			ORDER BY RAND()
-			ROWS 1
-		`).Scan(&empNo, &projId)
-		if err2 == sql.ErrNoRows {
-			return nil // nothing left to assign
-		}
-		if err2 != nil {
-			return fmt.Errorf("failed to find unassigned emp/proj: %w", err2)
-		}
-	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("failed to check emp/proj: %w", err)
+		SELECT E.EMP_NO, P.PROJ_ID
+		FROM EMPLOYEE E
+		CROSS JOIN PROJECT P
+		WHERE NOT EXISTS (
+			SELECT 1 FROM EMPLOYEE_PROJECT EP
+			WHERE EP.EMP_NO = E.EMP_NO AND EP.PROJ_ID = P.PROJ_ID
+		)
+		ORDER BY RAND()
+		ROWS 1
+	`).Scan(&empNo, &projId)
+	if err == sql.ErrNoRows {
+		return nil // every emp/proj pair already exists
+	}
+	if err != nil {
+		return fmt.Errorf("failed to find unassigned emp/proj: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx, "EXECUTE PROCEDURE ADD_EMP_PROJ(?, ?)", empNo, projId)
 	if err != nil {
+		errStr := strings.ToLower(err.Error())
+		// Another worker inserted the same pair between SELECT and EXEC.
+		if strings.Contains(errStr, "unique") ||
+			strings.Contains(errStr, "primary") ||
+			strings.Contains(errStr, "integ_39") {
+			return nil
+		}
 		return fmt.Errorf("failed to call ADD_EMP_PROJ(%d, %s): %w", empNo, projId, err)
 	}
 

@@ -218,11 +218,28 @@ type FleetSummary struct {
 	Failed       int            `json:"failed"`
 	Completed    int            `json:"completed"`
 	Missing      int            `json:"missing"`
+	Databases    int            `json:"databases"`
+	PerDBMax     int            `json:"perDbMax"`
 	TotalConns   int            `json:"totalConns"`
 	TotalTPS     float64        `json:"totalTps"`
 	BudgetUsed   int            `json:"budgetUsed"`
 	BudgetLimit  int            `json:"budgetLimit"`
 	TopErrors    map[string]int `json:"topErrors,omitempty"`
+}
+
+// EvenPerDBMax returns floor(total/n), at least 1. If n < 1, returns total (or 1).
+func EvenPerDBMax(total, n int) int {
+	if total < 1 {
+		total = 1
+	}
+	if n < 1 {
+		return total
+	}
+	per := total / n
+	if per < 1 {
+		return 1
+	}
+	return per
 }
 
 func nowStamp() string {

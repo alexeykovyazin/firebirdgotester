@@ -400,15 +400,21 @@ func (s *Scheduler) removeWorker(index int) error {
 
 func (s *Scheduler) drainWorkers() error {
 	s.workerMutex.Lock()
-	defer s.workerMutex.Unlock()
-
-	for i := len(s.workers) - 1; i >= 0; i-- {
-		if err := s.workers[i].Stop(); err != nil {
-			fmt.Printf("Error stopping worker %d: %v\n", i, err)
-		}
-	}
-
+	workers := s.workers
 	s.workers = nil
+	s.workerMutex.Unlock()
+
+	var wg sync.WaitGroup
+	for _, w := range workers {
+		wg.Add(1)
+		go func(w *worker.Worker) {
+			defer wg.Done()
+			if err := w.Stop(); err != nil {
+				fmt.Printf("Error stopping worker: %v\n", err)
+			}
+		}(w)
+	}
+	wg.Wait()
 	return nil
 }
 
