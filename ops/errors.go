@@ -3,6 +3,7 @@ package ops
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // FirebirdException represents a classified Firebird exception
@@ -152,10 +153,21 @@ func ClassifyError(err error) (bool, error) {
 		}
 	}
 
-	// Check for connection issues (these are expected and should trigger reconnection)
+	// Shutdown / cancel noise while a query is in flight
+	if strings.Contains(errStr, "operation was cancelled") ||
+		strings.Contains(errStr, "context canceled") ||
+		strings.Contains(errStr, "transaction has already been committed") ||
+		strings.Contains(errStr, "transaction has already been rolled back") {
+		return true, FirebirdException{
+			Code:       "cancelled",
+			Message:    err.Error(),
+			IsExpected: true,
+		}
+	}
+
+	// Check for connection issues (these are unexpected and should trigger reconnection)
 	if strings.Contains(errStr, "connection") ||
 		strings.Contains(errStr, "network") ||
-		strings.Contains(errStr, "timeout") ||
 		strings.Contains(errStr, "unavailable") {
 		return false, FirebirdException{
 			Code:       "connection_error",
@@ -265,8 +277,9 @@ func GetErrorCode(err error) string {
 	return "unknown_error"
 }
 
-// ErrorStats tracks error statistics
+// ErrorStats tracks error statistics. Safe for concurrent use.
 type ErrorStats struct {
+	mu               sync.Mutex
 	TotalErrors      int
 	ExpectedErrors   int
 	UnexpectedErrors int
@@ -287,6 +300,9 @@ func (es *ErrorStats) RecordError(err error) {
 		return
 	}
 
+	es.mu.Lock()
+	defer es.mu.Unlock()
+
 	es.TotalErrors++
 	errorCode := GetErrorCode(err)
 	es.ErrorCounts[errorCode]++
@@ -303,14 +319,29 @@ func (es *ErrorStats) RecordError(err error) {
 	}
 }
 
+// Snapshot returns a copy of current counters.
+func (es *ErrorStats) Snapshot() (total, expected, unexpected, retryable int, counts map[string]int) {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	counts = make(map[string]int, len(es.ErrorCounts))
+	for k, v := range es.ErrorCounts {
+		counts[k] = v
+	}
+	return es.TotalErrors, es.ExpectedErrors, es.UnexpectedErrors, es.RetryableErrors, counts
+}
+
 // GetStats returns a summary of error statistics
 func (es *ErrorStats) GetStats() string {
+	es.mu.Lock()
+	defer es.mu.Unlock()
 	return fmt.Sprintf("Total: %d, Expected: %d, Unexpected: %d, Retryable: %d",
 		es.TotalErrors, es.ExpectedErrors, es.UnexpectedErrors, es.RetryableErrors)
 }
 
 // Reset resets all error statistics
 func (es *ErrorStats) Reset() {
+	es.mu.Lock()
+	defer es.mu.Unlock()
 	es.TotalErrors = 0
 	es.ExpectedErrors = 0
 	es.UnexpectedErrors = 0

@@ -11,40 +11,82 @@ import (
 
 	"fb-loadgen/config"
 	"fb-loadgen/db"
+	"fb-loadgen/errlog"
 	"fb-loadgen/metrics"
 	"fb-loadgen/ops"
 	"fb-loadgen/profile"
 	"fb-loadgen/ramp"
+	"fb-loadgen/session"
+	"fb-loadgen/ui"
 	"fb-loadgen/worker"
 )
 
 func main() {
-	// Handle help flag before parsing
 	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "-help") {
 		config.PrintUsage()
 		os.Exit(0)
 	}
 
-	// Load configuration (this handles all flag parsing)
 	cfg, err := config.ParseFlags()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Invalid configuration: %v", err)
+	if cfg.UI {
+		runUI(cfg)
+		return
 	}
 
-	// Create context for graceful shutdown
+	runCLI(cfg)
+}
+
+func runUI(cfg *config.Config) {
+	settingsPath := config.DefaultUISettingsFile
+	saved, loaded, err := config.LoadUISettings(settingsPath)
+	if err != nil {
+		log.Printf("Warning: could not load %s: %v", settingsPath, err)
+	} else if loaded {
+		saved.ApplyTo(cfg)
+		fmt.Printf("Loaded UI settings from %s\n", settingsPath)
+	} else {
+		// Seed file with current defaults so first Save has a target
+		_ = config.SaveUISettings(settingsPath, config.UISettingsFromConfig(cfg))
+		fmt.Printf("Created default UI settings at %s\n", settingsPath)
+	}
+
+	fmt.Println(cfg.String())
+	manager := session.NewManager(cfg)
+	manager.SetSettingsPath(settingsPath)
+
+	if _, err := manager.Discover("", cfg.DiscoverMask, nil, ""); err != nil {
+		log.Printf("Initial discover warning: %v", err)
+	}
+
+	srv := ui.NewWithToken(manager, cfg.UIToken)
+
+	go func() {
+		if err := srv.ListenAndServe(cfg.UIAddr); err != nil {
+			log.Fatalf("UI server failed: %v", err)
+		}
+	}()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+	fmt.Println("\nShutting down UI; stopping active sessions...")
+	_ = manager.StopAll()
+	time.Sleep(500 * time.Millisecond)
+	fmt.Println("Shutdown complete.")
+}
+
+func runCLI(cfg *config.Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Create connection factory
 	connFactory := db.NewConnectionFactory(cfg)
 
-	// Create cache (skip in dry-run mode)
 	var cache *ops.Cache
+	var err error
 	if !cfg.DryRun {
 		cache, err = ops.NewCache(connFactory)
 		if err != nil {
@@ -57,29 +99,36 @@ func main() {
 		return
 	}
 
-	// Create operations
 	readOps := ops.NewReadOperations(connFactory, cache)
 	writeOps := ops.NewWriteOperations(connFactory, cache)
 
-	// Create profile
 	profileFactory := profile.NewProfileFactory(readOps, writeOps, cache)
-	profile, err := profileFactory.CreateProfile(cfg.Profile)
+	prof, err := profileFactory.CreateProfile(cfg.Profile)
 	if err != nil {
 		log.Fatalf("Failed to create profile: %v", err)
 	}
 
-	// Create worker metrics collector
 	workerMetrics := worker.NewMetricsCollector()
 
-	// Create scheduler
-	scheduler := ramp.NewScheduler(cfg, connFactory, cache, profile, workerMetrics)
+	errLogPath := cfg.ErrorLog
+	if errLogPath == "" {
+		errLogPath = errlog.PathFromCSV(cfg.CSV)
+	}
+	sqlErrLog, err := errlog.Open(errLogPath, cfg.DSN)
+	if err != nil {
+		log.Printf("Warning: could not open error log %s: %v", errLogPath, err)
+	} else {
+		workerMetrics.SetErrorLogger(sqlErrLog)
+		defer sqlErrLog.Close()
+		fmt.Printf("SQL/command errors → %s\n", sqlErrLog.Path())
+	}
 
-	// Create metrics collector with shared workerMetrics
-	metricsCollector := metrics.NewMetricsCollector(scheduler, profile, cache, workerMetrics)
+	scheduler := ramp.NewScheduler(cfg, connFactory, cache, prof, workerMetrics)
+
+	metricsCollector := metrics.NewMetricsCollector(scheduler, prof, cache, workerMetrics)
 	metricsCollector.Start()
 	defer metricsCollector.Stop()
 
-	// Create reporter
 	var outputFileHandle *os.File
 	if cfg.CSV != "" {
 		outputFileHandle, err = os.Create(cfg.CSV)
@@ -89,32 +138,27 @@ func main() {
 		defer outputFileHandle.Close()
 	}
 
-	reporter := metrics.NewReporter(metricsCollector, outputFileHandle, "text", 5*time.Second)
+	reporter := metrics.NewReporter(metricsCollector, outputFileHandle, "text", time.Duration(cfg.ReportEvery)*time.Second)
 	reporter.Start()
 	defer reporter.Stop()
 
-	// Start scheduler
 	if err := scheduler.Start(); err != nil {
 		log.Fatalf("Failed to start scheduler: %v", err)
 	}
 
-	// Wait for interrupt signal to gracefully shutdown
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")
 	fmt.Printf("Profile: %s\n", cfg.Profile)
 	fmt.Printf("Connection: %s\n", cfg.DSN)
 	fmt.Printf("Actual connection string: %s\n", cfg.ConnectionString())
 	fmt.Printf("Warmup: %ds, Main: %ds, Cooldown: %ds\n", cfg.Warmup, cfg.Main, cfg.Cooldown)
-	fmt.Printf("Initial connections: %d, Peak connections: %d\n", cfg.ConnInit, cfg.ConnPeak)
+	fmt.Printf("Connections: %d → %d (random walk in main)\n", cfg.ConnMin, cfg.ConnMax)
 
-	// Signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Status reporting goroutine
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-
 		for {
 			select {
 			case <-ctx.Done():
@@ -125,8 +169,6 @@ func main() {
 		}
 	}()
 
-	// Wait for either scheduler completion or interrupt signal
-	// Scheduler completes automatically when all phases (warmup + main + cooldown) finish
 	select {
 	case <-sigChan:
 		fmt.Println("\nReceived interrupt signal, initiating graceful shutdown...")
@@ -136,28 +178,23 @@ func main() {
 		cancel()
 	}
 
-	// Give operations a chance to complete
 	fmt.Println("Waiting for active operations to complete...")
 	time.Sleep(2 * time.Second)
 
-	// Stop scheduler if not already stopped
 	fmt.Println("Stopping scheduler...")
 	if err := scheduler.Stop(); err != nil {
 		log.Printf("Error during scheduler shutdown: %v", err)
 	}
 
-	// Generate final report
 	fmt.Println("\nGenerating final report...")
 	finalReport := reporter.ReportFinal()
 	fmt.Print(finalReport)
 
-	// Generate additional reports if requested
 	if cfg.CSV != "" {
 		baseFilename := cfg.CSV
 		if len(baseFilename) > 4 && baseFilename[len(baseFilename)-4:] == ".txt" {
 			baseFilename = baseFilename[:len(baseFilename)-4]
 		}
-
 		fmt.Printf("Generating detailed reports to %s_*.txt...\n", baseFilename)
 		if err := reporter.ReportAllToFile(baseFilename); err != nil {
 			log.Printf("Error generating detailed reports: %v", err)

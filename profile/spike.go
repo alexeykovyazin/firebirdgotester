@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"fb-loadgen/ops"
@@ -13,6 +14,7 @@ import (
 type SpikeProfile struct {
 	*BaseProfile
 	// Spike-specific configuration
+	mu             sync.RWMutex
 	spikeCycles    int
 	spikeHold      time.Duration
 	betweenSpike   time.Duration
@@ -83,6 +85,8 @@ func NewSpikeProfile(readOps *ops.ReadOperations, writeOps *ops.WriteOperations,
 
 // SetSpikeConfiguration sets the spike-specific configuration
 func (sp *SpikeProfile) SetSpikeConfiguration(cycles int, hold, between time.Duration) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 	sp.spikeCycles = cycles
 	sp.spikeHold = hold
 	sp.betweenSpike = between
@@ -103,13 +107,13 @@ func (sp *SpikeProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cache *op
 
 // NextOpWithName returns the next operation and its name
 func (sp *SpikeProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
-	if sp.inSpikePhase {
-		// During spike: use write-heavy operations
+	sp.mu.RLock()
+	inSpike := sp.inSpikePhase
+	sp.mu.RUnlock()
+	if inSpike {
 		return sp.getWriteHeavyOperationWithName()
-	} else {
-		// Between spikes: use read-heavy operations
-		return sp.selector.Select()
 	}
+	return sp.selector.Select()
 }
 
 // getWriteHeavyOperation returns a write-heavy operation
@@ -177,34 +181,30 @@ func (sp *SpikeProfile) getWriteHeavyOperationWithName() (func(ctx context.Conte
 
 // UpdateSpikePhase updates the current spike phase based on elapsed time
 func (sp *SpikeProfile) UpdateSpikePhase(elapsed time.Duration, mainDuration time.Duration) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 	if sp.spikeCycles <= 0 {
-		// No spikes configured, stay in between-spike phase
 		sp.inSpikePhase = false
 		return
 	}
 
-	// Calculate spike interval
 	totalSpikeDuration := time.Duration(sp.spikeCycles) * (sp.spikeHold + sp.betweenSpike)
 	if elapsed >= totalSpikeDuration {
-		// After all spikes, stay in between-spike phase
 		sp.inSpikePhase = false
 		return
 	}
 
-	// Determine current cycle and phase
 	cycleDuration := sp.spikeHold + sp.betweenSpike
 	currentCycle := int(elapsed / cycleDuration)
 	phaseElapsed := elapsed % cycleDuration
 
 	if phaseElapsed < sp.spikeHold {
-		// In spike phase
 		sp.inSpikePhase = true
 		sp.currentCycle = currentCycle
 		if sp.spikeStartTime.IsZero() {
 			sp.spikeStartTime = time.Now()
 		}
 	} else {
-		// In between-spike phase
 		sp.inSpikePhase = false
 		sp.spikeStartTime = time.Time{}
 	}
@@ -212,16 +212,22 @@ func (sp *SpikeProfile) UpdateSpikePhase(elapsed time.Duration, mainDuration tim
 
 // IsInSpikePhase returns true if currently in a spike phase
 func (sp *SpikeProfile) IsInSpikePhase() bool {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	return sp.inSpikePhase
 }
 
 // GetCurrentCycle returns the current spike cycle
 func (sp *SpikeProfile) GetCurrentCycle() int {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	return sp.currentCycle
 }
 
 // GetSpikeProgress returns the progress of the current spike (0.0 to 1.0)
 func (sp *SpikeProfile) GetSpikeProgress() float64 {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	if !sp.inSpikePhase || sp.spikeStartTime.IsZero() {
 		return 0.0
 	}
@@ -235,12 +241,15 @@ func (sp *SpikeProfile) GetSpikeProgress() float64 {
 
 // GetSpikeStats returns spike-specific statistics
 func (sp *SpikeProfile) GetSpikeStats() string {
+	sp.mu.RLock()
 	phase := "between-spike"
 	if sp.inSpikePhase {
 		phase = "spike"
 	}
+	cycle := sp.currentCycle
+	sp.mu.RUnlock()
 	progress := sp.GetSpikeProgress()
-	return fmt.Sprintf("Spike: cycle %d, phase %s, progress %.1f%%", sp.currentCycle+1, phase, progress*100)
+	return fmt.Sprintf("Spike: cycle %d, phase %s, progress %.1f%%", cycle+1, phase, progress*100)
 }
 
 // GetProfileDescription returns a description of the spike profile
@@ -272,6 +281,8 @@ func (sp *SpikeProfile) ValidateProfile() error {
 
 // GetSpikeConfiguration returns the current spike configuration
 func (sp *SpikeProfile) GetSpikeConfiguration() (int, time.Duration, time.Duration) {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	return sp.spikeCycles, sp.spikeHold, sp.betweenSpike
 }
 
@@ -312,6 +323,8 @@ func (sp *SpikeProfile) GetProfileCharacteristics() map[string]interface{} {
 
 // ResetSpikeState resets the spike state
 func (sp *SpikeProfile) ResetSpikeState() {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 	sp.currentCycle = 0
 	sp.inSpikePhase = false
 	sp.spikeStartTime = time.Time{}
@@ -319,6 +332,8 @@ func (sp *SpikeProfile) ResetSpikeState() {
 
 // GetPhaseType returns the current phase type
 func (sp *SpikeProfile) GetPhaseType() string {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 	if sp.inSpikePhase {
 		return "spike"
 	}

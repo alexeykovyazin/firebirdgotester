@@ -1,361 +1,454 @@
-# Firebird Load Generator (fb-loadgen)
+# Firebird Load Generator (`fb-loadgen`)
 
-A high-performance Go-based load testing tool for Firebird databases, designed to simulate realistic workloads with configurable profiles and connection scaling.
+A Go CLI load simulator for **Firebird** databases, built around the classic **EMPLOYEE** sample schema. It spawns workers (one dedicated connection each), runs weighted mixes of SELECT / INSERT / UPDATE / DELETE / stored-procedure calls, ramps connections through warmup → main → cooldown, and writes latency / throughput / error reports.
 
 ## Features
 
-- **Three Workload Profiles**: Write-heavy, read-heavy, and spike testing
-- **Connection Scaling**: Gradual ramp-up and ramp-down with configurable rates
-- **Realistic Operations**: Based on the EMPLOYEE sample database schema
-- **Comprehensive Metrics**: Latency, throughput, and error tracking
-- **Multiple Output Formats**: Text, JSON, and CSV reporting
-- **Graceful Shutdown**: Clean termination with signal handling
-- **Dry-run Mode**: Test configuration without executing load
+- **Three workload profiles**: `write-heavy`, `read-heavy`, and `spike`
+- **Connection ramp**: linear warmup/cooldown; random-walk between min/max in main; sawtooth for spike
+- **Multi-DB discovery**: recursive folder scan (default `*.fdb`); same basename in different subfolders are distinct sessions
+- **Web UI control plane**: table of databases with Start / Stop / Pause per row (`--ui`)
+- **Schema-aware operations**: respects EMPLOYEE constraints (`PO_NUMBER`, salary bounds, status transitions, FKs)
+- **Expected exception handling**: Firebird business exceptions (e.g. `order_already_shipped`) classified separately from real failures
+- **Startup lookup cache**: preloads valid dept / employee / project / customer / job salary ranges
+- **Metrics**: TPS, success/error counts, latency buckets and percentiles (p50 / p95 / p99)
+- **Reports**: live console output plus multi-file text sidecars from `--csv`
+- **Graceful shutdown**: `Ctrl+C` / `SIGTERM` stops the scheduler and flushes reports
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
+- **Go 1.24.5+** (see `go.mod`)
+- A running **Firebird** server
+- One or more **EMPLOYEE**-compatible databases (sample `EMPLOYEE.FDB` included)
+- Default credentials used by the tool: `SYSDBA` / `masterkey`
 
-- Go 1.20+
-- Firebird database server
-- EMPLOYEE sample database
-
-### Installation
+## Build
 
 ```bash
-go get github.com/your-org/fb-loadgen
-cd $GOPATH/src/github.com/your-org/fb-loadgen
-go build
+git clone <this-repo>
+cd firebirdgotester
+go build -o fb-loadgen.exe .   # Windows
+# or
+go build -o fb-loadgen .
 ```
 
-### Basic Usage
+There is no published module install path; build from the repository root.
+
+## Quick start
 
 ```bash
-# Run write-heavy profile with defaults (localhost:3055)
-./fb-loadgen --profile write-heavy
+# Help
+./fb-loadgen --help
 
-# Custom connection settings
-./fb-loadgen --profile read-heavy \
-    --dsn "localhost/3055:./EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey
-
-# Spike testing with custom timing
-./fb-loadgen --profile spike \
-    --warmup 10 \
-    --main 60 \
-    --cooldown 10 \
-    --spike-cycles 2 \
-    --spike-hold 5
-
-# Output to CSV
+# Minimal single-DB CLI run
 ./fb-loadgen --profile write-heavy \
-    --csv results.csv \
-    --report-every 10
+  --dsn "localhost/3050:./EMPLOYEE.FDB"
 
-# Dry-run mode to verify configuration
+# Dry-run: print resolved config and exit (no load)
 ./fb-loadgen --profile write-heavy --dry-run
+
+# Web UI (multi-DB control plane) — binds to localhost by default
+./fb-loadgen --ui \
+  --discover-dir . \
+  --discover-mask "*.fdb" \
+  --host localhost --port 3050 \
+  --user SYSDBA --pass masterkey
+# Open http://127.0.0.1:9000
 ```
 
-### Complete Example Workflow
+## Web UI (multi-DB)
+
+Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). Pass `--ui-addr :9000` to bind all interfaces. Optional `--ui-token` requires `Authorization: Bearer …` on mutating APIs.
+
+**Connection bar** (Host / Port / User / Password / Scan root / Max total conns): defaults are `localhost`, **3050**, `SYSDBA`, `masterkey`. **Save connection** writes `fb-loadgen.ui.json` (v2: also stores per-DB prefs). Passwords are redacted on `GET /api/config`; blank password on save keeps the stored value.
+
+| Column | Notes |
+|--------|--------|
+| Database | Relative path from scan root (same basename in different folders stay distinct) |
+| Status | Idle / Starting / Running / Paused / Stopping / Completed / Failed |
+| Profile / Conns / TPS / Err / Phase | Live metrics; edits survive polling |
+| Actions | Start, Stop, Pause/Resume, Edit (detail drawer), Remove |
+
+**Detail drawer** (row click / Edit): full path, DSN, warmup/main/cooldown, thinkMs/txTimeout, spike fields, latency percentiles, expected vs unexpected errors, report downloads.
+
+**Behavior**
+
+- **Discover** recursively scans the scan root (optional subdir filter). Initial page load lists existing sessions without auto-rescan.
+- Per-row settings restore from `fb-loadgen.ui.json` on discover upsert.
+- **Start** runs full schema validation, then warmup → main → cooldown. Natural end → **Completed** with retained metrics. Reports land in `reports/<relpath>/<timestamp>/`.
+- Main phase connection count **random-walks ±1/sec** between min and max. Spike drives both connection sawtooth and op-mix switching.
+- **Pause** freezes workers and the phase clock. **Stop** cancels immediately.
+- **Start All / Stop All / Pause All / Purge missing / Validate all** batch controls. Hard budget: `--max-total-conns` (default 200) with atomic reservation.
 
 ```bash
-# 1. Build the application
-go build -o fb-loadgen.exe .
-
-# 2. Test configuration without running load
-./fb-loadgen --profile write-heavy \
-    --dsn "localhost/3055:./EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey \
-    --conn-init 5 \
-    --conn-peak 20 \
-    --dry-run
-
-# 3. Run short warmup test
-./fb-loadgen --profile write-heavy \
-    --dsn "localhost/3055:./EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey \
-    --warmup 10 \
-    --main 30 \
-    --cooldown 10 \
-    --conn-init 5 \
-    --conn-peak 10
-
-# 4. Full production run with CSV output (all parameters)
-./fb-loadgen \
-    --dsn "localhost/3055:e:/Projects_2026/firebirdgotester/EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey \
-    --profile write-heavy \
-    --conn-init 2 \
-    --conn-peak 20 \
-    --warmup 30 \
-    --main 120 \
-    --cooldown 20 \
-    --csv results.csv \
-    --report-every 5 \
-    --think-ms 50 \
-    --tx-timeout 10
-
-# 5. Read-heavy profile
-./fb-loadgen \
-    --dsn "localhost/3055:e:/Projects_2026/firebirdgotester/EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey \
-    --profile read-heavy \
-    --conn-init 2 \
-    --conn-peak 20 \
-    --warmup 30 \
-    --main 120 \
-    --cooldown 20 \
-    --csv results.csv \
-    --report-every 5
-
-# 6. Spike profile for stress testing
-./fb-loadgen \
-    --dsn "localhost/3055:e:/Projects_2026/firebirdgotester/EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey \
-    --profile spike \
-    --conn-init 5 \
-    --conn-peak 40 \
-    --warmup 30 \
-    --main 120 \
-    --cooldown 20 \
-    --spike-cycles 3 \
-    --spike-hold 15 \
-    --think-ms 20 \
-    --csv spike_results.csv
+./fb-loadgen --ui \
+  --discover-dir "E:/FirebirdDBs" \
+  --discover-recursive \
+  --host localhost --port 3050 \
+  --conn-min 2 --conn-max 20 \
+  --max-total-conns 200
 ```
 
-### Local vs Remote Connections
+
+## Example workflows
 
 ```bash
-# Local Firebird server
+# 1. Short debug cycle
 ./fb-loadgen --profile write-heavy \
-    --dsn "localhost/3050:/var/lib/firebird/employee.fdb"
+  --dsn "localhost/3050:./EMPLOYEE.FDB" \
+  --warmup 5 --main 10 --cooldown 5 \
+  --conn-init 1 --conn-peak 3 \
+  --think-ms 0 --debug
 
-# Remote Firebird server
-./fb-loadgen --profile write-heavy \
-    --dsn "firebird.example.com/3050:/data/employee.fdb" \
-    --user appuser \
-    --pass secret123
+# 2. Full write-heavy run with reports
+./fb-loadgen \
+  --dsn "localhost/3050:./EMPLOYEE.FDB" \
+  --user SYSDBA --pass masterkey \
+  --profile write-heavy \
+  --conn-init 2 --conn-peak 20 \
+  --warmup 30 --main 120 --cooldown 20 \
+  --csv results.csv \
+  --think-ms 50 --tx-timeout 10
 
-# Using standard host:port format
+# 3. Read-heavy
 ./fb-loadgen --profile read-heavy \
-    --dsn "192.168.1.100:3055/./EMPLOYEE.FDB" \
-    --user SYSDBA \
-    --pass masterkey
+  --dsn "localhost/3050:./EMPLOYEE.FDB" \
+  --conn-init 2 --conn-peak 20 \
+  --warmup 30 --main 120 --cooldown 20 \
+  --csv results.csv
+
+# 4. Spike / stress
+./fb-loadgen --profile spike \
+  --dsn "localhost/3050:./EMPLOYEE.FDB" \
+  --conn-init 5 --conn-peak 40 \
+  --warmup 30 --main 120 --cooldown 20 \
+  --spike-cycles 3 --spike-hold 15 \
+  --think-ms 20 \
+  --csv spike_results.csv
 ```
 
-## Command Line Options
+More echo-only examples: `example_usage.sh`.
+
+### Local vs remote DSN
+
+```bash
+# Local
+./fb-loadgen --profile write-heavy \
+  --dsn "localhost/3050:/var/lib/firebird/employee.fdb"
+
+# Remote
+./fb-loadgen --profile write-heavy \
+  --dsn "firebird.example.com/3050:/data/employee.fdb" \
+  --user appuser --pass secret123
+
+# host:port/database form
+./fb-loadgen --profile read-heavy \
+  --dsn "192.168.1.100:3050/./EMPLOYEE.FDB"
+```
+
+## Command-line options
+
+All runtime configuration is via CLI flags (no config file, no env vars for the main binary).
 
 ### Connection
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--dsn` | Firebird DSN (supports formats: `host/port:database`, `host:port/database`, `host/database`) | `localhost/3055:./EMPLOYEE.FDB` |
+| `--dsn` | Firebird DSN | `localhost/3050:./EMPLOYEE.FDB` |
 | `--user` | Database user | `SYSDBA` |
 | `--pass` | Database password | `masterkey` |
 
-**DSN Format Examples:**
-- `localhost/3055:./EMPLOYEE.FDB` - Non-standard format (host/port:database)
-- `localhost:3055/./EMPLOYEE.FDB` - Standard format (host:port/database)
-- `192.168.1.100/3050/var/firebird/employee.fdb` - Remote server
+**Accepted DSN shapes** (parsed into `user:pass@host:port/database` for `nakagami/firebirdsql`):
+
+| Form | Example |
+|------|---------|
+| `host/port:database` | `localhost/3050:./EMPLOYEE.FDB` |
+| `host:port/database` | `localhost:3050/./EMPLOYEE.FDB` |
+| `host/database` | `localhost/./EMPLOYEE.FDB` (port defaults to **3050**) |
 
 ### Profile
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--profile` | Simulation profile: `write-heavy`, `read-heavy`, or `spike` | (required) |
+| `--profile` | `write-heavy` \| `read-heavy` \| `spike` | **required** |
 
-### Connection Scaling
+### Connection scaling
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--conn-init` | Initial number of connections during warmup | `2` |
-| `--conn-peak` | Peak number of connections during main phase | `20` |
+| `--conn-init` / `--conn-min` | Min / initial connections (≥ 1) | `2` |
+| `--conn-peak` / `--conn-max` | Max / peak connections (≥ min) | `20` |
 
-### Timing (all in seconds)
+During CLI/UI main phase (non-spike), worker count random-walks between min and max (±1 each second). If min==max, count is held steady.
+
+### Timing (seconds)
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--warmup` | Ramp-up / heat period before main load | `30` |
-| `--main` | Main steady-state load period | `120` |
-| `--cooldown` | Graceful disconnect / ramp-down period | `20` |
+| `--warmup` | Linear ramp min → max | `30` |
+| `--main` | Steady-state / walk / spike period | `120` |
+| `--cooldown` | Linear drain to 0 | `20` |
 
-### Spike Profile Extras
+### Spike extras
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--spike-cycles` | Number of spike cycles during main period | `3` |
-| `--spike-hold` | Seconds to sustain peak connections before dropping | `10` |
+| `--spike-cycles` | Sawtooth cycles during main (≥ 1 when profile=spike) | `3` |
+| `--spike-hold` | Seconds held at peak per cycle (≥ 1 when spike) | `10` |
 
-### Output
+### Web UI / multi-DB
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--csv` | Path to CSV output file | `results.csv` |
-| `--report-every` | Console report interval in seconds | `5` |
+| `--ui` | Start web control plane | `false` |
+| `--ui-addr` | Listen address | `127.0.0.1:9000` |
+| `--ui-token` | Optional bearer token for mutating APIs | _(empty)_ |
+| `--discover-dir` | Allowlisted root for discovery | `.` |
+| `--discover-mask` | File glob | `*.fdb` |
+| `--discover-recursive` | Scan subfolders | `true` |
+| `--host` / `--port` | Firebird host/port for discovered files | `localhost` / `3050` |
+| `--max-total-conns` | Hard sum of running session max | `200` |
 
-### Misc
+### Output & misc
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--think-ms` | Worker think time between operations in ms | `50` |
-| `--tx-timeout` | Statement timeout in seconds | `10` |
-| `--dry-run` | Connect, list what would run, exit without load | `false` |
+| `--csv` | Base path for report files | `results.csv` |
+| `--report-every` | Console / file report interval (seconds) | `5` |
+| `--error-log` | SQL/command error log (all failures) | `<csv>_sql_errors.log` |
+| `--think-ms` | Sleep between ops per worker | `50` |
+| `--tx-timeout` | Per-transaction context timeout (seconds) | `10` |
+| `--dry-run` | Print config / connection string and exit | `false` |
+| `--debug` | Per-operation worker debug logs | `false` |
+| `--help`, `-h` | Show usage | |
 
-### Help
-| Flag | Description |
-|------|-------------|
-| `--help`, `-h` | Show help message with all options |
+## Workload profiles
 
-## Workload Profiles
+### `write-heavy` — 100% writes (OLTP stress)
 
-### Write-Heavy
-- 70% writes, 30% reads
-- Focuses on INSERT, UPDATE, DELETE operations
-- Tests transaction processing capabilities
+| Weight | Operation | Notes |
+|--------|-----------|--------|
+| 25% | `InsertCustomer` | `CUST_NO` via `GEN_ID(CUST_NO_GEN,1)` |
+| 20% | `InsertSales` | `PO_NUMBER` = `V` + 7 digits |
+| 15% | `UpdateSalesStatus` | `new` → `open` → `shipped` |
+| 15% | `CallShipOrder` | `EXECUTE PROCEDURE SHIP_ORDER` |
+| 10% | `UpdateEmployeeSalary` | Kept within `JOB` min/max |
+| 10% | `CallAddEmpProj` | Inserts into `EMPLOYEE_PROJECT` |
+| 5% | `DeleteEmpProj` | Removes project assignments |
 
-### Read-Heavy
-- 30% writes, 70% reads
-- Focuses on SELECT operations with various complexity
-- Tests query performance and caching
+Each op runs in its own short transaction (`BEGIN` → op → `COMMIT` / `ROLLBACK`).
 
-### Spike
-- Alternates between high and low connection counts
-- Tests system behavior under sudden load changes
-- Configurable spike cycles and duration
+### `read-heavy` — ~95% reads, 5% write
 
-## Operations
+| Weight | Operation | Notes |
+|--------|-----------|--------|
+| 30% | `CallOrgChart` | Department hierarchy |
+| 25% | `CallDeptBudget` | Recursive budget rollup |
+| 15% | `CallMailLabel` | Customer address |
+| 10% | `CallGetEmpProj` | Employee projects |
+| 10% | `CallSubTotBudget` | Aggregate dept budgets |
+| 5% | `SelectEmployeeDeptJob` | JOIN `EMPLOYEE` + `DEPARTMENT` + `JOB` |
+| 5% | `UpdateDeptBudget` | Rare write |
 
-### Read Operations
-- Customer queries with filters
-- Sales order lookups
-- Employee information retrieval
-- Department and project queries
-- Complex joins and aggregations
+### `spike`
 
-### Write Operations
-- Customer updates (on_hold flag)
-- Sales order status changes
-- Employee salary adjustments
-- New sales order creation
-- Transaction-based updates
+- Connection count follows a **sawtooth** between mid-level `((init+peak)/2)` and `conn-peak` during the main phase
+- Designed to alternate read-heavy vs write-heavy mixes around spike phases (see `profile/spike.go` and `Technical_task.md`)
+- Use `--spike-cycles` and `--spike-hold` to control burst shape
+
+## Connection ramp
+
+```
+Warmup     Linear: conn-min → conn-max over --warmup
+Main       write/read-heavy: random walk ±1/s between min and max
+           spike: sawtooth mid ↔ max for --spike-cycles
+Cooldown   Linear drain max → 0 over --cooldown
+Pause (UI) Freeze ops + phase clock; keep connections open
+```
+
+- Scheduler ticks every **500 ms**; walk adjusts every **1 s**
+- Each worker owns **one** `database/sql` connection (`MaxOpenConns(1)`) for its lifetime
+- Cancelled workers finish the current transaction, close the connection, and exit
+
+## Schema awareness
+
+The tool targets the EMPLOYEE sample DB. Schema reference: `EMPLOYEE_metadata.sql`. Design notes: `Technical_task.md`. On UI **Start**, a schema gate requires a readable `EMPLOYEE` table.
+
+**Writable under load:** `CUSTOMER`, `SALES`, `EMPLOYEE` (salary), `EMPLOYEE_PROJECT`, `DEPARTMENT` (budget).
+
+**Read-only / reference:** `COUNTRY`, `JOB`, `PROJECT`, `PROJ_DEPT_BUDGET`; `SALARY_HISTORY` is written by trigger on salary update.
+
+**Constraint highlights:**
+
+| Rule | Detail |
+|------|--------|
+| `PO_NUMBER` | Exactly 8 chars, starts with `V` |
+| Salary | Must stay within `JOB.MIN_SALARY`–`JOB.MAX_SALARY` |
+| Order status | Forward transitions only (`new`→`open`→`shipped`) |
+| `CUST_NO` | Generated with `GEN_ID`, not invented client-side |
+| Arrays | `LANGUAGE_REQ` / related SPs are excluded from load |
+
+**Expected Firebird exceptions** (soft failures): `order_already_shipped`, `customer_on_hold`, `customer_check`, and similar business rejections — counted but not treated as fatal connection errors.
 
 ## Architecture
 
-The load generator follows a modular architecture:
-
 ```
-main.go
-├── config/     - Configuration management
-├── db/         - Database connection handling
-├── ops/        - Database operations and caching
-├── profile/    - Workload profile definitions
-├── worker/     - Worker management and metrics
-├── ramp/       - Connection scaling logic
-└── metrics/    - Metrics collection and reporting
+CLI (--ui) → session.Manager → per-DB Session
+           → discover (recursive *.fdb under allowlisted dir)
+           → ui (embed.FS table + REST)
+
+CLI (single) → config → db.ConnectionFactory (DialSettings)
+             → ops.Cache → profile → ramp.Scheduler → worker
+             → metrics
 ```
 
-### Key Components
-
-- **ConnectionFactory**: Manages database connections with proper limits
-- **Cache**: Preloads reference data to avoid contention
-- **Profile**: Defines operation mix and timing
-- **Scheduler**: Manages worker lifecycle and connection scaling
-- **MetricsCollector**: Aggregates performance data
-- **Reporter**: Generates reports in multiple formats
+| Package | Role |
+|---------|------|
+| `config/` | Flags, DSN parsing, validation |
+| `discover/` | Recursive folder/mask scan; absPath identity |
+| `session/` | Multi-DB lifecycle, schema gate, Start/Stop/Pause |
+| `ui/` | Embedded HTML table + JSON API |
+| `db/` | Dial settings + connection factory |
+| `ops/` | Cache, reads, writes, exception classification |
+| `profile/` | Weighted selectors for the three profiles |
+| `worker/` | Per-connection worker loop, pause gate, metrics |
+| `ramp/` | Warmup / main (walk or spike) / cooldown |
+| `metrics/` | Aggregation, latency buckets, reporting |
 
 ## Metrics
 
-The tool collects comprehensive metrics including:
+Collected continuously:
 
-- **Latency**: P95, P99, average response times
-- **Throughput**: Operations per second
-- **Error Rates**: Failed operations by type
-- **Connection Stats**: Pool utilization and wait times
-- **Resource Usage**: Memory and CPU metrics
+- Total / success / error operation counts and success rate
+- Throughput (total and interval TPS)
+- Latency: avg, min, max, p50, p95, p99
+- Latency histogram buckets (ms): `<5`, `<10`, `<25`, `<50`, `<100`, `<250`, `<500`, `<1000`, `≥1000`
+- Worker counts (max / current) and active profile name
 
-## Output Formats
+## Reports
 
-### Console Output
-Real-time progress and summary statistics during execution.
+When `--csv results.csv` is set:
 
-### CSV Output
-Detailed metrics suitable for analysis and charting:
+1. **During the run** — periodic text summaries are written to `results.csv` (filename is historical; format is text).
+2. **On shutdown** — `ReportAllToFile` writes sidecars:
+
+| File | Content |
+|------|---------|
+| `results.csv_summary.txt` | High-level summary |
+| `results.csv_final.txt` | Final totals |
+| `results.csv_latency.txt` | Latency distribution |
+| `results.csv_operations.txt` | Per-operation breakdown |
+| `results.csv_errors.txt` | Error details |
+| `results.csv_performance.txt` | Performance snapshot |
+| `results.csv_status.txt` | Run status |
+| `results_sql_errors.log` | Every SQL/command failure (expected + unexpected), tab-separated |
+
+UI sessions write the same stream to `reports/<db>/<timestamp>/sql_errors.log` (downloadable from the detail drawer with other report files).
+
+Each log line looks like:
+
+```text
+2026-07-31T00:01:02.123Z	kind=expected	worker=3	op=InsertSales	code=check_constraint	source=E:\db\EMPLOYEE.FDB	msg=...
 ```
-timestamp,operation,success_count,error_count,avg_latency,p95_latency,p99_latency
-2024-01-01T10:00:00Z,SELECT_CUSTOMER,1000,5,15.2,45.1,120.3
+
+Kinds: `expected`, `unexpected`, `begin`, `commit`, `connect`, `command`.
+
+## Project layout
+
+```
+fb-loadgen/
+├── main.go                 # CLI entry + --ui branch
+├── integration_test.go     # CLI smoke tests (expects built ./fb-loadgen)
+├── config/config.go
+├── db/                     # dial settings + connection factory
+├── discover/               # recursive *.fdb discovery
+├── session/                # multi-DB SessionManager
+├── ui/                     # embed.FS HTML table + REST API
+├── ops/                    # cache, reads, writes, errors, ops_test.go
+├── profile/                # write_heavy, read_heavy, spike
+├── worker/                 # workers + pause gate
+├── ramp/                   # warmup / walk / spike / cooldown
+├── metrics/                # collector, reporter
+├── EMPLOYEE.FDB            # Sample database
+├── EMPLOYEE_metadata.sql   # Schema dump
+├── Technical_task.md       # Original design / constraint map
+├── example_usage.sh        # Printed example commands
+├── go.mod / go.sum
+└── LICENSE                 # GNU GPL v3
 ```
 
-### JSON Output
-Structured data for programmatic processing:
-```json
-{
-  "timestamp": "2024-01-01T10:00:00Z",
-  "metrics": {
-    "SELECT_CUSTOMER": {
-      "success": 1000,
-      "errors": 5,
-      "latency": {"avg": 15.2, "p95": 45.1, "p99": 120.3}
-    }
-  }
-}
-```
-
-## Development
-
-### Adding New Operations
-
-1. Add SQL queries to the appropriate operation file in `ops/`
-2. Implement the operation function
-3. Register it in the operation factory
-4. Update the profile to include the new operation
-
-### Adding New Profiles
-
-1. Create a new profile file in `profile/`
-2. Implement the `Profile` interface
-3. Register the profile in the profile factory
-4. Update documentation
-
-### Testing
+## Testing
 
 ```bash
-# Run unit tests
+# All packages
 go test ./...
 
-# Run with race detection
+# Skip DB-dependent / binary-dependent tests in the main package
+go test -short ./...
+
+# Race detector
 go test -race ./...
 
-# Run benchmarks
-go test -bench=. ./...
+# Live Firebird ops tests (skipped if DB unreachable)
+# Optional overrides:
+#   FIREBIRD_DSN, FIREBIRD_USER, FIREBIRD_PASS
+go test ./ops/ -v
 ```
+
+| Suite | What it covers |
+|-------|----------------|
+| `ops/ops_test.go` | Cache load, table counts, read/write ops, Firebird SQL idioms against a live DB |
+| `integration_test.go` | Help output, config validation, dry-run via a pre-built `./fb-loadgen` binary |
+
+Build the binary before non-short integration tests:
+
+```bash
+go build -o fb-loadgen .
+go test -v .
+```
+
+## Dependencies
+
+| Dependency | Version | Role |
+|------------|---------|------|
+| Go | 1.24.5 | Language / toolchain |
+| `github.com/nakagami/firebirdsql` | v0.9.17 | Firebird driver (`database/sql`) |
+
+Transitive: `chacha20`, `shopspring/decimal`, `golang.org/x/text`, `modernc.org/mathutil`, and related packages (see `go.sum`).
+
+## Extending
+
+### New operation
+
+1. Add SQL / logic in `ops/reads.go` or `ops/writes.go`
+2. Expose it on `ReadOperations` / `WriteOperations`
+3. Register a weight entry in the relevant profile under `profile/`
+4. Add a live test in `ops/ops_test.go` when possible
+
+### New profile
+
+1. Add `profile/<name>.go` implementing the `Profile` interface
+2. Register it in `profile.ProfileFactory`
+3. Extend `--profile` validation in `config/config.go`
+4. Document weights and intended use here
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Connection Failures**: Verify database is running and accessible
-2. **Permission Errors**: Check user credentials and database permissions
-3. **Schema Errors**: Ensure EMPLOYEE database is properly set up
-4. **Performance Issues**: Adjust connection counts and think times
-
-### Debug Mode
-
-Use `--think-ms 0` and `--tx-timeout 30` for faster debugging cycles.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new functionality
-4. Submit a pull request
+| Symptom | What to check |
+|---------|----------------|
+| Connection failures | Firebird running; host/port; file path in DSN; firewall |
+| Auth errors | `--user` / `--pass`; Firebird user privileges |
+| Schema / SQL errors | Confirm EMPLOYEE schema (`EMPLOYEE_metadata.sql`); avoid corrupted `.FDB` |
+| High error rate | Expected SP exceptions under write load; lower `--conn-peak`; raise `--think-ms` |
+| Lock contention | Fewer writers; shorter `--tx-timeout` visibility; inspect `*_errors.txt` |
+| Slow debugging | `--think-ms 0 --debug --warmup 5 --main 10 --cooldown 5 --conn-init 1 --conn-peak 3` |
 
 ## License
 
-[Add your license information here]
+GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
-## Support
+## Further reading
 
-For issues and questions:
-- Create a GitHub issue
-- Check the documentation
-- Review the example configurations
+- [Technical_task.md](Technical_task.md) — schema constraint map, profile design, ramp model, error strategy
+- [EMPLOYEE_metadata.sql](EMPLOYEE_metadata.sql) — tables, procedures, and constraints
+- [example_usage.sh](example_usage.sh) — printable CLI cookbook

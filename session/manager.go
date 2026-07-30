@@ -1,0 +1,1157 @@
+package session
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"fb-loadgen/config"
+	"fb-loadgen/db"
+	"fb-loadgen/discover"
+	"fb-loadgen/errlog"
+	"fb-loadgen/metrics"
+	"fb-loadgen/ops"
+	"fb-loadgen/profile"
+	"fb-loadgen/ramp"
+	"fb-loadgen/worker"
+)
+
+// Manager owns all database sessions for the web UI control plane.
+type Manager struct {
+	mu sync.RWMutex
+
+	shared       *config.Config
+	host         string
+	port         int
+	user         string
+	pass         string
+	discoverDir  string
+	discoverMask string
+	recursive    bool
+	maxTotal     int
+	settingsPath string
+
+	reserved atomic.Int64 // sum of ConnMax for active reserved sessions
+
+	sessions map[string]*Session // keyed by AbsPath
+}
+
+// Session is one database under management.
+type Session struct {
+	mu sync.Mutex
+
+	ID     string
+	Config SessionConfig
+	Status Status
+
+	LastError string
+	Missing   bool
+
+	generation int64
+	reserved   int // ConnMax reserved against budget
+
+	pauseGate *worker.PauseGate
+	scheduler *ramp.Scheduler
+	metrics   *worker.MetricsCollector
+	factory   *db.ConnectionFactory
+	cache     *ops.Cache
+	sysMetrics *metrics.MetricsCollector
+	reporter   *metrics.Reporter
+	errorLog   *errlog.Logger
+
+	runCfg        *config.Config
+	reportDir     string
+	lastReportDir string
+
+	// Retained after Completed
+	lastSnap Snapshot
+	hasLast  bool
+}
+
+// NewManager creates a session manager with shared defaults from CLI config.
+func NewManager(cfg *config.Config) *Manager {
+	return &Manager{
+		shared:       cfg,
+		host:         cfg.Host,
+		port:         cfg.Port,
+		user:         cfg.User,
+		pass:         cfg.Pass,
+		discoverDir:  cfg.DiscoverDir,
+		discoverMask: cfg.DiscoverMask,
+		recursive:    cfg.DiscoverRecursive,
+		maxTotal:     cfg.MaxTotalConns,
+		settingsPath: config.DefaultUISettingsFile,
+		sessions:     make(map[string]*Session),
+	}
+}
+
+// SetSettingsPath sets where UI settings are persisted.
+func (m *Manager) SetSettingsPath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if path != "" {
+		m.settingsPath = path
+	}
+}
+
+// SettingsPath returns the persistence file path.
+func (m *Manager) SettingsPath() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.settingsPath
+}
+
+// SharedConfig returns the shared CLI config.
+func (m *Manager) SharedConfig() *config.Config {
+	return m.shared
+}
+
+// DiscoverDir returns the allowlisted discovery root.
+func (m *Manager) DiscoverDir() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.discoverDir
+}
+
+// MaxTotalConns returns the connection budget limit.
+func (m *Manager) MaxTotalConns() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.maxTotal
+}
+
+// ConnectionSettings returns the current shared Firebird connection settings.
+func (m *Manager) ConnectionSettings() config.UISettings {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return config.UISettings{
+		Version:           config.UISettingsVersion,
+		Host:              m.host,
+		Port:              m.port,
+		User:              m.user,
+		Pass:              m.pass,
+		DiscoverDir:       m.discoverDir,
+		DiscoverMask:      m.discoverMask,
+		DiscoverRecursive: m.recursive,
+		MaxTotalConns:     m.maxTotal,
+	}
+}
+
+// HasRunningSessions reports whether any session is actively running.
+func (m *Manager) HasRunningSessions() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		st := s.Status
+		s.mu.Unlock()
+		if st == StatusRunning || st == StatusPaused || st == StatusStarting {
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateConnectionSettings applies and optionally persists Firebird/UI settings.
+func (m *Manager) UpdateConnectionSettings(s config.UISettings, persist bool) error {
+	prev := m.ConnectionSettings()
+	s = s.MergePassKeepExisting(prev)
+	if s.DiscoverMask == "" {
+		s.DiscoverMask = "*.fdb"
+	}
+	if s.MaxTotalConns < 1 {
+		s.MaxTotalConns = prev.MaxTotalConns
+		if s.MaxTotalConns < 1 {
+			s.MaxTotalConns = 200
+		}
+	}
+	if err := s.Validate(); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.host = s.Host
+	m.port = s.Port
+	m.user = s.User
+	m.pass = s.Pass
+	m.discoverDir = s.DiscoverDir
+	m.discoverMask = s.DiscoverMask
+	m.recursive = s.DiscoverRecursive
+	m.maxTotal = s.MaxTotalConns
+	m.shared.Host = s.Host
+	m.shared.Port = s.Port
+	m.shared.User = s.User
+	m.shared.Pass = s.Pass
+	m.shared.DiscoverDir = s.DiscoverDir
+	m.shared.DiscoverMask = s.DiscoverMask
+	m.shared.DiscoverRecursive = s.DiscoverRecursive
+	m.shared.MaxTotalConns = s.MaxTotalConns
+
+	for _, sess := range m.sessions {
+		sess.mu.Lock()
+		if sess.Status == StatusIdle || sess.Status == StatusFailed || sess.Status == StatusCompleted {
+			sess.Config.User = s.User
+			sess.Config.Pass = s.Pass
+			sess.Config.DSN = discover.BuildDSN(s.Host, s.Port, sess.Config.AbsPath)
+		}
+		sess.mu.Unlock()
+	}
+	path := m.settingsPath
+	m.mu.Unlock()
+
+	if persist {
+		return m.persistSettings(path, s)
+	}
+	return nil
+}
+
+func (m *Manager) persistSettings(path string, base config.UISettings) error {
+	m.mu.RLock()
+	sessions := make(map[string]config.SessionPrefs, len(m.sessions))
+	for abs, sess := range m.sessions {
+		sess.mu.Lock()
+		sessions[abs] = PrefsFromConfig(sess.Config)
+		sess.mu.Unlock()
+	}
+	m.mu.RUnlock()
+
+	// Merge with any previously saved sessions for removed rows that we still want?
+	// Plan: Remove drops entry; Save connection keeps current table only.
+	base.Version = config.UISettingsVersion
+	base.Sessions = sessions
+	return config.SaveUISettings(path, base)
+}
+
+func (m *Manager) saveSessionPrefs() {
+	path := m.SettingsPath()
+	s := m.ConnectionSettings()
+	_ = m.persistSettings(path, s)
+}
+
+// Discover runs filesystem discovery and upserts idle sessions by AbsPath.
+func (m *Manager) Discover(subdir string, mask string, recursive *bool, rootOverride string) ([]Snapshot, error) {
+	m.mu.Lock()
+	if rootOverride != "" {
+		abs, err := filepath.Abs(rootOverride)
+		if err != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("discover dir: %w", err)
+		}
+		m.discoverDir = abs
+		m.shared.DiscoverDir = abs
+	}
+	baseDir := m.discoverDir
+	defaultMask := m.discoverMask
+	host := m.host
+	port := m.port
+	user := m.user
+	pass := m.pass
+	recDefault := m.recursive
+	settingsPath := m.settingsPath
+	m.mu.Unlock()
+
+	root := baseDir
+	if subdir != "" {
+		resolved, err := discover.ResolveUnderRoot(baseDir, subdir)
+		if err != nil {
+			return nil, err
+		}
+		root = resolved
+	}
+	if mask == "" {
+		mask = defaultMask
+	}
+	rec := recDefault
+	if recursive != nil {
+		rec = *recursive
+	}
+
+	found, err := discover.Discover(discover.Options{
+		Root:      root,
+		Mask:      mask,
+		Recursive: rec,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	saved, _, _ := config.LoadUISettings(settingsPath)
+	prefs := saved.Sessions
+	if prefs == nil {
+		prefs = map[string]config.SessionPrefs{}
+	}
+
+	foundSet := make(map[string]discover.DatabaseInfo, len(found))
+	for _, info := range found {
+		foundSet[info.AbsPath] = info
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recursive = rec
+	m.shared.DiscoverRecursive = rec
+
+	for abs, info := range foundSet {
+		if existing, ok := m.sessions[abs]; ok {
+			existing.mu.Lock()
+			existing.Missing = false
+			if existing.Status == StatusIdle || existing.Status == StatusFailed || existing.Status == StatusCompleted {
+				existing.Config.Name = info.Name
+				existing.Config.RelPath = info.RelPath
+				existing.Config.AbsPath = info.AbsPath
+				existing.Config.User = user
+				existing.Config.Pass = pass
+				existing.Config.DSN = discover.BuildDSN(host, port, info.AbsPath)
+			}
+			existing.mu.Unlock()
+			continue
+		}
+
+		sc := DefaultsFromCLI(m.shared, info, host, port)
+		sc.User = user
+		sc.Pass = pass
+		if p, ok := prefs[abs]; ok {
+			ApplyPrefs(&sc, p)
+		}
+		m.sessions[abs] = &Session{
+			ID:     IDFromAbsPath(abs),
+			Config: sc,
+			Status: StatusIdle,
+		}
+	}
+
+	for abs, sess := range m.sessions {
+		if _, ok := foundSet[abs]; ok {
+			continue
+		}
+		sess.mu.Lock()
+		if sess.Status == StatusIdle || sess.Status == StatusFailed || sess.Status == StatusCompleted {
+			sess.Missing = true
+		}
+		sess.mu.Unlock()
+	}
+
+	return m.snapshotsLocked(), nil
+}
+
+// List returns snapshots of all sessions.
+func (m *Manager) List() []Snapshot {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.snapshotsLocked()
+}
+
+func (m *Manager) snapshotsLocked() []Snapshot {
+	out := make([]Snapshot, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		out = append(out, s.Snapshot())
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].AbsPath < out[j].AbsPath
+	})
+	return out
+}
+
+func (m *Manager) findByID(id string) (*Session, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, s := range m.sessions {
+		if s.ID == id {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("session not found: %s", id)
+}
+
+// Patch updates editable fields when Idle/Failed/Completed.
+func (m *Manager) Patch(id string, patch map[string]interface{}) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	s.mu.Lock()
+	switch s.Status {
+	case StatusIdle, StatusFailed, StatusCompleted:
+	default:
+		st := s.Status
+		s.mu.Unlock()
+		return Snapshot{}, fmt.Errorf("can only edit session when Idle (status=%s)", st)
+	}
+
+	if v, ok := patch["profile"].(string); ok && v != "" {
+		s.Config.Profile = v
+	}
+	if v, ok := asInt(patch["connMin"]); ok {
+		s.Config.ConnMin = v
+	}
+	if v, ok := asInt(patch["connMax"]); ok {
+		s.Config.ConnMax = v
+	}
+	if v, ok := asInt(patch["warmup"]); ok {
+		s.Config.Warmup = v
+	}
+	if v, ok := asInt(patch["main"]); ok {
+		s.Config.Main = v
+	}
+	if v, ok := asInt(patch["cooldown"]); ok {
+		s.Config.Cooldown = v
+	}
+	if v, ok := asInt(patch["spikeCycles"]); ok {
+		s.Config.SpikeCycles = v
+	}
+	if v, ok := asInt(patch["spikeHold"]); ok {
+		s.Config.SpikeHold = v
+	}
+	if v, ok := asInt(patch["thinkMs"]); ok {
+		s.Config.ThinkMs = v
+	}
+	if v, ok := asInt(patch["txTimeout"]); ok {
+		s.Config.TxTimeout = v
+	}
+
+	if err := s.Config.Validate(); err != nil {
+		s.mu.Unlock()
+		return Snapshot{}, err
+	}
+	s.Status = StatusIdle
+	s.LastError = ""
+	snap := s.snapshotLocked()
+	s.mu.Unlock()
+
+	m.saveSessionPrefs()
+	return snap, nil
+}
+
+func asInt(v interface{}) (int, bool) {
+	switch t := v.(type) {
+	case float64:
+		return int(t), true
+	case int:
+		return t, true
+	case int64:
+		return int(t), true
+	default:
+		return 0, false
+	}
+}
+
+func (m *Manager) reserveBudget(n int) error {
+	limit := int64(m.MaxTotalConns())
+	for {
+		cur := m.reserved.Load()
+		if cur+int64(n) > limit {
+			return fmt.Errorf("max-total-conns budget exceeded: would need %d, limit %d", cur+int64(n), limit)
+		}
+		if m.reserved.CompareAndSwap(cur, cur+int64(n)) {
+			return nil
+		}
+	}
+}
+
+func (m *Manager) releaseBudget(n int) {
+	if n <= 0 {
+		return
+	}
+	for {
+		cur := m.reserved.Load()
+		next := cur - int64(n)
+		if next < 0 {
+			next = 0
+		}
+		if m.reserved.CompareAndSwap(cur, next) {
+			return
+		}
+	}
+}
+
+// Start begins a timed run for the session.
+func (m *Manager) Start(id string) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	s.mu.Lock()
+	switch s.Status {
+	case StatusIdle, StatusFailed, StatusCompleted:
+	default:
+		st := s.Status
+		s.mu.Unlock()
+		return Snapshot{}, fmt.Errorf("cannot start session in status %s", st)
+	}
+	if s.Missing {
+		s.mu.Unlock()
+		return Snapshot{}, fmt.Errorf("database file is missing")
+	}
+	if err := s.Config.Validate(); err != nil {
+		s.Status = StatusFailed
+		s.LastError = err.Error()
+		snap := s.snapshotLocked()
+		s.mu.Unlock()
+		return snap, err
+	}
+	cfgCopy := s.Config
+	s.generation++
+	gen := s.generation
+	s.Status = StatusStarting
+	s.LastError = ""
+	s.Missing = false
+	s.hasLast = false
+	s.mu.Unlock()
+
+	m.saveSessionPrefs()
+
+	if err := m.reserveBudget(cfgCopy.ConnMax); err != nil {
+		s.mu.Lock()
+		if s.generation == gen {
+			s.Status = StatusIdle
+			s.LastError = err.Error()
+		}
+		snap := s.snapshotLocked()
+		s.mu.Unlock()
+		return snap, err
+	}
+
+	fail := func(err error) (Snapshot, error) {
+		m.releaseBudget(cfgCopy.ConnMax)
+		s.mu.Lock()
+		if s.generation == gen {
+			s.Status = StatusFailed
+			s.LastError = err.Error()
+			s.reserved = 0
+		}
+		snap := s.snapshotLocked()
+		s.mu.Unlock()
+		return snap, err
+	}
+
+	reportEvery := 5
+	if m.shared != nil && m.shared.ReportEvery > 0 {
+		reportEvery = m.shared.ReportEvery
+	}
+	runCfg := cfgCopy.ToRunConfigWithReportEvery(reportEvery)
+	factory := db.NewConnectionFactory(runCfg)
+
+	if err := factory.ValidateSchemaGate(); err != nil {
+		return fail(err)
+	}
+
+	cache, err := ops.NewCache(factory)
+	if err != nil {
+		return fail(err)
+	}
+
+	readOps := ops.NewReadOperations(factory, cache)
+	writeOps := ops.NewWriteOperations(factory, cache)
+	profFactory := profile.NewProfileFactory(readOps, writeOps, cache)
+	prof, err := profFactory.CreateProfile(cfgCopy.Profile)
+	if err != nil {
+		return fail(err)
+	}
+
+	if sp, ok := prof.(*profile.SpikeProfile); ok {
+		hold := time.Duration(cfgCopy.SpikeHold) * time.Second
+		cycles := cfgCopy.SpikeCycles
+		between := 30 * time.Second
+		if cycles > 0 {
+			mainDur := time.Duration(cfgCopy.Main) * time.Second
+			rem := mainDur - time.Duration(cycles)*hold
+			if rem > 0 {
+				between = rem / time.Duration(cycles)
+			}
+		}
+		sp.SetSpikeConfiguration(cycles, hold, between)
+	}
+
+	reportDir, err := m.newReportDir(cfgCopy.RelPath)
+	if err != nil {
+		return fail(err)
+	}
+
+	pause := worker.NewPauseGate()
+	wMetrics := worker.NewMetricsCollector()
+
+	errLogPath := filepath.Join(reportDir, "sql_errors.log")
+	sqlErrLog, logErr := errlog.Open(errLogPath, cfgCopy.AbsPath)
+	if logErr != nil {
+		return fail(fmt.Errorf("error log: %w", logErr))
+	}
+	wMetrics.SetErrorLogger(sqlErrLog)
+
+	sched := ramp.NewSchedulerWithPause(runCfg, factory, cache, prof, wMetrics, pause)
+
+	sysMetrics := metrics.NewMetricsCollector(sched, prof, cache, wMetrics)
+	sysMetrics.Start()
+
+	baseName := filepath.Join(reportDir, "results")
+	outFile, err := createFile(baseName + ".txt")
+	if err != nil {
+		sysMetrics.Stop()
+		_ = sqlErrLog.Close()
+		return fail(err)
+	}
+	reporter := metrics.NewReporter(sysMetrics, outFile, "text", time.Duration(reportEvery)*time.Second)
+	reporter.Start()
+
+	if err := sched.Start(); err != nil {
+		reporter.Stop()
+		sysMetrics.Stop()
+		_ = outFile.Close()
+		_ = sqlErrLog.Close()
+		return fail(err)
+	}
+
+	s.mu.Lock()
+	if s.generation != gen || s.Status != StatusStarting {
+		s.mu.Unlock()
+		_ = sched.Stop()
+		reporter.Stop()
+		sysMetrics.Stop()
+		_ = outFile.Close()
+		_ = sqlErrLog.Close()
+		m.releaseBudget(cfgCopy.ConnMax)
+		s.mu.Lock()
+		snap := s.snapshotLocked()
+		s.mu.Unlock()
+		return snap, fmt.Errorf("start aborted")
+	}
+	s.pauseGate = pause
+	s.scheduler = sched
+	s.metrics = wMetrics
+	s.factory = factory
+	s.cache = cache
+	s.sysMetrics = sysMetrics
+	s.reporter = reporter
+	s.errorLog = sqlErrLog
+	s.runCfg = runCfg
+	s.reportDir = reportDir
+	s.lastReportDir = reportDir
+	s.reserved = cfgCopy.ConnMax
+	s.Status = StatusRunning
+	snap := s.snapshotLocked()
+	s.mu.Unlock()
+
+	go m.watchCompletion(s, gen, outFile, baseName)
+
+	return snap, nil
+}
+
+func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseName string) {
+	s.mu.Lock()
+	sched := s.scheduler
+	reporter := s.reporter
+	sysMetrics := s.sysMetrics
+	errorLog := s.errorLog
+	s.errorLog = nil
+	s.mu.Unlock()
+	if sched == nil {
+		return
+	}
+	<-sched.Done()
+
+	if reporter != nil {
+		_ = reporter.ReportAllToFile(baseName)
+		reporter.Stop()
+	}
+	if sysMetrics != nil {
+		sysMetrics.Stop()
+	}
+	if outFile != nil {
+		_ = outFile.Close()
+	}
+	if errorLog != nil {
+		errorLog.Flush()
+		_ = errorLog.Close()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.generation != gen {
+		return
+	}
+
+	if s.Status == StatusStopping {
+		n := s.reserved
+		s.reserved = 0
+		s.Status = StatusIdle
+		s.cleanupLocked(false)
+		s.mu.Unlock()
+		m.releaseBudget(n)
+		s.mu.Lock()
+		return
+	}
+	if s.Status == StatusIdle {
+		n := s.reserved
+		s.reserved = 0
+		s.cleanupLocked(false)
+		s.mu.Unlock()
+		m.releaseBudget(n)
+		s.mu.Lock()
+		return
+	}
+	if s.Status == StatusRunning || s.Status == StatusPaused {
+		// Natural completion
+		snap := s.snapshotLocked()
+		s.lastSnap = snap
+		s.lastSnap.Status = StatusCompleted
+		s.hasLast = true
+		reserved := s.reserved
+		s.reserved = 0
+		if s.scheduler == sched {
+			s.mu.Unlock()
+			_ = sched.Stop()
+			s.mu.Lock()
+		}
+		s.Status = StatusCompleted
+		s.cleanupLocked(true)
+		s.mu.Unlock()
+		m.releaseBudget(reserved)
+		s.mu.Lock()
+	}
+}
+
+func (s *Session) cleanupLocked(retainMetrics bool) {
+	s.scheduler = nil
+	s.pauseGate = nil
+	if !retainMetrics {
+		s.metrics = nil
+	} else {
+		// keep metrics pointer for Completed snapshot until next Start
+	}
+	s.factory = nil
+	s.cache = nil
+	s.sysMetrics = nil
+	s.reporter = nil
+	s.errorLog = nil
+	s.runCfg = nil
+	s.reportDir = ""
+}
+
+// Pause freezes workers and phase clock.
+func (m *Manager) Pause(id string) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Status != StatusRunning {
+		return Snapshot{}, fmt.Errorf("can only pause Running session (status=%s)", s.Status)
+	}
+	if s.pauseGate != nil {
+		s.pauseGate.Pause()
+	}
+	s.Status = StatusPaused
+	return s.snapshotLocked(), nil
+}
+
+// Resume continues a paused session.
+func (m *Manager) Resume(id string) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Status != StatusPaused {
+		return Snapshot{}, fmt.Errorf("can only resume Paused session (status=%s)", s.Status)
+	}
+	if s.pauseGate != nil {
+		s.pauseGate.Resume()
+	}
+	s.Status = StatusRunning
+	return s.snapshotLocked(), nil
+}
+
+// Stop fast-cancels the session and waits until workers are drained.
+func (m *Manager) Stop(id string) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	s.mu.Lock()
+	switch s.Status {
+	case StatusRunning, StatusPaused, StatusStarting:
+	default:
+		st := s.Status
+		s.mu.Unlock()
+		return Snapshot{}, fmt.Errorf("cannot stop session in status %s", st)
+	}
+	s.generation++ // invalidate in-flight Start
+	s.Status = StatusStopping
+	if s.pauseGate != nil {
+		s.pauseGate.Resume()
+	}
+	sched := s.scheduler
+	reporter := s.reporter
+	sysMetrics := s.sysMetrics
+	errorLog := s.errorLog
+	reportDir := s.reportDir
+	reserved := s.reserved
+	s.reserved = 0
+	s.errorLog = nil
+	s.mu.Unlock()
+
+	if sched != nil {
+		_ = sched.Stop()
+	}
+	if reporter != nil {
+		if reportDir != "" {
+			_ = reporter.ReportAllToFile(filepath.Join(reportDir, "results"))
+		}
+		reporter.Stop()
+	}
+	if sysMetrics != nil {
+		sysMetrics.Stop()
+	}
+	if errorLog != nil {
+		errorLog.Flush()
+		_ = errorLog.Close()
+	}
+
+	m.releaseBudget(reserved)
+
+	s.mu.Lock()
+	s.Status = StatusIdle
+	s.cleanupLocked(false)
+	snap := s.snapshotLocked()
+	s.mu.Unlock()
+	return snap, nil
+}
+
+// StartAll starts all Idle/Failed/Completed sessions.
+func (m *Manager) StartAll() []error {
+	type named struct {
+		id, rel string
+	}
+	var ids []named
+	m.mu.RLock()
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if (s.Status == StatusIdle || s.Status == StatusFailed || s.Status == StatusCompleted) && !s.Missing {
+			ids = append(ids, named{s.ID, s.Config.RelPath})
+		}
+		s.mu.Unlock()
+	}
+	m.mu.RUnlock()
+
+	var errs []error
+	for _, n := range ids {
+		if _, err := m.Start(n.id); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", n.rel, err))
+		}
+	}
+	return errs
+}
+
+// StopAll stops all active sessions.
+func (m *Manager) StopAll() []error {
+	ids := m.activeIDs()
+	var errs []error
+	for _, id := range ids {
+		s, _ := m.findByID(id)
+		rel := id
+		if s != nil {
+			s.mu.Lock()
+			rel = s.Config.RelPath
+			s.mu.Unlock()
+		}
+		if _, err := m.Stop(id); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", rel, err))
+		}
+	}
+	return errs
+}
+
+// PauseAll pauses all Running sessions.
+func (m *Manager) PauseAll() []error {
+	m.mu.RLock()
+	var ids []string
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if s.Status == StatusRunning {
+			ids = append(ids, s.ID)
+		}
+		s.mu.Unlock()
+	}
+	m.mu.RUnlock()
+	var errs []error
+	for _, id := range ids {
+		if _, err := m.Pause(id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}
+
+// Remove stops a session if active, then deletes it from the table.
+func (m *Manager) Remove(id string) error {
+	s, err := m.findByID(id)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	st := s.Status
+	abs := s.Config.AbsPath
+	s.mu.Unlock()
+
+	if st == StatusRunning || st == StatusPaused || st == StatusStarting || st == StatusStopping {
+		if _, err := m.Stop(id); err != nil {
+			s.mu.Lock()
+			st = s.Status
+			s.mu.Unlock()
+			if st != StatusIdle && st != StatusFailed && st != StatusCompleted {
+				return err
+			}
+		}
+	}
+
+	m.mu.Lock()
+	delete(m.sessions, abs)
+	m.mu.Unlock()
+	m.saveSessionPrefs()
+	return nil
+}
+
+// PurgeMissing removes Idle/Failed/Completed sessions marked missing.
+func (m *Manager) PurgeMissing() int {
+	m.mu.Lock()
+	var remove []string
+	for abs, s := range m.sessions {
+		s.mu.Lock()
+		if s.Missing && (s.Status == StatusIdle || s.Status == StatusFailed || s.Status == StatusCompleted) {
+			remove = append(remove, abs)
+		}
+		s.mu.Unlock()
+	}
+	for _, abs := range remove {
+		delete(m.sessions, abs)
+	}
+	m.mu.Unlock()
+	if len(remove) > 0 {
+		m.saveSessionPrefs()
+	}
+	return len(remove)
+}
+
+// ValidateSession runs schema validation without starting load.
+func (m *Manager) ValidateSession(id string) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	s.mu.Lock()
+	cfg := s.Config
+	st := s.Status
+	s.mu.Unlock()
+	if st != StatusIdle && st != StatusFailed && st != StatusCompleted {
+		return Snapshot{}, fmt.Errorf("can only validate Idle session")
+	}
+	runCfg := cfg.ToRunConfig()
+	factory := db.NewConnectionFactory(runCfg)
+	if err := factory.ValidateSchemaGate(); err != nil {
+		s.mu.Lock()
+		s.Status = StatusFailed
+		s.LastError = err.Error()
+		snap := s.snapshotLocked()
+		s.mu.Unlock()
+		return snap, err
+	}
+	s.mu.Lock()
+	s.Status = StatusIdle
+	s.LastError = ""
+	snap := s.snapshotLocked()
+	s.mu.Unlock()
+	return snap, nil
+}
+
+// ValidateAll schema-checks all Idle/Failed/Completed rows.
+func (m *Manager) ValidateAll() []error {
+	ids := m.idleIDs()
+	var errs []error
+	for _, id := range ids {
+		s, _ := m.findByID(id)
+		rel := id
+		if s != nil {
+			s.mu.Lock()
+			rel = s.Config.RelPath
+			s.mu.Unlock()
+		}
+		if _, err := m.ValidateSession(id); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", rel, err))
+		}
+	}
+	return errs
+}
+
+// Fleet returns aggregated fleet metrics.
+func (m *Manager) Fleet() FleetSummary {
+	snaps := m.List()
+	f := FleetSummary{
+		BudgetLimit: m.MaxTotalConns(),
+		BudgetUsed:  int(m.reserved.Load()),
+		TopErrors:   map[string]int{},
+	}
+	for _, s := range snaps {
+		switch s.Status {
+		case StatusRunning:
+			f.Running++
+		case StatusPaused:
+			f.Paused++
+		case StatusIdle:
+			f.Idle++
+		case StatusFailed:
+			f.Failed++
+		case StatusCompleted:
+			f.Completed++
+		}
+		if s.Missing {
+			f.Missing++
+		}
+		f.TotalConns += s.CurrentConns
+		f.TotalTPS += s.TPS
+	}
+	return f
+}
+
+func (m *Manager) idleIDs() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var ids []string
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if s.Status == StatusIdle || s.Status == StatusFailed || s.Status == StatusCompleted {
+			ids = append(ids, s.ID)
+		}
+		s.mu.Unlock()
+	}
+	return ids
+}
+
+func (m *Manager) activeIDs() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var ids []string
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if s.Status == StatusRunning || s.Status == StatusPaused || s.Status == StatusStarting {
+			ids = append(ids, s.ID)
+		}
+		s.mu.Unlock()
+	}
+	return ids
+}
+
+// Snapshot builds a UI snapshot.
+func (s *Session) Snapshot() Snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotLocked()
+}
+
+func (s *Session) snapshotLocked() Snapshot {
+	if s.Status == StatusCompleted && s.hasLast && s.metrics == nil {
+		out := s.lastSnap
+		out.Status = StatusCompleted
+		out.UpdatedAt = nowStamp()
+		return out
+	}
+
+	phase := "—"
+	target, current := 0, 0
+	tps := 0.0
+	var errors, success int64
+	var expected, unexpected int64
+	elapsed := 0.0
+	var p50, p95, p99 int64
+	var topOps []OpCount
+	phaseProgress := 0.0
+
+	if s.scheduler != nil {
+		phase = s.scheduler.GetCurrentPhase().String()
+		current = s.scheduler.GetCurrentWorkerCount()
+		target = s.scheduler.GetTargetWorkerCount()
+		elapsed = s.scheduler.GetElapsedTime().Seconds()
+		total := float64(s.Config.Warmup + s.Config.Main + s.Config.Cooldown)
+		if total > 0 {
+			phaseProgress = elapsed / total * 100
+			if phaseProgress > 100 {
+				phaseProgress = 100
+			}
+		}
+	}
+	if s.metrics != nil {
+		tps = s.metrics.GetTPS()
+		success = s.metrics.GetTxSuccess()
+		errors = s.metrics.GetTxError()
+		p50, p95, p99 = s.metrics.GetLatencyPercentiles()
+		if es := s.metrics.ErrorStats(); es != nil {
+			_, exp, unexp, _, _ := es.Snapshot()
+			expected = int64(exp)
+			unexpected = int64(unexp)
+		}
+		opsMap := s.metrics.GetOpCounts()
+		type kv struct {
+			k string
+			v int64
+		}
+		var list []kv
+		for k, v := range opsMap {
+			list = append(list, kv{k, v})
+		}
+		sort.Slice(list, func(i, j int) bool { return list[i].v > list[j].v })
+		for i := 0; i < len(list) && i < 5; i++ {
+			topOps = append(topOps, OpCount{Name: list[i].k, Count: list[i].v})
+		}
+	}
+
+	reportDir := s.reportDir
+	if reportDir == "" {
+		reportDir = s.lastReportDir
+	}
+
+	return Snapshot{
+		ID:               s.ID,
+		Name:             s.Config.Name,
+		RelPath:          s.Config.RelPath,
+		AbsPath:          s.Config.AbsPath,
+		DSN:              s.Config.DSN,
+		Status:           s.Status,
+		Profile:          s.Config.Profile,
+		ConnMin:          s.Config.ConnMin,
+		ConnMax:          s.Config.ConnMax,
+		Warmup:           s.Config.Warmup,
+		Main:             s.Config.Main,
+		Cooldown:         s.Config.Cooldown,
+		SpikeCycles:      s.Config.SpikeCycles,
+		SpikeHold:        s.Config.SpikeHold,
+		ThinkMs:          s.Config.ThinkMs,
+		TxTimeout:        s.Config.TxTimeout,
+		Phase:            phase,
+		PhaseProgress:    phaseProgress,
+		TargetConns:      target,
+		CurrentConns:     current,
+		TPS:              tps,
+		Errors:           errors,
+		ExpectedErrors:   expected,
+		UnexpectedErrors: unexpected,
+		Success:          success,
+		LastError:        s.LastError,
+		ElapsedSec:       elapsed,
+		LatencyP50:       p50,
+		LatencyP95:       p95,
+		LatencyP99:       p99,
+		TopOps:           topOps,
+		ReportDir:        reportDir,
+		Missing:          s.Missing,
+		UpdatedAt:        nowStamp(),
+	}
+}
