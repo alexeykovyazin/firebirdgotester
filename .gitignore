@@ -19,3 +19,7 @@ sql_errors.log
 *.ReplLog/
 EMPLOYEE.FDB.LogArch/
 EMPLOYEE.FDB.ReplLog/
+
+# Local tool artifacts
+.zcode/
+*.exe~

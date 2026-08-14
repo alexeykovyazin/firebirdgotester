@@ -188,13 +188,20 @@ func (sp *SpikeProfile) UpdateSpikePhase(elapsed time.Duration, mainDuration tim
 		return
 	}
 
-	totalSpikeDuration := time.Duration(sp.spikeCycles) * (sp.spikeHold + sp.betweenSpike)
-	if elapsed >= totalSpikeDuration {
+	cycleDuration := sp.spikeHold + sp.betweenSpike
+	if cycleDuration <= 0 {
 		sp.inSpikePhase = false
 		return
 	}
+	// mainDuration <= 0 means unbounded main: keep cycling forever.
+	if mainDuration > 0 {
+		totalSpikeDuration := time.Duration(sp.spikeCycles) * cycleDuration
+		if elapsed >= totalSpikeDuration {
+			sp.inSpikePhase = false
+			return
+		}
+	}
 
-	cycleDuration := sp.spikeHold + sp.betweenSpike
 	currentCycle := int(elapsed / cycleDuration)
 	phaseElapsed := elapsed % cycleDuration
 

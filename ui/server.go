@@ -234,8 +234,34 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
+// decodeTimeLimit reads an optional {"timeLimitMin": N} body; absent or empty
+// body means 0 (no limit).
+func decodeTimeLimit(r *http.Request) (int, error) {
+	if r.Body == nil {
+		return 0, nil
+	}
+	var body struct {
+		TimeLimitMin int `json:"timeLimitMin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err == io.EOF {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("invalid body: %w", err)
+	}
+	if body.TimeLimitMin < 0 {
+		return 0, fmt.Errorf("timeLimitMin must be >= 0")
+	}
+	return body.TimeLimitMin, nil
+}
+
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
-	snap, err := s.manager.Start(r.PathValue("id"))
+	timeLimitMin, err := decodeTimeLimit(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	snap, err := s.manager.Start(r.PathValue("id"), timeLimitMin)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -320,7 +346,12 @@ func (s *Server) handleReportDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStartAll(w http.ResponseWriter, r *http.Request) {
-	errs := s.manager.StartAll()
+	timeLimitMin, err := decodeTimeLimit(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	errs := s.manager.StartAll(timeLimitMin)
 	msg := make([]string, 0, len(errs))
 	for _, e := range errs {
 		msg = append(msg, e.Error())
