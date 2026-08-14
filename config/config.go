@@ -31,6 +31,10 @@ type Config struct {
 	Main     int
 	Cooldown int
 
+	// UnboundedMain keeps the run in the main phase forever (no cooldown,
+	// no natural completion); used by the UI "No limit" mode.
+	UnboundedMain bool
+
 	// Spike profile extras
 	SpikeCycles int
 	SpikeHold   int

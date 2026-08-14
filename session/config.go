@@ -201,6 +201,8 @@ type Snapshot struct {
 	Success          int64     `json:"success"`
 	LastError        string    `json:"lastError"`
 	ElapsedSec       float64   `json:"elapsedSec"`
+	TimeLimitMin     int       `json:"timeLimitMin"`
+	RemainingSec     float64   `json:"remainingSec"`
 	LatencyP50       int64     `json:"latencyP50"`
 	LatencyP95       int64     `json:"latencyP95"`
 	LatencyP99       int64     `json:"latencyP99"`

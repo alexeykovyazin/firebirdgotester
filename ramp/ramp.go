@@ -47,6 +47,8 @@ type Scheduler struct {
 	lastWalkAdjust time.Time
 	rng            *rand.Rand
 
+	liveConnMax atomic.Int64 // >0 overrides config ConnMax (live budget resize)
+
 	stopping atomic.Bool
 	runDone  chan struct{} // closed when run() exits
 }
@@ -130,6 +132,31 @@ func effectiveMinMax(cfg *config.Config) (int, int) {
 	return min, max
 }
 
+// SetConnectionMax applies a live cap on the worker/connection count,
+// overriding the config value from the next tick on. Used when the fleet
+// budget changes while the session is running.
+func (s *Scheduler) SetConnectionMax(max int) {
+	if max < 0 {
+		max = 0
+	}
+	s.liveConnMax.Store(int64(max))
+}
+
+// currentMinMax returns the effective min/max worker counts, honoring any
+// live cap set via SetConnectionMax.
+func (s *Scheduler) currentMinMax() (int, int) {
+	min, max := effectiveMinMax(s.config)
+	if cap := int(s.liveConnMax.Load()); cap > 0 {
+		if max > cap {
+			max = cap
+		}
+		if min > max {
+			min = max
+		}
+	}
+	return min, max
+}
+
 // Start begins the ramp schedule
 func (s *Scheduler) Start() error {
 	s.startTime = time.Now()
@@ -152,7 +179,7 @@ func (s *Scheduler) Stop() error {
 func (s *Scheduler) run() {
 	defer close(s.runDone)
 
-	min, _ := effectiveMinMax(s.config)
+	min, _ := s.currentMinMax()
 	if err := s.ensureWorkerCount(min); err != nil {
 		fmt.Printf("Failed to ramp to initial connections: %v\n", err)
 	}
@@ -190,6 +217,9 @@ func (s *Scheduler) run() {
 }
 
 func (s *Scheduler) isComplete() bool {
+	if s.config.UnboundedMain {
+		return false
+	}
 	if s.currentPhase != PhaseCooldown {
 		return false
 	}
@@ -231,13 +261,13 @@ func (s *Scheduler) updatePhase() {
 
 	if s.elapsedTime < warmupDuration {
 		s.currentPhase = PhaseWarmup
-	} else if s.elapsedTime < warmupDuration+mainDuration {
+	} else if s.config.UnboundedMain || s.elapsedTime < warmupDuration+mainDuration {
 		s.currentPhase = PhaseMain
 		if prev != PhaseMain {
 			s.workerMutex.RLock()
 			s.walkTarget = len(s.workers)
 			s.workerMutex.RUnlock()
-			min, max := effectiveMinMax(s.config)
+			min, max := s.currentMinMax()
 			if s.walkTarget < min {
 				s.walkTarget = min
 			}
@@ -257,7 +287,7 @@ func (s *Scheduler) handleWarmup() {
 }
 
 func (s *Scheduler) handleMain() {
-	min, max := effectiveMinMax(s.config)
+	min, max := s.currentMinMax()
 
 	if s.config.Profile == "spike" && s.spikeManager != nil {
 		warmup := time.Duration(s.config.Warmup) * time.Second
@@ -280,6 +310,14 @@ func (s *Scheduler) handleMain() {
 	}
 
 	// Random walk between min and max (hold if equal)
+	// Snap into range first so a live budget shrink applies on the next
+	// tick instead of walking down one step at a time.
+	if s.walkTarget > max {
+		s.walkTarget = max
+	}
+	if s.walkTarget < min {
+		s.walkTarget = min
+	}
 	if min == max {
 		s.walkTarget = min
 		s.ensureWorkerCount(min)
@@ -315,7 +353,7 @@ func (s *Scheduler) handleCooldown() {
 }
 
 func (s *Scheduler) calculateTargetConnections(elapsed time.Duration, phase Phase) int {
-	min, max := effectiveMinMax(s.config)
+	min, max := s.currentMinMax()
 	switch phase {
 	case PhaseWarmup:
 		current := min + int(s.warmupRate*elapsed.Seconds())
@@ -521,11 +559,18 @@ func (sm *SpikeManager) Update(elapsed, mainDuration time.Duration) {
 	spikeHold := time.Duration(sm.config.SpikeHold) * time.Second
 	betweenSpike := sm.calculateBetweenSpikeDuration()
 	cycleDuration := spikeHold + betweenSpike
-	totalSpikeDuration := time.Duration(sm.config.SpikeCycles) * cycleDuration
-
-	if elapsed >= totalSpikeDuration {
+	if cycleDuration <= 0 {
 		sm.inSpikePhase = false
 		return
+	}
+
+	// mainDuration <= 0 means unbounded main: keep cycling forever.
+	if mainDuration > 0 {
+		totalSpikeDuration := time.Duration(sm.config.SpikeCycles) * cycleDuration
+		if elapsed >= totalSpikeDuration {
+			sm.inSpikePhase = false
+			return
+		}
 	}
 
 	currentCycle := int(elapsed / cycleDuration)
@@ -556,6 +601,10 @@ func (sm *SpikeManager) GetCurrentCycle() int {
 func (sm *SpikeManager) calculateBetweenSpikeDuration() time.Duration {
 	if sm.config.SpikeCycles <= 0 {
 		return 0
+	}
+	if sm.config.UnboundedMain || sm.config.Main <= 0 {
+		// No finite main to spread spikes over; use the default gap.
+		return 30 * time.Second
 	}
 
 	mainDuration := time.Duration(sm.config.Main) * time.Second

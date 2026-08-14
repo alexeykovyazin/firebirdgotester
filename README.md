@@ -1,4 +1,4 @@
-# Firebird Load Generator (`fb-loadgen`)
+# IBSurgeon Firebird Load Generator (`fb-loadgen`)
 
 A Go CLI load simulator for **Firebird** databases, built around the classic **EMPLOYEE** sample schema. It spawns workers (one dedicated connection each), runs weighted mixes of SELECT / INSERT / UPDATE / DELETE / stored-procedure calls, ramps connections through warmup → main → cooldown, and writes latency / throughput / error reports.
 
@@ -8,6 +8,9 @@ A Go CLI load simulator for **Firebird** databases, built around the classic **E
 - **Connection ramp**: linear warmup/cooldown; random-walk between min/max in main; sawtooth for spike
 - **Multi-DB discovery**: recursive folder scan (default `*.fdb`); same basename in different subfolders are distinct sessions
 - **Web UI control plane**: table of databases with Start / Stop / Pause per row (`--ui`)
+- **Per-DB time limits**: run a session for 1–600 minutes (phases scale proportionally) or unlimited — 1-minute warmup, then steady load until stopped
+- **Live connection budget**: saving a smaller/larger total-connection limit resizes running sessions immediately
+- **Themed UI**: light theme by default, dark toggle remembered per browser
 - **Schema-aware operations**: respects EMPLOYEE constraints (`PO_NUMBER`, salary bounds, status transitions, FKs)
 - **Expected exception handling**: Firebird business exceptions (e.g. `order_already_shipped`) classified separately from real failures
 - **Startup lookup cache**: preloads valid dept / employee / project / customer / job salary ranges
@@ -58,7 +61,7 @@ There is no published module install path; build from the repository root.
 
 ## Web UI (multi-DB)
 
-Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). Pass `--ui-addr :9000` to bind all interfaces. Optional `--ui-token` requires `Authorization: Bearer …` on mutating APIs.
+Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). Pass `--ui-addr :9000` to bind all interfaces. Optional `--ui-token` requires `Authorization: Bearer …` on mutating APIs. The UI (IBSurgeon Firebird Load Generator) uses a light theme by default with a header ☾/☀ toggle; the choice is remembered per browser.
 
 **Connection bar** (Host / Port / User / Password / Scan root / Max total conns): defaults are `localhost`, **3050**, `SYSDBA`, `masterkey`. **Save connection** writes `fb-loadgen.ui.json` (v2: also stores per-DB prefs). Passwords are redacted on `GET /api/config`; blank password on save keeps the stored value.
 
@@ -67,18 +70,19 @@ Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). 
 | Database | Relative path from scan root (same basename in different folders stay distinct) |
 | Status | Idle / Starting / Running / Paused / Stopping / Completed / Failed |
 | Profile / Conns / TPS / Err / Phase | Live metrics; edits survive polling |
-| Actions | Start, Stop, Pause/Resume, Edit (detail drawer), Remove |
+| Actions | Time-limit dropdown, Start, Stop, Pause/Resume, Edit (detail drawer), Remove |
 
-**Detail drawer** (row click / Edit): full path, DSN, warmup/main/cooldown, thinkMs/txTimeout, spike fields, latency percentiles, expected vs unexpected errors, report downloads.
+**Detail drawer** (row click / Edit): full path, DSN, warmup/main/cooldown (shape ratios for timed runs), thinkMs/txTimeout, spike fields, time limit/remaining, latency percentiles, expected vs unexpected errors, report downloads.
 
 **Behavior**
 
 - **Discover** recursively scans the scan root (optional subdir filter). Initial page load lists existing sessions without auto-rescan.
 - Per-row settings restore from `fb-loadgen.ui.json` on discover upsert.
 - **Start** runs full schema validation, then warmup → main → cooldown. Natural end → **Completed** with retained metrics. Reports land in `reports/<relpath>/<timestamp>/`.
+- **Time limit**: each row has a dropdown in the Actions cell (No limit / 1 / 5 / 15 / 30 / 60 / 120 / 600 min, remembered per database by the browser; **15 min is the default**). A chosen duration becomes that session's total run length: warmup/main/cooldown are scaled proportionally to fill it, then the session ends naturally as **Completed** (countdown in the Phase column and drawer; Pause freezes it). **No limit** runs a fixed 1-minute warmup and then stays in the main phase indefinitely until you press **Stop**. **Start All** starts every idle row using its own per-row limit. Via API: `POST /api/sessions/{id}/start` and `POST /api/sessions/start-all` accept `{"timeLimitMin": N}` (absent/0 = the No-limit behavior; the configured warmup/main/cooldown values act as the shape ratios for scaled runs).
 - Main phase connection count **random-walks ±1/sec** between min and max. Spike drives both connection sawtooth and op-mix switching.
 - **Pause** freezes workers and the phase clock. **Stop** cancels immediately.
-- **Start All / Stop All / Pause All / Purge missing / Validate all** batch controls. Hard budget: `--max-total-conns` (default 200) with atomic reservation.
+- **Start All / Stop All / Pause All / Purge missing / Validate all** batch controls. Hard budget: `--max-total-conns` (default 200) with atomic reservation. Saving a smaller/larger budget resizes running sessions live — caps and reservations move to the new even split within about a second.
 
 ```bash
 ./fb-loadgen --ui \
@@ -188,6 +192,8 @@ During CLI/UI main phase (non-spike), worker count random-walks between min and 
 | `--warmup` | Linear ramp min → max | `30` |
 | `--main` | Steady-state / walk / spike period | `120` |
 | `--cooldown` | Linear drain to 0 | `20` |
+
+CLI runs use these values directly. In the web UI, timed runs scale them proportionally to the selected duration; the **No limit** mode uses a fixed 60 s warmup followed by an endless main phase until stopped.
 
 ### Spike extras
 

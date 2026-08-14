@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,11 +55,13 @@ type Session struct {
 	generation int64
 	reserved   int // ConnMax reserved against budget
 
-	pauseGate *worker.PauseGate
-	scheduler *ramp.Scheduler
-	metrics   *worker.MetricsCollector
-	factory   *db.ConnectionFactory
-	cache     *ops.Cache
+	timeLimitMin int // 0 = no limit; run phases are scaled to fill this total
+
+	pauseGate  *worker.PauseGate
+	scheduler  *ramp.Scheduler
+	metrics    *worker.MetricsCollector
+	factory    *db.ConnectionFactory
+	cache      *ops.Cache
 	sysMetrics *metrics.MetricsCollector
 	reporter   *metrics.Reporter
 	errorLog   *errlog.Logger
@@ -204,10 +207,69 @@ func (m *Manager) UpdateConnectionSettings(s config.UISettings, persist bool) er
 	path := m.settingsPath
 	m.mu.Unlock()
 
+	m.rebalanceLiveBudget()
+
 	if persist {
 		return m.persistSettings(path, s)
 	}
 	return nil
+}
+
+// rebalanceLiveBudget applies the current even per-DB split to running
+// sessions: their connection caps and budget reservations shrink or grow
+// live (workers adjust within a scheduler tick). Caller must not hold m.mu.
+func (m *Manager) rebalanceLiveBudget() {
+	type adj struct {
+		s        *Session
+		from, to int
+	}
+	var adjs []adj
+
+	m.mu.RLock()
+	n := 0
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if !s.Missing {
+			n++
+		}
+		s.mu.Unlock()
+	}
+	per := EvenPerDBMax(m.maxTotal, n)
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		if (s.Status == StatusRunning || s.Status == StatusPaused) && s.scheduler != nil && s.reserved > 0 && s.reserved != per {
+			adjs = append(adjs, adj{s, s.reserved, per})
+		}
+		s.mu.Unlock()
+	}
+	m.mu.RUnlock()
+
+	for _, a := range adjs {
+		if a.to < a.from {
+			a.s.mu.Lock()
+			if a.s.reserved == a.from && a.s.scheduler != nil {
+				a.s.scheduler.SetConnectionMax(a.to)
+				a.s.reserved = a.to
+				a.s.mu.Unlock()
+				m.releaseBudget(a.from - a.to)
+				continue
+			}
+			a.s.mu.Unlock()
+		} else if a.to > a.from {
+			if err := m.reserveBudget(a.to - a.from); err != nil {
+				continue // budget exhausted; keep the current cap
+			}
+			a.s.mu.Lock()
+			if a.s.reserved == a.from && a.s.scheduler != nil {
+				a.s.scheduler.SetConnectionMax(a.to)
+				a.s.reserved = a.to
+				a.s.mu.Unlock()
+				continue
+			}
+			a.s.mu.Unlock()
+			m.releaseBudget(a.to - a.from)
+		}
+	}
 }
 
 func (m *Manager) persistSettings(path string, base config.UISettings) error {
@@ -525,8 +587,12 @@ func (m *Manager) releaseBudget(n int) {
 	}
 }
 
-// Start begins a timed run for the session.
-func (m *Manager) Start(id string) (Snapshot, error) {
+// Start begins a timed run for the session. A positive timeLimitMin scales
+// warmup/main/cooldown proportionally so the run totals exactly that duration.
+func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
+	if timeLimitMin < 0 {
+		return Snapshot{}, fmt.Errorf("timeLimitMin must be >= 0")
+	}
 	s, err := m.findByID(id)
 	if err != nil {
 		return Snapshot{}, err
@@ -552,12 +618,21 @@ func (m *Manager) Start(id string) (Snapshot, error) {
 		return snap, err
 	}
 	cfgCopy := s.Config
+	if timeLimitMin > 0 {
+		scalePhases(&cfgCopy, time.Duration(timeLimitMin)*time.Minute)
+	} else {
+		// No limit: fixed 1-minute warmup, then main until explicit stop.
+		cfgCopy.Warmup = 60
+		cfgCopy.Main = 0
+		cfgCopy.Cooldown = 0
+	}
 	s.generation++
 	gen := s.generation
 	s.Status = StatusStarting
 	s.LastError = ""
 	s.Missing = false
 	s.hasLast = false
+	s.timeLimitMin = timeLimitMin
 	s.mu.Unlock()
 
 	m.saveSessionPrefs()
@@ -591,6 +666,9 @@ func (m *Manager) Start(id string) (Snapshot, error) {
 		reportEvery = m.shared.ReportEvery
 	}
 	runCfg := cfgCopy.ToRunConfigWithReportEvery(reportEvery)
+	if timeLimitMin == 0 {
+		runCfg.UnboundedMain = true
+	}
 	factory := db.NewConnectionFactory(runCfg)
 
 	if err := factory.ValidateSchemaGate(); err != nil {
@@ -614,7 +692,7 @@ func (m *Manager) Start(id string) (Snapshot, error) {
 		hold := time.Duration(cfgCopy.SpikeHold) * time.Second
 		cycles := cfgCopy.SpikeCycles
 		between := 30 * time.Second
-		if cycles > 0 {
+		if cycles > 0 && cfgCopy.Main > 0 {
 			mainDur := time.Duration(cfgCopy.Main) * time.Second
 			rem := mainDur - time.Duration(cycles)*hold
 			if rem > 0 {
@@ -695,6 +773,29 @@ func (m *Manager) Start(id string) (Snapshot, error) {
 	go m.watchCompletion(s, gen, outFile, baseName)
 
 	return snap, nil
+}
+
+// scalePhases resizes warmup/main/cooldown proportionally so they sum to
+// total seconds; the rounding remainder lands in main. A non-positive base
+// schedule puts the whole duration into main.
+func scalePhases(c *SessionConfig, total time.Duration) {
+	secs := int(total.Seconds())
+	if secs < 1 {
+		return
+	}
+	base := c.Warmup + c.Main + c.Cooldown
+	if base <= 0 {
+		c.Warmup, c.Main, c.Cooldown = 0, secs, 0
+		return
+	}
+	f := float64(secs) / float64(base)
+	w := int(math.Round(float64(c.Warmup) * f))
+	cd := int(math.Round(float64(c.Cooldown) * f))
+	m := secs - w - cd
+	if m < 0 {
+		m = 0
+	}
+	c.Warmup, c.Main, c.Cooldown = w, m, cd
 }
 
 func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseName string) {
@@ -882,8 +983,8 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	return snap, nil
 }
 
-// StartAll starts all Idle/Failed/Completed sessions.
-func (m *Manager) StartAll() []error {
+// StartAll starts all Idle/Failed/Completed sessions with the given time limit.
+func (m *Manager) StartAll(timeLimitMin int) []error {
 	type named struct {
 		id, rel string
 	}
@@ -900,7 +1001,7 @@ func (m *Manager) StartAll() []error {
 
 	var errs []error
 	for _, n := range ids {
-		if _, err := m.Start(n.id); err != nil {
+		if _, err := m.Start(n.id, timeLimitMin); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", n.rel, err))
 		}
 	}
@@ -1139,7 +1240,7 @@ func (s *Session) Snapshot() Snapshot {
 }
 
 func (s *Session) snapshotLocked() Snapshot {
-	if s.Status == StatusCompleted && s.hasLast && s.metrics == nil {
+	if s.Status == StatusCompleted && s.hasLast {
 		out := s.lastSnap
 		out.Status = StatusCompleted
 		out.UpdatedAt = nowStamp()
@@ -1155,6 +1256,7 @@ func (s *Session) snapshotLocked() Snapshot {
 	var p50, p95, p99 int64
 	var topOps []OpCount
 	phaseProgress := 0.0
+	remaining := 0.0
 
 	if s.scheduler != nil {
 		phase = s.scheduler.GetCurrentPhase().String()
@@ -1162,10 +1264,20 @@ func (s *Session) snapshotLocked() Snapshot {
 		target = s.scheduler.GetTargetWorkerCount()
 		elapsed = s.scheduler.GetElapsedTime().Seconds()
 		total := float64(s.Config.Warmup + s.Config.Main + s.Config.Cooldown)
+		if s.runCfg != nil {
+			// Run totals come from the (possibly time-limit-scaled) run config
+			total = float64(s.runCfg.Warmup + s.runCfg.Main + s.runCfg.Cooldown)
+		}
 		if total > 0 {
 			phaseProgress = elapsed / total * 100
 			if phaseProgress > 100 {
 				phaseProgress = 100
+			}
+		}
+		if s.timeLimitMin > 0 {
+			remaining = total - elapsed
+			if remaining < 0 {
+				remaining = 0
 			}
 		}
 	}
@@ -1227,6 +1339,8 @@ func (s *Session) snapshotLocked() Snapshot {
 		Success:          success,
 		LastError:        s.LastError,
 		ElapsedSec:       elapsed,
+		TimeLimitMin:     s.timeLimitMin,
+		RemainingSec:     remaining,
 		LatencyP50:       p50,
 		LatencyP95:       p95,
 		LatencyP99:       p99,

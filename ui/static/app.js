@@ -4,6 +4,31 @@ let sessionsById = {};
 let selectedId = null;
 let authToken = "";
 
+let rowLimits = {}; // session id -> time limit in minutes (0 = no limit)
+try {
+  rowLimits = JSON.parse(localStorage.getItem("fb-time-limits") || "{}") || {};
+} catch {
+  rowLimits = {};
+}
+function rowLimit(id) {
+  const v = Number(rowLimits[id]);
+  return Number.isFinite(v) ? v : 15; // default: 15 min
+}
+function saveRowLimits() {
+  localStorage.setItem("fb-time-limits", JSON.stringify(rowLimits));
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  $("btnTheme").textContent = theme === "dark" ? "☀" : "☾";
+}
+$("btnTheme").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem("fb-theme", next);
+  applyTheme(next);
+});
+applyTheme(localStorage.getItem("fb-theme") || "light");
+
 function toast(msg, isErr) {
   toastEl.textContent = msg;
   toastEl.className = "show" + (isErr ? " err" : "");
@@ -41,11 +66,44 @@ function profileSelect(selected) {
     .join("");
 }
 
+function timeLimitOptions(selected) {
+  return [
+    [0, "No limit"],
+    [1, "1 min"],
+    [5, "5 min"],
+    [15, "15 min"],
+    [30, "30 min"],
+    [60, "60 min"],
+    [120, "120 min"],
+    [600, "600 min"],
+  ]
+    .map(([v, l]) => `<option value="${v}" ${v === selected ? "selected" : ""}>${l}</option>`)
+    .join("");
+}
+
+function limitSelectHtml(id) {
+  return `<select data-act="limit" title="Time limit for this run">${timeLimitOptions(rowLimit(id))}</select>`;
+}
+
+function startBodyFor(id) {
+  return JSON.stringify({ timeLimitMin: rowLimit(id) });
+}
+
+function fmtRemaining(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
 function actionsHtml(s) {
   const buttons = [];
   if (editable(s.status)) {
     buttons.push(`<button data-act="edit">Edit</button>`);
-    if (!s.missing) buttons.push(`<button class="primary" data-act="start">Start</button>`);
+    if (!s.missing) buttons.push(limitSelectHtml(s.id), `<button class="primary" data-act="start">Start</button>`);
   }
   if (s.status === "Running") {
     buttons.push(`<button data-act="pause">Pause</button>`);
@@ -60,6 +118,18 @@ function actionsHtml(s) {
   }
   buttons.push(`<button class="danger" data-act="remove">Remove</button>`);
   return buttons.join("");
+}
+
+// Re-render the Actions cell only when its content actually changes; never
+// while the user has the limit dropdown focused/open.
+function renderActions(tr, s) {
+  const cell = tr.querySelector(".live-actions");
+  const key = `${s.status}|${!!s.missing}|${rowLimit(s.id)}`;
+  if (cell.dataset.key === key) return;
+  const ae = document.activeElement;
+  if (ae && cell.contains(ae) && ae.matches("select")) return;
+  cell.innerHTML = actionsHtml(s);
+  cell.dataset.key = key;
 }
 
 function matchesFilter(s) {
@@ -113,8 +183,17 @@ function patchRow(tr, s) {
     `${s.currentConns || 0}${s.targetConns ? " / " + s.targetConns : ""}`;
   tr.querySelector(".live-tps").textContent = (s.tps || 0).toFixed(1);
   tr.querySelector(".live-err").textContent = String(s.errors || 0);
-  tr.querySelector(".live-phase").textContent = s.phase || "—";
-  tr.querySelector(".live-actions").innerHTML = actionsHtml(s);
+  let phaseTxt = s.phase || "—";
+  if (s.timeLimitMin > 0 && (s.status === "Running" || s.status === "Paused" || s.status === "Starting")) {
+    phaseTxt += ` · ${fmtRemaining(s.remainingSec)} left`;
+  }
+  let phaseHtml = `<span class="phase-name">${escapeHtml(phaseTxt)}</span>`;
+  if (s.status === "Running" || s.status === "Paused" || s.status === "Completed") {
+    const pct = Math.max(0, Math.min(100, s.phaseProgress || 0));
+    phaseHtml += `<span class="phase-bar"><span style="width:${pct}%"></span></span>`;
+  }
+  tr.querySelector(".live-phase").innerHTML = phaseHtml;
+  renderActions(tr, s);
 
   const profileCell = tr.querySelector(".live-profile");
   if (!rowIsDirtyOrFocused(tr)) {
@@ -139,7 +218,13 @@ function renderFleet(fleet) {
   $("sumCompleted").textContent = fleet.completed || 0;
   $("sumConns").textContent = fleet.totalConns || 0;
   $("sumTps").textContent = (fleet.totalTps || 0).toFixed(1);
-  $("sumBudget").textContent = `${fleet.budgetUsed || 0}/${fleet.budgetLimit || 0}`;
+  const used = fleet.budgetUsed || 0;
+  const limit = fleet.budgetLimit || 0;
+  $("sumBudget").textContent = `${used}/${limit}`;
+  const bar = $("budgetBar");
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  bar.style.width = pct + "%";
+  bar.className = "gauge-fill" + (pct >= 100 ? " full" : pct >= 80 ? " warn" : "");
   const per = fleet.perDbMax || 0;
   const dbs = fleet.databases || 0;
   $("sumPerDb").textContent = dbs ? `${per} (${dbs} DBs)` : String(per);
@@ -158,8 +243,19 @@ function syncTable(sessions) {
   document.querySelectorAll("#rows tr[data-id]").forEach((tr) => {
     if (!keep.has(tr.dataset.id)) tr.remove();
   });
-  if (!keep.size && !$("rows").children.length) {
-    $("rows").innerHTML = `<tr><td colspan="8" class="meta">No databases — click Discover</td></tr>`;
+  const placeholder = $("rows").querySelector("tr:not([data-id])");
+  if (keep.size) {
+    if (placeholder) placeholder.remove();
+  } else if (!placeholder) {
+    $("rows").innerHTML = `
+      <tr><td colspan="8" class="empty-state">
+        <div class="empty-title">No databases yet</div>
+        <div class="empty-sub">Point the scan root at a folder with .fdb files, then discover.</div>
+        <button class="primary big" id="btnEmptyDiscover">Discover databases</button>
+      </td></tr>`;
+    $("btnEmptyDiscover").addEventListener("click", () => {
+      discover().catch((e) => toast(e.message, true));
+    });
   }
   if (selectedId && sessionsById[selectedId]) {
     fillDrawer(sessionsById[selectedId]);
@@ -258,7 +354,10 @@ function fillDrawer(s) {
   $("dSpikeHold").value = s.spikeHold ?? 0;
   $("dConnMin").value = s.connMin;
   $("dConnMax").value = s.connMax;
-  $("dElapsed").textContent = `${(s.elapsedSec || 0).toFixed(1)}s · success ${s.success || 0}`;
+  $("dElapsed").textContent = `${fmtRemaining(s.elapsedSec || 0)} · success ${s.success || 0}`;
+  $("dTimeLimit").textContent = s.timeLimitMin > 0
+    ? `${s.timeLimitMin} min · ${fmtRemaining(s.remainingSec)} left`
+    : "No limit";
   $("dLatency").textContent = `${s.latencyP50 || 0} / ${s.latencyP95 || 0} / ${s.latencyP99 || 0} ms`;
   $("dErrors").textContent = `${s.errors || 0} (${s.expectedErrors || 0} / ${s.unexpectedErrors || 0})`;
   $("dTopOps").textContent = (s.topOps || []).map((o) => `${o.name}:${o.count}`).join(", ") || "—";
@@ -311,6 +410,15 @@ $("rows").addEventListener("input", (ev) => {
   if (tr && ev.target.matches("[data-field]")) tr.dataset.dirty = "1";
 });
 
+$("rows").addEventListener("change", (ev) => {
+  const sel = ev.target.closest('select[data-act="limit"]');
+  if (!sel) return;
+  const tr = ev.target.closest("tr[data-id]");
+  if (!tr) return;
+  rowLimits[tr.dataset.id] = Number(sel.value) || 0;
+  saveRowLimits();
+});
+
 $("rows").addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-act]");
   const tr = ev.target.closest("tr[data-id]");
@@ -318,6 +426,7 @@ $("rows").addEventListener("click", async (ev) => {
   const id = tr.dataset.id;
 
   if (!btn) {
+    if (ev.target.closest("select, input, textarea")) return;
     openDrawer(id);
     return;
   }
@@ -333,7 +442,7 @@ $("rows").addEventListener("click", async (ev) => {
         await api(`/api/sessions/${id}`, { method: "PATCH", body: JSON.stringify(rowPatch(tr)) });
         delete tr.dataset.dirty;
       }
-      await api(`/api/sessions/${id}/start`, { method: "POST" });
+      await api(`/api/sessions/${id}/start`, { method: "POST", body: startBodyFor(id) });
     } else if (act === "pause") {
       await api(`/api/sessions/${id}/pause`, { method: "POST" });
     } else if (act === "resume") {
@@ -407,15 +516,30 @@ $("btnSaveConfig").addEventListener("click", async () => {
 });
 
 $("btnStartAll").addEventListener("click", async () => {
-  if (!confirm("Start all idle databases?")) return;
-  try {
-    const data = await api("/api/sessions/start-all", { method: "POST" });
-    syncTable(data.sessions || []);
-    if (data.errors && data.errors.length) toast(data.errors.join("; "), true);
-    else toast("Start All requested");
-  } catch (e) {
-    toast(e.message, true);
+  const ids = Object.keys(sessionsById).filter((id) => {
+    const s = sessionsById[id];
+    return editable(s.status) && !s.missing;
+  });
+  if (!ids.length) {
+    toast("No idle databases to start");
+    return;
   }
+  const limited = ids.filter((id) => rowLimit(id) > 0);
+  const suffix = limited.length
+    ? ` (${limited.length} of ${ids.length} with a time limit)`
+    : "";
+  if (!confirm(`Start ${ids.length} idle database(s)${suffix}? Each row uses its own time limit.`)) return;
+  const errs = [];
+  for (const id of ids) {
+    try {
+      await api(`/api/sessions/${id}/start`, { method: "POST", body: startBodyFor(id) });
+    } catch (e) {
+      errs.push(`${sessionsById[id].relPath || id}: ${e.message}`);
+    }
+  }
+  await refresh();
+  if (errs.length) toast(errs.join("; "), true);
+  else toast(`Started ${ids.length} session(s)`);
 });
 
 $("btnStopAll").addEventListener("click", async () => {
