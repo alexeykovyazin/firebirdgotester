@@ -11,6 +11,7 @@ A Go CLI load simulator for **Firebird** databases, built around the classic **E
 - **Per-DB time limits**: run a session for 1–600 minutes (phases scale proportionally) or unlimited — 1-minute warmup, then steady load until stopped
 - **Live connection budget**: saving a smaller/larger total-connection limit resizes running sessions immediately
 - **Themed UI**: light theme by default, dark toggle remembered per browser
+- **REST API**: full programmatic control (list / start / stop / status) — see [API.md](API.md)
 - **Schema-aware operations**: respects EMPLOYEE constraints (`PO_NUMBER`, salary bounds, status transitions, FKs)
 - **Expected exception handling**: Firebird business exceptions (e.g. `order_already_shipped`) classified separately from real failures
 - **Startup lookup cache**: preloads valid dept / employee / project / customer / job salary ranges
@@ -79,7 +80,7 @@ Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). 
 - **Discover** recursively scans the scan root (optional subdir filter). Initial page load lists existing sessions without auto-rescan.
 - Per-row settings restore from `fb-loadgen.ui.json` on discover upsert.
 - **Start** runs full schema validation, then warmup → main → cooldown. Natural end → **Completed** with retained metrics. Reports land in `reports/<relpath>/<timestamp>/`.
-- **Time limit**: each row has a dropdown in the Actions cell (No limit / 1 / 5 / 15 / 30 / 60 / 120 / 600 min, remembered per database by the browser; **15 min is the default**). A chosen duration becomes that session's total run length: warmup/main/cooldown are scaled proportionally to fill it, then the session ends naturally as **Completed** (countdown in the Phase column and drawer; Pause freezes it). **No limit** runs a fixed 1-minute warmup and then stays in the main phase indefinitely until you press **Stop**. **Start All** starts every idle row using its own per-row limit. Via API: `POST /api/sessions/{id}/start` and `POST /api/sessions/start-all` accept `{"timeLimitMin": N}` (absent/0 = the No-limit behavior; the configured warmup/main/cooldown values act as the shape ratios for scaled runs).
+- **Time limit**: each row has a dropdown in the Actions cell (No limit / 1 / 5 / 15 / 30 / 60 / 120 / 600 min, remembered per database by the browser; **15 min is the default**). A chosen duration becomes that session's total run length: warmup/main/cooldown are scaled proportionally to fill it, then the session ends naturally as **Completed** (countdown in the Phase column and drawer; Pause freezes it). **No limit** runs a fixed 1-minute warmup and then stays in the main phase indefinitely until you press **Stop**. The **Time limit for all** dropdown + **Apply to all** button above the table bulk-set every row. **Start All** starts every idle row using its own per-row limit. Via API: `POST /api/sessions/{id}/start` and `POST /api/sessions/start-all` accept `{"timeLimitMin": N}` (absent/0 = the No-limit behavior; the configured warmup/main/cooldown values act as the shape ratios for scaled runs).
 - Main phase connection count **random-walks ±1/sec** between min and max. Spike drives both connection sawtooth and op-mix switching.
 - **Pause** freezes workers and the phase clock. **Stop** cancels immediately.
 - **Start All / Stop All / Pause All / Purge missing / Validate all** batch controls. Hard budget: `--max-total-conns` (default 200) with atomic reservation. Saving a smaller/larger budget resizes running sessions live — caps and reservations move to the new even split within about a second.
@@ -93,6 +94,43 @@ Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). 
   --max-total-conns 200
 ```
 
+
+## REST API
+
+The web UI is a thin client over a JSON REST API served on the same address (default `http://127.0.0.1:9000`). Full instruction and examples: **[API.md](API.md)**. Start with `--ui-token <secret>` to require `Authorization: Bearer <secret>` on mutating calls.
+
+| Operation | Method & path | Body |
+|-----------|---------------|------|
+| List databases + fleet summary | `GET /api/sessions` | — |
+| One database: status, metrics, errors | `GET /api/sessions/{id}` | — |
+| Start load for one database | `POST /api/sessions/{id}/start` | `{"timeLimitMin": 15}` (absent/0 = No limit) |
+| Stop load for one database | `POST /api/sessions/{id}/stop` | — |
+| Pause / resume | `POST /api/sessions/{id}/pause` / `resume` | — |
+| Check DB connectivity + schema | `POST /api/sessions/{id}/validate` | — |
+| Start / stop all idle/active | `POST /api/sessions/start-all` / `stop-all` | same as start |
+
+`{id}` is the stable per-database identifier returned by the list call (16-hex; derived from the absolute path).
+
+**Status values** in every session payload: `Idle` (not running), `Starting`, `Running` (working), `Paused`, `Stopping`, `Completed` (finished its schedule), `Failed` (could not start — connection or schema error in `lastError`). Connection problems during a run surface as `lastError` plus unexpected-error counters.
+
+```bash
+BASE=http://127.0.0.1:9000
+
+# 1) List available databases (id, relPath, absPath, status, ...)
+curl -s $BASE/api/sessions | python -m json.tool
+
+# 2) Start one database for 15 minutes (timeLimitMin 0 = unlimited until stopped)
+ID=<id-from-list>
+curl -s -X POST $BASE/api/sessions/$ID/start   -H "Content-Type: application/json" -d '{"timeLimitMin": 15}'
+
+# 3) Status: working / not working / connection error
+curl -s $BASE/api/sessions/$ID | python -c "import json,sys; s=json.load(sys.stdin); print(s['status'], s['lastError'])"
+
+# 4) Stop
+curl -s -X POST $BASE/api/sessions/$ID/stop
+```
+
+Other read endpoints: `GET /api/fleet` (aggregated counters), `GET /api/config` (redacted settings), `GET /api/sessions/{id}/report` and `GET /api/sessions/{id}/report/{file}` (result files).
 
 ## Example workflows
 
@@ -379,6 +417,7 @@ fb-loadgen/
 ├── EMPLOYEE_metadata.sql   # Schema dump
 ├── Technical_task.md       # Original design / constraint map
 ├── example_usage.sh        # Printed example commands
+├── API.md                  # REST API guide with examples
 ├── go.mod / go.sum
 └── LICENSE                 # GNU GPL v3
 ```

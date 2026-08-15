@@ -411,6 +411,15 @@ func (m *Manager) List() []Snapshot {
 	return m.snapshotsLocked()
 }
 
+// Get returns a snapshot of one session by ID.
+func (m *Manager) Get(id string) (Snapshot, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return s.Snapshot(), nil
+}
+
 func (m *Manager) snapshotsLocked() []Snapshot {
 	out := make([]Snapshot, 0, len(m.sessions))
 	for _, s := range m.sessions {
