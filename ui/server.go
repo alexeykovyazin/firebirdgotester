@@ -47,6 +47,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/config", s.auth(s.handleSaveConfig))
 	s.mux.HandleFunc("POST /api/discover", s.auth(s.handleDiscover))
 	s.mux.HandleFunc("GET /api/sessions", s.handleList)
+	s.mux.HandleFunc("GET /api/sessions/{id}", s.handleGetSession)
 	s.mux.HandleFunc("GET /api/fleet", s.handleFleet)
 	s.mux.HandleFunc("PATCH /api/sessions/{id}", s.auth(s.handlePatch))
 	s.mux.HandleFunc("POST /api/sessions/{id}/start", s.auth(s.handleStart))
@@ -213,6 +214,15 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		"sessions": s.manager.List(),
 		"fleet":    s.manager.Fleet(),
 	})
+}
+
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.manager.Get(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
 }
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {

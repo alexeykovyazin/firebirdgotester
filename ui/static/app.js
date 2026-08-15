@@ -6,7 +6,8 @@ let authToken = "";
 
 let rowLimits = {}; // session id -> time limit in minutes (0 = no limit)
 try {
-  rowLimits = JSON.parse(localStorage.getItem("fb-time-limits") || "{}") || {};
+  // v2: fresh key so every row starts from the 15-min default
+  rowLimits = JSON.parse(localStorage.getItem("fb-time-limits-v2") || "{}") || {};
 } catch {
   rowLimits = {};
 }
@@ -15,7 +16,7 @@ function rowLimit(id) {
   return Number.isFinite(v) ? v : 15; // default: 15 min
 }
 function saveRowLimits() {
-  localStorage.setItem("fb-time-limits", JSON.stringify(rowLimits));
+  localStorage.setItem("fb-time-limits-v2", JSON.stringify(rowLimits));
 }
 
 function applyTheme(theme) {
@@ -585,6 +586,19 @@ $("btnValidateAll").addEventListener("click", async () => {
   }
 });
 
+$("btnApplyLimit").addEventListener("click", async () => {
+  const v = Number($("applyLimit").value) || 0;
+  const ids = Object.keys(sessionsById);
+  if (!ids.length) {
+    toast("No sessions to update");
+    return;
+  }
+  for (const id of ids) rowLimits[id] = v;
+  saveRowLimits();
+  await refresh();
+  toast(`Time limit set to ${v > 0 ? v + " min" : "No limit"} for ${ids.length} row(s)`);
+});
+
 $("filterStatus").addEventListener("change", () => refresh().catch(() => {}));
 $("filterPath").addEventListener("input", () => {
   clearTimeout($("filterPath")._t);
@@ -592,6 +606,7 @@ $("filterPath").addEventListener("input", () => {
 });
 
 (async function init() {
+  $("applyLimit").innerHTML = timeLimitOptions(15);
   await loadConfig();
   // Load existing sessions from API — do not auto-rescan
   await refresh();
