@@ -200,6 +200,42 @@
       from { transform: translateY(8px); opacity: 0; }
       to { transform: none; opacity: 1; }
     }
+    .tabs {
+      display: flex; gap: 4px; padding: 8px 18px 0; background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      border: 1px solid transparent; border-bottom: none; background: transparent;
+      color: var(--muted); padding: 8px 16px; border-radius: 6px 6px 0 0; font-weight: 600;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active {
+      background: var(--bg); color: var(--accent); border-color: var(--border);
+    }
+    .tabsection { display: none; }
+    .tabsection.active { display: block; }
+    .sched-form {
+      display: none; padding: 12px 18px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+    }
+    .sched-form.open { display: block; }
+    .sched-form .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 8px 14px;
+      align-items: end; margin-bottom: 8px;
+    }
+    .sched-form .label { color: var(--muted); font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 2px; }
+    .sched-form .targets-box {
+      border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg);
+      max-height: 130px; overflow-y: auto; padding: 6px 10px; min-width: 300px;
+    }
+    .sched-form .targets-box label { display: block; text-transform: none; font-size: 12px; }
+    .outcome-ok { background: var(--ok-soft); color: var(--ok); }
+    .outcome-partial { background: var(--warn-soft); color: var(--warn); }
+    .outcome-failed { background: var(--danger-soft); color: var(--danger); }
+    .outcome-cancelled, .outcome-skipped { background: var(--idle-soft); color: var(--idle); }
+    .outcome-running { background: var(--accent-soft); color: var(--accent); }
+    .run-detail { background: var(--panel-2); }
+    .run-detail td { white-space: normal; }
+    .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -240,6 +276,13 @@
     <button class="danger" id="btnStopAll">Stop All</button>
   </section>
 
+  <nav class="tabs">
+    <button class="tab active" data-tab="sessions">Sessions</button>
+    <button class="tab" data-tab="schedules">Schedules</button>
+    <button class="tab" data-tab="runs">Runs</button>
+  </nav>
+
+  <section class="tabsection active" id="tab-sessions">
   <div class="summary" id="summaryStrip">
     <span class="stat">Running <b id="sumRunning">0</b></span>
     <span class="stat">Idle <b id="sumIdle">0</b></span>
@@ -316,7 +359,81 @@
       </div>
     </aside>
   </main>
+  </section>
+
+  <section class="tabsection" id="tab-schedules">
+    <div class="panel-row">
+      <span class="row-label">Schedules</span>
+      <button class="primary" id="btnNewSchedule">New schedule</button>
+      <span class="meta">Runs start automatically at their next fire time; everything here is also available via the REST API (see API.md).</span>
+    </div>
+    <div class="sched-form" id="schedForm">
+      <div class="grid">
+        <div><span class="label">Name</span><input type="text" id="sfName" autocomplete="off" style="width:180px" /></div>
+        <div><span class="label">Trigger</span>
+          <select id="sfType">
+            <option value="once">Once at</option>
+            <option value="interval">Every N min</option>
+            <option value="cron">Cron</option>
+          </select>
+        </div>
+        <div id="sfWrapAt"><span class="label">At (local time)</span><input type="text" id="sfAt" placeholder="2026-09-01T02:00" style="width:170px" /></div>
+        <div id="sfWrapEvery" style="display:none"><span class="label">Every (min)</span><input type="number" id="sfEvery" value="360" min="1" style="width:80px" /></div>
+        <div id="sfWrapCron" style="display:none"><span class="label">Cron (5-field)</span><input type="text" id="sfCron" placeholder="0 2 * * *" style="width:110px" /></div>
+        <div id="sfWrapTz" style="display:none"><span class="label">Timezone</span><input type="text" id="sfTz" placeholder="local" style="width:130px" /></div>
+        <div><span class="label">Run length (min)</span><input type="number" id="sfTimeLimit" value="30" min="1" style="width:80px" /></div>
+        <div><span class="label">Profile override</span>
+          <select id="sfProfile"><option value="">(session setting)</option><option>write-heavy</option><option>read-heavy</option><option>spike</option></select>
+        </div>
+        <div><span class="label">If running</span>
+          <select id="sfIfRunning"><option value="skip">Skip</option><option value="stopAndRun">Stop &amp; run</option></select>
+        </div>
+        <div><span class="label">If budget full</span>
+          <select id="sfIfBudget"><option value="wait">Wait</option><option value="skip">Skip</option></select>
+        </div>
+        <div><span class="label">Webhook URL (optional)</span><input type="text" id="sfNotify" placeholder="https://…" style="width:200px" /></div>
+        <div><span class="label">Enabled</span><input type="checkbox" id="sfEnabled" checked /></div>
+      </div>
+      <div class="label" style="color:var(--muted);font-size:11px;text-transform:uppercase;">Targets</div>
+      <div class="targets-box" id="sfTargets"></div>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="primary" id="btnSchedSave">Save schedule</button>
+        <button id="btnSchedCancel">Cancel</button>
+        <span class="meta" id="sfEditId"></span>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding: 12px 18px 40px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Trigger</th><th>Targets</th><th>Run</th>
+            <th>Enabled</th><th>Next run</th><th>Last fire</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="schedRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tabsection" id="tab-runs">
+    <div class="panel-row">
+      <span class="row-label">Run history</span>
+      <button id="btnRunsRefresh">Refresh</button>
+      <span class="meta">Click a run to expand per-session outcomes.</span>
+    </div>
+    <div class="table-wrap" style="padding: 12px 18px 40px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Run</th><th>Origin</th><th>Schedule</th><th>Started</th><th>Finished</th><th>Outcome</th><th>Sessions</th>
+          </tr>
+        </thead>
+        <tbody id="runRows"></tbody>
+      </table>
+    </div>
+  </section>
   <div id="toast"></div>
   <script src="/app.js"></script>
+  <script src="/app_schedules.js"></script>
 </body>
 </html>

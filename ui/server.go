@@ -9,16 +9,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fb-loadgen/config"
+	"fb-loadgen/schedule"
 	"fb-loadgen/session"
 )
 
+// Version is reported by GET /api/version.
+const Version = "1.2.0"
+
 // Server serves the embedded control-plane UI and REST API.
 type Server struct {
-	manager *session.Manager
-	mux     *http.ServeMux
-	token   string
+	manager    *session.Manager
+	mux        *http.ServeMux
+	token      string
+	authAll    bool
+	corsOrigin string
+	apiOnly    bool
+	engine     *schedule.Engine
+	startedAt  time.Time
 }
 
 // New creates a UI server bound to the session manager.
@@ -29,12 +39,34 @@ func New(manager *session.Manager) *Server {
 // NewWithToken creates a UI server with an optional bearer token for mutating APIs.
 func NewWithToken(manager *session.Manager, token string) *Server {
 	s := &Server{
-		manager: manager,
-		mux:     http.NewServeMux(),
-		token:   token,
+		manager:   manager,
+		mux:       http.NewServeMux(),
+		token:     token,
+		startedAt: time.Now(),
 	}
 	s.routes()
 	return s
+}
+
+// SetScheduleEngine attaches the schedule engine (enables /api/schedules*).
+func (s *Server) SetScheduleEngine(e *schedule.Engine) {
+	s.engine = e
+}
+
+// SetAuthAll requires the bearer token for read endpoints too (except
+// /api/health and /metrics, which monitoring must reach).
+func (s *Server) SetAuthAll(v bool) {
+	s.authAll = v
+}
+
+// SetCORSOrigin enables cross-origin browser clients ("" disables CORS).
+func (s *Server) SetCORSOrigin(origin string) {
+	s.corsOrigin = origin
+}
+
+// SetAPIOnly serves the REST API without the embedded SPA.
+func (s *Server) SetAPIOnly(v bool) {
+	s.apiOnly = v
 }
 
 func (s *Server) routes() {
@@ -42,13 +74,14 @@ func (s *Server) routes() {
 	if err != nil {
 		panic(err)
 	}
+	staticServer := http.FileServer(http.FS(static))
 
-	s.mux.HandleFunc("GET /api/config", s.handleConfig)
+	s.mux.HandleFunc("GET /api/config", s.authRead(s.handleConfig))
 	s.mux.HandleFunc("PUT /api/config", s.auth(s.handleSaveConfig))
 	s.mux.HandleFunc("POST /api/discover", s.auth(s.handleDiscover))
-	s.mux.HandleFunc("GET /api/sessions", s.handleList)
-	s.mux.HandleFunc("GET /api/sessions/{id}", s.handleGetSession)
-	s.mux.HandleFunc("GET /api/fleet", s.handleFleet)
+	s.mux.HandleFunc("GET /api/sessions", s.authRead(s.handleList))
+	s.mux.HandleFunc("GET /api/sessions/{id}", s.authRead(s.handleGetSession))
+	s.mux.HandleFunc("GET /api/fleet", s.authRead(s.handleFleet))
 	s.mux.HandleFunc("PATCH /api/sessions/{id}", s.auth(s.handlePatch))
 	s.mux.HandleFunc("POST /api/sessions/{id}/start", s.auth(s.handleStart))
 	s.mux.HandleFunc("POST /api/sessions/{id}/pause", s.auth(s.handlePause))
@@ -56,15 +89,58 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/sessions/{id}/stop", s.auth(s.handleStop))
 	s.mux.HandleFunc("POST /api/sessions/{id}/validate", s.auth(s.handleValidate))
 	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.auth(s.handleRemove))
-	s.mux.HandleFunc("GET /api/sessions/{id}/report", s.handleReportList)
-	s.mux.HandleFunc("GET /api/sessions/{id}/report/{file}", s.handleReportDownload)
+	s.mux.HandleFunc("GET /api/sessions/{id}/report", s.authRead(s.handleReportList))
+	s.mux.HandleFunc("GET /api/sessions/{id}/report/{file}", s.authRead(s.handleReportDownload))
 	s.mux.HandleFunc("POST /api/sessions/start-all", s.auth(s.handleStartAll))
 	s.mux.HandleFunc("POST /api/sessions/stop-all", s.auth(s.handleStopAll))
 	s.mux.HandleFunc("POST /api/sessions/pause-all", s.auth(s.handlePauseAll))
 	s.mux.HandleFunc("POST /api/sessions/purge-missing", s.auth(s.handlePurgeMissing))
 	s.mux.HandleFunc("POST /api/sessions/validate-all", s.auth(s.handleValidateAll))
 
-	s.mux.Handle("/", http.FileServer(http.FS(static)))
+	// Schedules
+	s.mux.HandleFunc("GET /api/schedules", s.authRead(s.handleScheduleList))
+	s.mux.HandleFunc("POST /api/schedules", s.auth(s.handleScheduleCreate))
+	s.mux.HandleFunc("GET /api/schedules/{id}", s.authRead(s.handleScheduleGet))
+	s.mux.HandleFunc("PATCH /api/schedules/{id}", s.auth(s.handleScheduleUpdate))
+	s.mux.HandleFunc("DELETE /api/schedules/{id}", s.auth(s.handleScheduleDelete))
+	s.mux.HandleFunc("POST /api/schedules/{id}/trigger", s.auth(s.handleScheduleTrigger))
+	s.mux.HandleFunc("GET /api/schedules/{id}/runs", s.authRead(s.handleScheduleRuns))
+
+	// Run history
+	s.mux.HandleFunc("GET /api/runs", s.authRead(s.handleRunList))
+	s.mux.HandleFunc("GET /api/runs/{id}", s.authRead(s.handleRunGet))
+	s.mux.HandleFunc("POST /api/runs/{id}/cancel", s.auth(s.handleRunCancel))
+	s.mux.HandleFunc("GET /api/sessions/{id}/runs", s.authRead(s.handleSessionRuns))
+
+	// Ops & observability
+	s.mux.HandleFunc("GET /api/health", s.handleHealth)
+	s.mux.HandleFunc("GET /api/version", s.handleVersion)
+	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
+
+	// apiOnly is consulted per-request so SetAPIOnly can be called after
+	// construction.
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if s.apiOnly {
+			writeError(w, http.StatusNotFound, fmt.Errorf("UI disabled (--api-only); see /api/ and /metrics"))
+			return
+		}
+		staticServer.ServeHTTP(w, r)
+	})
+}
+
+// authRead protects GET endpoints when --ui-auth-all is set. It re-checks
+// the flag per request so SetAuthAll can be called after construction.
+func (s *Server) authRead(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.authAll && s.token != "" {
+			h := r.Header.Get("Authorization")
+			if h != "Bearer "+s.token {
+				writeError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -83,7 +159,24 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 
 // Handler returns the HTTP handler.
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	return s.withCORS(s.mux)
+}
+
+func (s *Server) withCORS(next http.Handler) http.Handler {
+	if s.corsOrigin == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", s.corsOrigin)
+		w.Header().Add("Vary", "Origin")
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ListenAndServe starts the HTTP server.
@@ -244,34 +337,61 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
-// decodeTimeLimit reads an optional {"timeLimitMin": N} body; absent or empty
-// body means 0 (no limit).
-func decodeTimeLimit(r *http.Request) (int, error) {
+// decodeStart reads {"timeLimitMin": N, "wait": bool}; absent/empty body
+// means timeLimitMin=0 (no limit), wait=true (synchronous start).
+func decodeStart(r *http.Request) (timeLimitMin int, wait bool, err error) {
+	wait = true
 	if r.Body == nil {
-		return 0, nil
+		return 0, wait, nil
 	}
 	var body struct {
-		TimeLimitMin int `json:"timeLimitMin"`
+		TimeLimitMin int   `json:"timeLimitMin"`
+		Wait         *bool `json:"wait"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		if err == io.EOF {
-			return 0, nil
+			return 0, wait, nil
 		}
-		return 0, fmt.Errorf("invalid body: %w", err)
+		return 0, wait, fmt.Errorf("invalid body: %w", err)
 	}
 	if body.TimeLimitMin < 0 {
-		return 0, fmt.Errorf("timeLimitMin must be >= 0")
+		return 0, wait, fmt.Errorf("timeLimitMin must be >= 0")
 	}
-	return body.TimeLimitMin, nil
+	if body.Wait != nil {
+		wait = *body.Wait
+	}
+	return body.TimeLimitMin, wait, nil
+}
+
+// decodeTimeLimit reads an optional {"timeLimitMin": N} body; absent or empty
+// body means 0 (no limit).
+func decodeTimeLimit(r *http.Request) (int, error) {
+	tlm, _, err := decodeStart(r)
+	return tlm, err
 }
 
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
-	timeLimitMin, err := decodeTimeLimit(r)
+	timeLimitMin, wait, err := decodeStart(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	snap, err := s.manager.Start(r.PathValue("id"), timeLimitMin)
+	id := r.PathValue("id")
+	if !wait {
+		// Fire-and-forget: poll GET /api/sessions/{id} for the outcome.
+		go func() { _, _ = s.manager.Start(id, timeLimitMin) }()
+		snap, err := s.manager.Get(id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]interface{}{
+			"queued":  true,
+			"session": snap,
+		})
+		return
+	}
+	snap, err := s.manager.Start(id, timeLimitMin)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

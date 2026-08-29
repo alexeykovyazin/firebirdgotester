@@ -17,6 +17,7 @@ import (
 	"fb-loadgen/ops"
 	"fb-loadgen/profile"
 	"fb-loadgen/ramp"
+	"fb-loadgen/schedule"
 	"fb-loadgen/session"
 	"fb-loadgen/ui"
 	"fb-loadgen/worker"
@@ -63,14 +64,50 @@ func runUI(cfg *config.Config) {
 		log.Printf("Initial discover warning: %v", err)
 	}
 
+	// Run history and schedules (API-first control plane).
+	if err := manager.SetHistoryPath(cfg.RunsFile); err != nil {
+		log.Printf("Warning: could not load run history %s: %v", cfg.RunsFile, err)
+	}
+	notifier := schedule.NewNotifier(cfg.WebhookSecret)
+	hist := manager.History()
+	engine := schedule.NewEngine(cfg.SchedulesFile, manager)
+	engine.SetNotifier(notifier)
+	hist.SetKeepRun(engine.ReferencesRun)
+	hist.SetOnFinished(func(run *session.Run) {
+		url := cfg.WebhookURL
+		if run.ScheduleID != "" {
+			if u := engine.NotifyURL(run.ScheduleID); u != "" {
+				url = u
+			}
+		}
+		if url != "" {
+			notifier.Dispatch(url, map[string]interface{}{"event": "run.finished", "run": run})
+		}
+	})
+	if err := engine.Load(); err != nil {
+		log.Printf("Warning: could not load schedules %s: %v", cfg.SchedulesFile, err)
+	}
+	go engine.Run()
+	defer engine.Stop()
+
 	uiSrv := ui.NewWithToken(manager, cfg.UIToken)
+	uiSrv.SetScheduleEngine(engine)
+	uiSrv.SetAPIOnly(cfg.APIOnly)
+	uiSrv.SetAuthAll(cfg.UIAuthAll)
+	uiSrv.SetCORSOrigin(cfg.CORSOrigin)
 	httpSrv := &http.Server{
 		Addr:    cfg.UIAddr,
 		Handler: uiSrv.Handler(),
 	}
 
+	if cfg.APIOnly {
+		fmt.Printf("API server listening on http://%s (UI disabled)\n", normalizeUIAddr(cfg.UIAddr))
+	} else {
+		go func() {
+			fmt.Printf("Web UI listening on http://%s\n", normalizeUIAddr(cfg.UIAddr))
+		}()
+	}
 	go func() {
-		fmt.Printf("Web UI listening on http://%s\n", normalizeUIAddr(cfg.UIAddr))
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("UI server failed: %v", err)
 		}
