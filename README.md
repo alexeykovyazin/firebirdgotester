@@ -9,9 +9,11 @@ A Go CLI load simulator for **Firebird** databases, built around the classic **E
 - **Multi-DB discovery**: recursive folder scan (default `*.fdb`); same basename in different subfolders are distinct sessions
 - **Web UI control plane**: table of databases with Start / Stop / Pause per row (`--ui`)
 - **Per-DB time limits**: run a session for 1–600 minutes (phases scale proportionally) or unlimited — 1-minute warmup, then steady load until stopped
+- **Scheduled runs**: once / interval / cron schedules with time zones, overlap & budget policies, staggering — fire runs unattended from the UI's Schedules tab or the REST API
+- **Run history & webhooks**: every run (scheduled or manual) is recorded with per-session outcomes and report dirs; optional webhook on completion, Prometheus `/metrics`
 - **Live connection budget**: saving a smaller/larger total-connection limit resizes running sessions immediately
 - **Themed UI**: light theme by default, dark toggle remembered per browser
-- **REST API**: full programmatic control (list / start / stop / status) — see [API.md](API.md)
+- **REST API**: full programmatic control (list / start / stop / status / schedules / history) — see [API.md](API.md); `--api-only` runs it headless
 - **Schema-aware operations**: respects EMPLOYEE constraints (`PO_NUMBER`, salary bounds, status transitions, FKs)
 - **Expected exception handling**: Firebird business exceptions (e.g. `order_already_shipped`) classified separately from real failures
 - **Startup lookup cache**: preloads valid dept / employee / project / customer / job salary ranges
@@ -131,6 +133,35 @@ curl -s -X POST $BASE/api/sessions/$ID/stop
 ```
 
 Other read endpoints: `GET /api/fleet` (aggregated counters), `GET /api/config` (redacted settings), `GET /api/sessions/{id}/report` and `GET /api/sessions/{id}/report/{file}` (result files).
+
+## Scheduled runs & history
+
+Runs can fire on a schedule — no UI or human needed. Schedules persist to `fb-loadgen.schedules.json` and survive restarts; every execution (scheduled or manual) lands in `fb-loadgen.runs.json` with per-session outcomes.
+
+```bash
+BASE=http://127.0.0.1:9000
+
+# Nightly 30-minute write-heavy on two databases at 02:00 local
+curl -s -X POST $BASE/api/schedules -H "Content-Type: application/json" -d '{
+  "name": "nightly-30min",
+  "enabled": true,
+  "trigger": {"type": "cron", "cron": "0 2 * * *", "tz": "Europe/Moscow"},
+  "targets": {"sessionIds": ["<id1>", "<id2>"]},
+  "run": {"timeLimitMin": 30, "overrides": {"profile": "write-heavy"}},
+  "policy": {"ifRunning": "skip", "staggerSec": 5}
+}'
+
+# Fire a schedule right now (asynchronous)
+curl -s -X POST $BASE/api/schedules/$SID/trigger
+
+# What happened?
+curl -s "$BASE/api/runs?limit=10"
+curl -s  $BASE/api/runs/<runId>
+```
+
+Policies: `ifRunning` (skip a fire whose targets are busy, or `stopAndRun`), `ifBudgetFull` (wait for connection budget up to `waitBudgetSec`, or skip), `staggerSec` spacing between per-DB starts, `catchUp` for a fire missed while the process was down. Recurring triggers require a positive `timeLimitMin`. Optional `notifyUrl` (or global `--webhook-url` + `--webhook-secret`) POSTs a signed JSON event when a run finishes. `GET /metrics` exposes fleet/session/schedule counters in Prometheus format.
+
+The UI's **Schedules** and **Runs** tabs cover all of this interactively. Headless? Run `fb-loadgen --ui --api-only` to serve the API without the SPA.
 
 ## Example workflows
 

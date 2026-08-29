@@ -51,13 +51,22 @@ type Config struct {
 	Debug     bool
 
 	// Web UI / multi-DB
-	UI                 bool
-	UIAddr             string
-	UIToken            string
-	DiscoverDir        string
-	DiscoverMask       string
-	DiscoverRecursive  bool
-	MaxTotalConns      int
+	UI                bool
+	UIAddr            string
+	UIToken           string
+	DiscoverDir       string
+	DiscoverMask      string
+	DiscoverRecursive bool
+	MaxTotalConns     int
+
+	// API / scheduling
+	APIOnly       bool
+	UIAuthAll     bool
+	CORSOrigin    string
+	WebhookURL    string
+	WebhookSecret string
+	SchedulesFile string
+	RunsFile      string
 }
 
 // ParseFlags parses CLI flags and returns a validated Config
@@ -100,6 +109,14 @@ func ParseFlags() (*Config, error) {
 	flag.StringVar(&cfg.DiscoverMask, "discover-mask", "*.fdb", "Glob mask for database files")
 	flag.BoolVar(&cfg.DiscoverRecursive, "discover-recursive", true, "Recursively scan discover-dir")
 	flag.IntVar(&cfg.MaxTotalConns, "max-total-conns", 200, "Hard budget for sum of running session conn-max")
+
+	flag.BoolVar(&cfg.APIOnly, "api-only", false, "Serve the REST API without the embedded web UI")
+	flag.BoolVar(&cfg.UIAuthAll, "ui-auth-all", false, "Require --ui-token for read endpoints too (health and /metrics stay open)")
+	flag.StringVar(&cfg.CORSOrigin, "cors-origin", "", "Allow cross-origin API access from this origin (e.g. http://localhost:3000)")
+	flag.StringVar(&cfg.WebhookURL, "webhook-url", "", "POST run-finished events to this URL (default for all runs)")
+	flag.StringVar(&cfg.WebhookSecret, "webhook-secret", "", "HMAC-SHA256 secret for webhook signatures (X-FBLoadGen-Signature)")
+	flag.StringVar(&cfg.SchedulesFile, "schedules-file", "fb-loadgen.schedules.json", "Persisted schedules store")
+	flag.StringVar(&cfg.RunsFile, "runs-file", "fb-loadgen.runs.json", "Persisted run history store")
 
 	flag.Parse()
 

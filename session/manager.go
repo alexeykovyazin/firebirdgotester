@@ -36,6 +36,8 @@ type Manager struct {
 	maxTotal     int
 	settingsPath string
 
+	hist *RunHistory
+
 	reserved atomic.Int64 // sum of ConnMax for active reserved sessions
 
 	sessions map[string]*Session // keyed by AbsPath
@@ -54,6 +56,8 @@ type Session struct {
 
 	generation int64
 	reserved   int // ConnMax reserved against budget
+
+	runID string // run this session's current activity belongs to
 
 	timeLimitMin int // 0 = no limit; run phases are scaled to fill this total
 
@@ -88,8 +92,26 @@ func NewManager(cfg *config.Config) *Manager {
 		recursive:    cfg.DiscoverRecursive,
 		maxTotal:     cfg.MaxTotalConns,
 		settingsPath: config.DefaultUISettingsFile,
+		hist:         NewRunHistory(DefaultRunsFile),
 		sessions:     make(map[string]*Session),
 	}
+}
+
+// History returns the run history registry.
+func (m *Manager) History() *RunHistory {
+	return m.hist
+}
+
+// SetHistoryPath points the run history at a persistence path and loads it.
+func (m *Manager) SetHistoryPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	m.mu.Lock()
+	m.hist = NewRunHistory(path)
+	hist := m.hist
+	m.mu.Unlock()
+	return hist.Load()
 }
 
 // SetSettingsPath sets where UI settings are persisted.
@@ -599,34 +621,121 @@ func (m *Manager) releaseBudget(n int) {
 // Start begins a timed run for the session. A positive timeLimitMin scales
 // warmup/main/cooldown proportionally so the run totals exactly that duration.
 func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
-	if timeLimitMin < 0 {
+	return m.StartWithSpec(id, RunSpec{TimeLimitMin: timeLimitMin})
+}
+
+// StartWithSpec starts the session with a time limit plus typed overrides,
+// recording a singleton manual run for history.
+func (m *Manager) StartWithSpec(id string, spec RunSpec) (Snapshot, error) {
+	if spec.TimeLimitMin < 0 {
 		return Snapshot{}, fmt.Errorf("timeLimitMin must be >= 0")
 	}
 	s, err := m.findByID(id)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	s.mu.Lock()
+	rel := s.Config.RelPath
+	s.mu.Unlock()
+	run := m.hist.Create(OriginManual, "", []SessionRun{{SessionID: id, RelPath: rel}})
+	snap, err := m.startInternal(s, spec, run.ID)
+	m.hist.MaybeFinish(run.ID)
+	return snap, err
+}
 
+// entrySkipped marks a session entry skipped with a reason (idempotent).
+func (m *Manager) entrySkipped(runID, sessionID, reason string) {
+	m.hist.UpdateSession(runID, sessionID, SessionRun{Status: "Skipped", Reason: reason})
+}
+
+// entryFail marks a session entry failed with a reason (idempotent).
+func (m *Manager) entryFail(runID, sessionID, reason string) {
+	m.hist.UpdateSession(runID, sessionID, SessionRun{Status: string(StatusFailed), LastError: reason})
+}
+
+// recordFinishEntry clears the session's run attribution and writes the
+// terminal result into the run history.
+func (m *Manager) recordFinishEntry(s *Session, entry SessionRun) {
+	s.mu.Lock()
+	runID := s.runID
+	s.runID = ""
+	s.mu.Unlock()
+	if runID == "" {
+		return
+	}
+	m.hist.UpdateSession(runID, s.ID, entry)
+}
+
+func runEntryFromSnap(snap Snapshot, status string) SessionRun {
+	return SessionRun{
+		SessionID: snap.ID,
+		RelPath:   snap.RelPath,
+		Status:    status,
+		LastError: snap.LastError,
+		ReportDir: snap.ReportDir,
+		TPS:       snap.TPS,
+		Success:   snap.Success,
+		Errors:    snap.Errors,
+	}
+}
+
+// runEntryLocked builds a history entry from live metrics; call before
+// cleanup drops them.
+func (s *Session) runEntryLocked(status string) SessionRun {
+	return runEntryFromSnap(s.snapshotLocked(), status)
+}
+
+// applyOverrides overlays per-fire overrides onto a session config copy.
+// Precedence: override > time-limit scaling > session config.
+func applyOverrides(c *SessionConfig, o RunOverrides) {
+	if o.Profile != nil && *o.Profile != "" {
+		c.Profile = *o.Profile
+	}
+	if o.ThinkMs != nil && *o.ThinkMs >= 0 {
+		c.ThinkMs = *o.ThinkMs
+	}
+	if o.TxTimeout != nil && *o.TxTimeout >= 1 {
+		c.TxTimeout = *o.TxTimeout
+	}
+	if o.SpikeCycles != nil && *o.SpikeCycles >= 1 {
+		c.SpikeCycles = *o.SpikeCycles
+	}
+	if o.SpikeHold != nil && *o.SpikeHold >= 1 {
+		c.SpikeHold = *o.SpikeHold
+	}
+}
+
+// startInternal runs the start state machine; runID is already allocated.
+// Every synchronous failure path marks the run entry terminal.
+func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapshot, error) {
+	timeLimitMin := spec.TimeLimitMin
 	s.mu.Lock()
 	switch s.Status {
 	case StatusIdle, StatusFailed, StatusCompleted:
 	default:
 		st := s.Status
 		s.mu.Unlock()
+		m.entryFail(runID, s.ID, fmt.Sprintf("cannot start session in status %s", st))
 		return Snapshot{}, fmt.Errorf("cannot start session in status %s", st)
 	}
 	if s.Missing {
 		s.mu.Unlock()
+		m.entrySkipped(runID, s.ID, "database file is missing")
 		return Snapshot{}, fmt.Errorf("database file is missing")
 	}
-	if err := s.Config.Validate(); err != nil {
+	cfgCopy := s.Config
+	s.mu.Unlock()
+
+	applyOverrides(&cfgCopy, spec.Overrides)
+	if err := cfgCopy.Validate(); err != nil {
+		s.mu.Lock()
 		s.Status = StatusFailed
 		s.LastError = err.Error()
 		snap := s.snapshotLocked()
 		s.mu.Unlock()
+		m.entryFail(runID, s.ID, err.Error())
 		return snap, err
 	}
-	cfgCopy := s.Config
 	if timeLimitMin > 0 {
 		scalePhases(&cfgCopy, time.Duration(timeLimitMin)*time.Minute)
 	} else {
@@ -635,6 +744,7 @@ func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
 		cfgCopy.Main = 0
 		cfgCopy.Cooldown = 0
 	}
+	s.mu.Lock()
 	s.generation++
 	gen := s.generation
 	s.Status = StatusStarting
@@ -642,6 +752,7 @@ func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
 	s.Missing = false
 	s.hasLast = false
 	s.timeLimitMin = timeLimitMin
+	s.runID = runID
 	s.mu.Unlock()
 
 	m.saveSessionPrefs()
@@ -654,6 +765,7 @@ func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
 		}
 		snap := s.snapshotLocked()
 		s.mu.Unlock()
+		m.entrySkipped(runID, s.ID, err.Error())
 		return snap, err
 	}
 
@@ -667,6 +779,7 @@ func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
 		}
 		snap := s.snapshotLocked()
 		s.mu.Unlock()
+		m.entryFail(runID, s.ID, err.Error())
 		return snap, err
 	}
 
@@ -758,6 +871,7 @@ func (m *Manager) Start(id string, timeLimitMin int) (Snapshot, error) {
 		_ = outFile.Close()
 		_ = sqlErrLog.Close()
 		m.releaseBudget(cfgCopy.ConnMax)
+		m.entryFail(runID, s.ID, "start aborted")
 		s.mu.Lock()
 		snap := s.snapshotLocked()
 		s.mu.Unlock()
@@ -842,22 +956,15 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 		return
 	}
 
-	if s.Status == StatusStopping {
+	if s.Status == StatusStopping || s.Status == StatusIdle {
 		n := s.reserved
 		s.reserved = 0
+		entry := s.runEntryLocked("Idle")
 		s.Status = StatusIdle
 		s.cleanupLocked(false)
 		s.mu.Unlock()
 		m.releaseBudget(n)
-		s.mu.Lock()
-		return
-	}
-	if s.Status == StatusIdle {
-		n := s.reserved
-		s.reserved = 0
-		s.cleanupLocked(false)
-		s.mu.Unlock()
-		m.releaseBudget(n)
+		m.recordFinishEntry(s, entry)
 		s.mu.Lock()
 		return
 	}
@@ -867,6 +974,7 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 		s.lastSnap = snap
 		s.lastSnap.Status = StatusCompleted
 		s.hasLast = true
+		entry := runEntryFromSnap(snap, string(StatusCompleted))
 		reserved := s.reserved
 		s.reserved = 0
 		if s.scheduler == sched {
@@ -878,6 +986,7 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 		s.cleanupLocked(true)
 		s.mu.Unlock()
 		m.releaseBudget(reserved)
+		m.recordFinishEntry(s, entry)
 		s.mu.Lock()
 	}
 }
@@ -986,13 +1095,16 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 
 	s.mu.Lock()
 	s.Status = StatusIdle
+	entry := s.runEntryLocked("Idle")
 	s.cleanupLocked(false)
 	snap := s.snapshotLocked()
 	s.mu.Unlock()
+	m.recordFinishEntry(s, entry)
 	return snap, nil
 }
 
 // StartAll starts all Idle/Failed/Completed sessions with the given time limit.
+// The whole batch is recorded as one manual run.
 func (m *Manager) StartAll(timeLimitMin int) []error {
 	type named struct {
 		id, rel string
@@ -1008,13 +1120,197 @@ func (m *Manager) StartAll(timeLimitMin int) []error {
 	}
 	m.mu.RUnlock()
 
+	run := m.hist.Create(OriginManual, "", nil)
+	for _, n := range ids {
+		m.hist.AddSession(run.ID, SessionRun{SessionID: n.id, RelPath: n.rel})
+	}
+
 	var errs []error
 	for _, n := range ids {
-		if _, err := m.Start(n.id, timeLimitMin); err != nil {
+		s, err := m.findByID(n.id)
+		if err != nil {
+			m.hist.UpdateSession(run.ID, n.id, SessionRun{Status: "Skipped", Reason: err.Error()})
+			errs = append(errs, fmt.Errorf("%s: %w", n.rel, err))
+			continue
+		}
+		if _, err := m.startInternal(s, RunSpec{TimeLimitMin: timeLimitMin}, run.ID); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", n.rel, err))
 		}
 	}
+	m.hist.MaybeFinish(run.ID)
 	return errs
+}
+
+// ResolveTargets maps a target selection to session refs. Unknown IDs are
+// returned separately so callers can record them as skipped.
+func (m *Manager) ResolveTargets(all bool, ids []string) (refs []TargetRef, unknown []string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if all {
+		for _, s := range m.sessions {
+			s.mu.Lock()
+			if !s.Missing {
+				refs = append(refs, TargetRef{
+					ID:      s.ID,
+					RelPath: s.Config.RelPath,
+					Status:  s.Status,
+					Missing: s.Missing,
+					ConnMax: s.Config.ConnMax,
+				})
+			}
+			s.mu.Unlock()
+		}
+		sort.Slice(refs, func(i, j int) bool { return refs[i].RelPath < refs[j].RelPath })
+		return refs, nil
+	}
+	for _, id := range ids {
+		found := false
+		for _, s := range m.sessions {
+			s.mu.Lock()
+			if s.ID == id {
+				refs = append(refs, TargetRef{
+					ID:      s.ID,
+					RelPath: s.Config.RelPath,
+					Status:  s.Status,
+					Missing: s.Missing,
+					ConnMax: s.Config.ConnMax,
+				})
+				found = true
+			}
+			s.mu.Unlock()
+			if found {
+				break
+			}
+		}
+		if !found {
+			unknown = append(unknown, id)
+		}
+	}
+	return refs, unknown
+}
+
+// AnyBusy returns the subset of IDs currently active (Running/Starting/Paused/Stopping).
+func (m *Manager) AnyBusy(ids []string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var busy []string
+	for _, id := range ids {
+		for _, s := range m.sessions {
+			s.mu.Lock()
+			ok := s.ID == id
+			st := s.Status
+			s.mu.Unlock()
+			if ok {
+				switch st {
+				case StatusRunning, StatusStarting, StatusPaused, StatusStopping:
+					busy = append(busy, id)
+				}
+				break
+			}
+		}
+	}
+	return busy
+}
+
+// BudgetFree returns the unreserved connection budget.
+func (m *Manager) BudgetFree() int {
+	return m.MaxTotalConns() - int(m.reserved.Load())
+}
+
+// StopSessions stops the given sessions (used by IfRunning=stopAndRun).
+func (m *Manager) StopSessions(ids []string) []error {
+	var errs []error
+	for _, id := range ids {
+		if _, err := m.Stop(id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}
+
+// CancelRun cancels a run: pending entries are marked Cancelled and any
+// sessions still active under it are stopped. Entry updates from those
+// stops are ignored (already terminal).
+func (m *Manager) CancelRun(runID string) (Run, bool) {
+	run, ok := m.hist.Get(runID)
+	if !ok {
+		return run, false
+	}
+	if run.FinishedAt != "" {
+		return run, false
+	}
+	if !m.hist.Cancel(runID, "cancelled via API") {
+		return run, false
+	}
+	for _, e := range run.Sessions {
+		if s, err := m.findByID(e.SessionID); err == nil {
+			s.mu.Lock()
+			st := s.Status
+			s.mu.Unlock()
+			switch st {
+			case StatusRunning, StatusPaused, StatusStarting, StatusStopping:
+				_, _ = m.Stop(e.SessionID)
+			}
+		}
+	}
+	out, _ := m.hist.Get(runID)
+	return out, true
+}
+
+// SkipTarget is a target that will never start, recorded upfront in the run.
+type SkipTarget struct {
+	ID      string `json:"id"`
+	RelPath string `json:"relPath,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// StartBulk starts a set of targets as one run, sequentially with optional
+// stagger, honoring the busy policy. It blocks until all starts have been
+// attempted; started sessions finish asynchronously. Used by the schedule
+// engine (which calls it from its own fire goroutine).
+func (m *Manager) StartBulk(origin RunOrigin, scheduleID string, refs []TargetRef, skips []SkipTarget, spec RunSpec, stagger time.Duration, stopBusy bool) Run {
+	entries := make([]SessionRun, 0, len(refs)+len(skips))
+	for _, ref := range refs {
+		entries = append(entries, SessionRun{SessionID: ref.ID, RelPath: ref.RelPath})
+	}
+	for _, sk := range skips {
+		entries = append(entries, SessionRun{SessionID: sk.ID, RelPath: sk.RelPath, Status: "Skipped", Reason: sk.Reason})
+	}
+	run := m.hist.Create(origin, scheduleID, entries)
+
+	for i, ref := range refs {
+		if i > 0 && stagger > 0 {
+			time.Sleep(stagger)
+		}
+		s, err := m.findByID(ref.ID)
+		if err != nil {
+			m.hist.SkipSession(run.ID, ref.ID, ref.RelPath, "session removed")
+			continue
+		}
+		s.mu.Lock()
+		st, missing := s.Status, s.Missing
+		s.mu.Unlock()
+		if missing {
+			m.hist.SkipSession(run.ID, ref.ID, ref.RelPath, "database file is missing")
+			continue
+		}
+		switch st {
+		case StatusIdle, StatusFailed, StatusCompleted:
+		default:
+			if !stopBusy {
+				m.hist.SkipSession(run.ID, ref.ID, ref.RelPath, "busy: status "+string(st))
+				continue
+			}
+			if _, err := m.Stop(ref.ID); err != nil {
+				m.hist.SkipSession(run.ID, ref.ID, ref.RelPath, "cannot stop before start: "+err.Error())
+				continue
+			}
+		}
+		_, _ = m.startInternal(s, spec, run.ID)
+	}
+	m.hist.MaybeFinish(run.ID)
+	out, _ := m.hist.Get(run.ID)
+	return out
 }
 
 // StopAll stops all active sessions.
