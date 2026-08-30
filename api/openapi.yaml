@@ -1,0 +1,1252 @@
+openapi: 3.1.0
+info:
+  title: IBSurgeon Firebird Load Generator — Control Plane API
+  version: "1.2.0"
+  description: |
+    REST API served by `fb-loadgen --ui` (default `http://127.0.0.1:9000`, set with `--ui-addr`).
+    The web UI is a thin client over this API — everything the UI can do is available here.
+
+    **Authentication** — none by default. Start the server with `--ui-token <secret>` and every
+    mutating call (POST/PUT/PATCH/DELETE) must send `Authorization: Bearer <secret>`.
+    Read-only GETs stay open unless the server runs with `--ui-auth-all`, which protects GETs too
+    (`GET /api/health` and `GET /metrics` always stay open for monitoring).
+
+    **Errors** — non-2xx responses carry `{"error": "<message>"}`. `400` for bad requests or
+    invalid state transitions, `401` unauthorized, `404` unknown id, `409` conflicting operation.
+
+    **Connection budget** — starting a session reserves its `connMax` against the fleet budget
+    (`maxTotalConns`). An exhausted budget yields `400` with a `max-total-conns budget exceeded` message;
+    the schedule engine instead applies its `ifBudgetFull` policy.
+
+    Serving: this document lives at `api/openapi.yaml` in the repository. Written against API
+    version 1.2.0; check `GET /api/version` at runtime.
+externalDocs:
+  description: Full guide with curl and PowerShell recipes
+  url: https://github.com/alexeykovyazin/firebirdgotester/blob/main/API.md
+servers:
+  - url: http://127.0.0.1:9000
+    description: Default local control plane
+security: [] # open by default; enable per-operation via the bearerAuth scheme when --ui-token is set
+
+tags:
+  - name: Sessions
+    description: Discover, inspect and drive per-database load sessions
+  - name: Fleet
+    description: Bulk operations and aggregated counters
+  - name: Schedules
+    description: Persisted run schedules (once / interval / cron)
+  - name: Runs
+    description: Run history with per-session outcomes
+  - name: Config
+    description: Connection settings, discovery, reports
+  - name: Ops
+    description: Health, version and monitoring endpoints (always unauthenticated)
+
+paths:
+  /api/sessions:
+    get:
+      tags: [Sessions]
+      summary: List discovered databases with live snapshots plus the fleet summary
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All sessions sorted by absolute path, with aggregated fleet counters
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions, fleet]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/SessionSnapshot" }
+                  fleet:
+                    $ref: "#/components/schemas/FleetSummary"
+
+  /api/sessions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Sessions]
+      summary: One session snapshot
+      description: >
+        Answers "working / not working / error": `status` is the lifecycle state, `lastError`
+        carries the last failure text (empty when healthy), `phase` is `warmup` / `main` /
+        `cooldown` while running, `remainingSec` counts down for timed runs (frozen while paused).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Sessions]
+      summary: Edit run settings
+      description: >
+        Partial merge; only editable when the session is Idle, Failed or Completed.
+        `connMax` is managed by the fleet budget (maxTotalConns / N) and is ignored.
+        Invalid resulting config leaves the session Failed with the reason in `lastError`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SessionPatch" }
+      responses:
+        "200":
+          description: Updated snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Sessions]
+      summary: Remove a database from the table
+      description: Stops the session first if it is active.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Removed; returns the remaining session list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, sessions]
+                properties:
+                  ok: { type: boolean }
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/SessionSnapshot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: Start load for one database
+      description: |
+        Runs the schema gate, reserves the connection budget and loads the operation cache,
+        then begins the ramp. With `timeLimitMin > 0` the warmup/main/cooldown shape is scaled
+        proportionally so the whole run lasts exactly that long; `0` (or an omitted body) means
+        a fixed 60-second warmup followed by steady load until stopped.
+
+        Synchronous by default: the response returns once the session is `Running` (this can take
+        a few seconds). With `"wait": false` the call returns immediately with `202` and the
+        session goes to `Starting` — poll `GET /api/sessions/{id}` for the outcome. A start
+        failure sets the session to `Failed` (budget exhaustion returns it to `Idle`) with the
+        reason in `lastError`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartRequest" }
+      responses:
+        "200":
+          description: Session is Running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "202":
+          description: Queued (wait=false); poll the session status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StartAsyncResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: Stop a session
+      description: >
+        Fast-cancels the run: workers finish the current transaction, connections close, budget
+        is released, reports are flushed. Works from Running, Paused and Starting.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session stopped (status Idle)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/pause:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: Pause a running session
+      description: Freezes workers and the phase countdown; connections are kept.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/resume:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: Resume a paused session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session running again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/validate:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      summary: Connectivity and schema check
+      description: >
+        Actively tests reachability and the EMPLOYEE schema without starting load.
+        On success the session is Idle with an empty `lastError`; on failure it is Failed
+        with the reason.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Check performed; see the returned snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSnapshot" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/runs:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/LimitQuery"
+    get:
+      tags: [Runs]
+      summary: Run history for one database
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Runs (newest first) that include this session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, runs]
+                properties:
+                  session: { type: string }
+                  runs:
+                    type: array
+                    items: { $ref: "#/components/schemas/RunRecord" }
+
+  /api/sessions/{id}/report:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Config]
+      summary: List report files of the last or active run
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Directory and file names
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dir, files]
+                properties:
+                  dir: { type: string }
+                  files:
+                    type: array
+                    items: { type: string }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/report/{file}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/ReportFile"
+    get:
+      tags: [Config]
+      summary: Download one report file
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Plain-text report content (text/plain attachment)
+          content:
+            text/plain:
+              schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/start-all:
+    post:
+      tags: [Fleet]
+      summary: Start all idle databases
+      description: >
+        Starts every Idle/Failed/Completed, non-missing session with the given time limit and
+        records the batch as one manual run. Per-database failures are returned in `errors`
+        (each session also transitions to Failed/Idle with `lastError`).
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeLimitMin:
+                  type: integer
+                  minimum: 0
+                  default: 0
+      responses:
+        "200":
+          description: Batch attempted; check errors
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkResult" }
+
+  /api/sessions/stop-all:
+    post:
+      tags: [Fleet]
+      summary: Stop all active sessions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All stops attempted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkResult" }
+
+  /api/sessions/pause-all:
+    post:
+      tags: [Fleet]
+      summary: Pause all running sessions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All pauses attempted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkResult" }
+
+  /api/sessions/validate-all:
+    post:
+      tags: [Fleet]
+      summary: Schema-check all idle databases
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Per-database validation errors, if any
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkResult" }
+
+  /api/sessions/purge-missing:
+    post:
+      tags: [Fleet]
+      summary: Remove sessions whose database files no longer exist
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Number of removed rows
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [purged, sessions]
+                properties:
+                  purged: { type: integer }
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/SessionSnapshot" }
+
+  /api/fleet:
+    get:
+      tags: [Fleet]
+      summary: Aggregated fleet counters
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Fleet summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FleetSummary" }
+
+  /api/schedules:
+    get:
+      tags: [Schedules]
+      summary: List schedules
+      description: Includes `nextRunAt` and `lastFire` per schedule.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Schedules sorted by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedules]
+                properties:
+                  schedules:
+                    type: array
+                    items: { $ref: "#/components/schemas/Schedule" }
+    post:
+      tags: [Schedules]
+      summary: Create a schedule
+      description: |
+        Validates the trigger (RFC3339 `at` for `once`, `everyMin >= 1` for `interval`, a
+        parseable 5-field `cron` with optional IANA `tz`) and the targets. Recurring triggers
+        require `run.timeLimitMin >= 1` — an unlimited run on a recurring schedule would block
+        every later fire. The id is assigned server-side (`sch_` + 8 hex chars).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleInput" }
+      responses:
+        "201":
+          description: Created schedule (with computed nextRunAt)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/schedules/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleId"
+    get:
+      tags: [Schedules]
+      summary: One schedule
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Schedules]
+      summary: Edit a schedule
+      description: >
+        Partial merge — absent fields are untouched. Setting `enabled: false` pauses firing and
+        clears `nextRunAt`; enabling recomputes it. Validation rules are the same as creation.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SchedulePatch" }
+      responses:
+        "200":
+          description: Updated schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Schedules]
+      summary: Delete a schedule
+      description: An in-flight fire completes unaffected.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Deleted; returns the remaining schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, schedules]
+                properties:
+                  ok: { type: boolean }
+                  schedules:
+                    type: array
+                    items: { $ref: "#/components/schemas/Schedule" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/schedules/{id}/trigger:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleId"
+    post:
+      tags: [Schedules]
+      summary: Fire a schedule now
+      description: >
+        Ignores `nextRunAt` and starts the fire asynchronously, applying the schedule's policies.
+        Poll `GET /api/schedules/{id}` (`lastFire`) or `GET /api/schedules/{id}/runs` for the
+        result. A `once` schedule is spent after the attempt.
+      security:
+        - bearerAuth: []
+      responses:
+        "202":
+          description: Fire queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TriggerResponse" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A fire for this schedule is already in progress
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/schedules/{id}/runs:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleId"
+      - $ref: "#/components/parameters/LimitQuery"
+    get:
+      tags: [Schedules]
+      summary: Fire history for one schedule
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Runs created by this schedule (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule, runs]
+                properties:
+                  schedule: { type: string }
+                  runs:
+                    type: array
+                    items: { $ref: "#/components/schemas/RunRecord" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/runs:
+    get:
+      tags: [Runs]
+      summary: Run history
+      description: Newest first. Filters are combinable.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitQuery"
+        - name: session
+          in: query
+          description: Only runs containing this session id
+          schema: { type: string }
+        - name: schedule
+          in: query
+          description: Only runs created by this schedule id
+          schema: { type: string }
+        - name: since
+          in: query
+          description: Only runs started at or after this time (RFC3339)
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: "#/components/schemas/RunRecord" }
+
+  /api/runs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    get:
+      tags: [Runs]
+      summary: One run with per-session outcomes
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Run record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunRecord" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/runs/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    post:
+      tags: [Runs]
+      summary: Cancel an in-flight run
+      description: >
+        Pending entries become `Cancelled`; sessions still active under the run are stopped.
+        Finishing those stops updates the sessions but not the (already terminal) entries.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cancelled run record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunRecord" }
+        "400":
+          description: Run not found or already finished
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/config:
+    get:
+      tags: [Config]
+      summary: Read connection settings (password redacted)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current settings plus UI defaults
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfigSettings" }
+    put:
+      tags: [Config]
+      summary: Save connection settings and budget
+      description: >
+        Blank `pass` keeps the stored password. Changing `maxTotalConns` resizes running
+        sessions live (caps and reservations move to the new even split within ~1 s).
+        `warnRunning` is true when sessions were active during the save — they keep the old
+        DSN until restarted.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfigUpdate" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, settings, path]
+                properties:
+                  ok: { type: boolean }
+                  settings: { $ref: "#/components/schemas/ConfigSettings" }
+                  path: { type: string, description: Settings file the config was persisted to }
+                  warnRunning: { type: boolean }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/discover:
+    post:
+      tags: [Config]
+      summary: Scan the discovery root for database files
+      description: >
+        Recursively (by default) scans for `*.fdb` under the configured root (or `discoverDir`
+        override), upserts sessions and applies persisted per-database settings.
+        The root override must be under the configured discovery root allowlist.
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DiscoverRequest" }
+      responses:
+        "200":
+          description: Discovery result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions, count, discoverDir, recursive]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/SessionSnapshot" }
+                  count: { type: integer }
+                  discoverDir: { type: string }
+                  recursive: { type: boolean }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/health:
+    get:
+      tags: [Ops]
+      summary: Liveness probe
+      description: Always unauthenticated — safe for monitors and task schedulers.
+      security: []
+      responses:
+        "200":
+          description: Server is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, uptimeSec]
+                properties:
+                  ok: { type: boolean, const: true }
+                  uptimeSec: { type: integer }
+
+  /api/version:
+    get:
+      tags: [Ops]
+      summary: Build information
+      security: []
+      responses:
+        "200":
+          description: Version details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, goVersion, os, arch]
+                properties:
+                  version: { type: string, examples: ["1.2.0"] }
+                  goVersion: { type: string, examples: ["go1.24.5"] }
+                  os: { type: string, examples: ["windows"] }
+                  arch: { type: string, examples: ["amd64"] }
+
+  /metrics:
+    get:
+      tags: [Ops]
+      summary: Prometheus metrics
+      description: >
+        Text exposition (format version 0.0.4). Families: `fbloadgen_fleet_*` (session states,
+        total conns/TPS, budget), `fbloadgen_session_*` (tps, conns, success/errors, latency
+        percentiles per session), `fbloadgen_schedule_*` (next-run timestamp, fire counters by
+        outcome), `fbloadgen_build_info`, `fbloadgen_uptime_seconds`.
+      security: []
+      responses:
+        "200":
+          description: Prometheus text format
+          content:
+            text/plain:
+              schema: { type: string }
+              example: |
+                # HELP fbloadgen_fleet_sessions_running Sessions currently running.
+                # TYPE fbloadgen_fleet_sessions_running gauge
+                fbloadgen_fleet_sessions_running 3
+                fbloadgen_session_tps{session="365599cb03070b90",db="db1/EMPLOYEE.FDB"} 11.4
+                fbloadgen_schedule_fires_total{schedule="sch_1a2b",name="nightly",outcome="fired"} 7
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Required for mutating calls when the server runs with --ui-token, and for GETs too
+        when --ui-auth-all is set. Send: Authorization: Bearer <secret>.
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: Stable session id (16 hex chars, SHA-256 of the absolute database path)
+      schema: { type: string }
+    ScheduleId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^sch_[0-9a-f]{8}$" }
+    RunId:
+      name: id
+      in: path
+      required: true
+      description: Run id (run_<UTC timestamp>_<8 hex>)
+      schema: { type: string }
+    ReportFile:
+      name: file
+      in: path
+      required: true
+      description: File name as returned by GET /api/sessions/{id}/report
+      schema: { type: string }
+    LimitQuery:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1 }
+      description: Maximum number of items (server default applies when omitted)
+  responses:
+    BadRequest:
+      description: Bad request or invalid state transition
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Unknown id
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    SessionSnapshot:
+      type: object
+      description: Live view of one database session.
+      required:
+        [id, name, relPath, absPath, dsn, status, profile, connMin, connMax, warmup, main,
+         cooldown, spikeCycles, spikeHold, thinkMs, txTimeout, phase, phaseProgress,
+         targetConns, currentConns, tps, errors, expectedErrors, unexpectedErrors, success,
+         lastError, elapsedSec, timeLimitMin, remainingSec, latencyP50, latencyP95, latencyP99,
+         missing, updatedAt]
+      properties:
+        id: { type: string, description: Stable id derived from the absolute database path }
+        name: { type: string }
+        relPath: { type: string, description: Path relative to the discovery root }
+        absPath: { type: string }
+        dsn: { type: string, description: "Firebird DSN host/port:path (no credentials)" }
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        profile:
+          type: string
+          enum: [write-heavy, read-heavy, spike]
+        connMin: { type: integer, minimum: 1 }
+        connMax: { type: integer, minimum: 1, description: Budget-managed (maxTotalConns / N) }
+        warmup: { type: integer, description: "Seconds; shape ratio when a time limit scales the run" }
+        main: { type: integer }
+        cooldown: { type: integer }
+        spikeCycles: { type: integer }
+        spikeHold: { type: integer }
+        thinkMs: { type: integer }
+        txTimeout: { type: integer, description: Seconds }
+        phase: { type: string, description: "warmup / main / cooldown while active, otherwise —" }
+        phaseProgress: { type: number, description: Percent of the whole run completed }
+        targetConns: { type: integer }
+        currentConns: { type: integer }
+        tps: { type: number }
+        errors: { type: integer, format: int64 }
+        expectedErrors: { type: integer, format: int64, description: Expected business exceptions }
+        unexpectedErrors: { type: integer, format: int64 }
+        success: { type: integer, format: int64 }
+        lastError: { type: string, description: Empty when healthy }
+        elapsedSec: { type: number }
+        timeLimitMin: { type: integer, description: 0 = unlimited }
+        remainingSec: { type: number, description: For timed runs; frozen while paused }
+        latencyP50: { type: integer, description: ms }
+        latencyP95: { type: integer, description: ms }
+        latencyP99: { type: integer, description: ms }
+        topOps:
+          type: array
+          items:
+            type: object
+            required: [name, count]
+            properties:
+              name: { type: string }
+              count: { type: integer, format: int64 }
+        reportDir: { type: string }
+        missing: { type: boolean, description: Database file no longer exists on disk }
+        updatedAt: { type: string, format: date-time }
+
+    SessionStatus:
+      type: string
+      enum: [Idle, Starting, Running, Paused, Stopping, Completed, Failed]
+      description: >
+        Idle (not running), Starting (gate/cache/budget), Running (load generated), Paused,
+        Stopping, Completed (timed run finished naturally), Failed (see lastError).
+
+    FleetSummary:
+      type: object
+      required:
+        [running, paused, idle, failed, completed, missing, databases, perDbMax,
+         totalConns, totalTps, budgetUsed, budgetLimit]
+      properties:
+        running: { type: integer }
+        paused: { type: integer }
+        idle: { type: integer }
+        failed: { type: integer }
+        completed: { type: integer }
+        missing: { type: integer }
+        databases: { type: integer }
+        perDbMax: { type: integer, description: Even per-DB conn split (budget / N) }
+        totalConns: { type: integer }
+        totalTps: { type: number }
+        budgetUsed: { type: integer, description: Reserved connections }
+        budgetLimit: { type: integer, description: maxTotalConns }
+        topErrors:
+          type: object
+          additionalProperties: { type: integer }
+          description: Most frequent error texts, when any
+
+    SessionPatch:
+      type: object
+      description: Partial merge; fields not present are unchanged. connMax is ignored.
+      properties:
+        profile: { type: string, enum: [write-heavy, read-heavy, spike] }
+        connMin: { type: integer, minimum: 1 }
+        warmup: { type: integer, minimum: 0 }
+        main: { type: integer, minimum: 0 }
+        cooldown: { type: integer, minimum: 0 }
+        spikeCycles: { type: integer, minimum: 0 }
+        spikeHold: { type: integer, minimum: 0 }
+        thinkMs: { type: integer, minimum: 0 }
+        txTimeout: { type: integer, minimum: 1 }
+
+    StartRequest:
+      type: object
+      properties:
+        timeLimitMin:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >
+            Minutes for the whole run (phases scaled proportionally). 0 = fixed 60 s warmup,
+            then steady load until stopped.
+        wait:
+          type: boolean
+          default: true
+          description: >
+            true (default) — respond when the session is Running or the start failed;
+            false — respond 202 immediately and poll the session status.
+
+    StartAsyncResponse:
+      type: object
+      required: [queued, session]
+      properties:
+        queued: { type: boolean, const: true }
+        session: { $ref: "#/components/schemas/SessionSnapshot" }
+
+    BulkResult:
+      type: object
+      required: [sessions, errors]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/SessionSnapshot" }
+        errors:
+          type: array
+          items: { type: string }
+          description: 'Per-database failure messages ("relPath: message"), empty when all succeeded'
+
+    Schedule:
+      type: object
+      description: Persisted schedule; survives restarts (fb-loadgen.schedules.json).
+      required: [id, name, enabled, trigger, targets, run, policy, createdAt]
+      properties:
+        id: { type: string, pattern: "^sch_[0-9a-f]{8}$" }
+        name: { type: string }
+        enabled: { type: boolean }
+        trigger: { $ref: "#/components/schemas/Trigger" }
+        targets: { $ref: "#/components/schemas/Targets" }
+        run: { $ref: "#/components/schemas/RunSpec" }
+        policy: { $ref: "#/components/schemas/Policy" }
+        notifyUrl:
+          type: string
+          description: Optional webhook receiver for this schedule's runs
+        createdAt: { type: string, format: date-time }
+        nextRunAt:
+          type: string
+          format: date-time
+          description: Next fire time; empty when disabled or spent
+        lastFire:
+          anyOf:
+            - $ref: "#/components/schemas/RunRef"
+            - type: "null"
+
+    ScheduleInput:
+      type: object
+      required: [name, enabled, trigger, targets, run]
+      properties:
+        name: { type: string, minLength: 1 }
+        enabled: { type: boolean, default: true }
+        trigger: { $ref: "#/components/schemas/Trigger" }
+        targets: { $ref: "#/components/schemas/Targets" }
+        run: { $ref: "#/components/schemas/RunSpec" }
+        policy: { $ref: "#/components/schemas/Policy" }
+        notifyUrl: { type: string }
+
+    SchedulePatch:
+      type: object
+      description: Partial merge (PATCH); absent fields unchanged, same validation as creation.
+      properties:
+        name: { type: string }
+        enabled: { type: boolean }
+        trigger: { $ref: "#/components/schemas/Trigger" }
+        targets: { $ref: "#/components/schemas/Targets" }
+        run: { $ref: "#/components/schemas/RunSpec" }
+        policy: { $ref: "#/components/schemas/Policy" }
+        notifyUrl: { type: string }
+
+    Trigger:
+      type: object
+      required: [type]
+      properties:
+        type: { $ref: "#/components/schemas/TriggerType" }
+        at:
+          type: string
+          format: date-time
+          description: RFC3339, required for type=once (a past time fires immediately, once)
+        everyMin:
+          type: integer
+          minimum: 1
+          description: Required for type=interval; anchored at each fire time
+        cron:
+          type: string
+          description: 'Required for type=cron; 5-field expression, e.g. "0 2 * * *"'
+        tz:
+          type: string
+          description: Optional IANA zone for cron (e.g. Europe/Moscow); empty = server-local
+      description: >
+        once fires at `at` and then disables itself (whatever the fire outcome);
+        interval fires every `everyMin` minutes; cron per the expression.
+
+    TriggerType:
+      type: string
+      enum: [once, interval, cron]
+
+    Targets:
+      type: object
+      description: Which sessions the schedule runs. Exactly one of `all` or non-empty `sessionIds`.
+      properties:
+        all: { type: boolean, description: All discovered, non-missing sessions at fire time }
+        sessionIds:
+          type: array
+          items: { type: string }
+          description: >
+            Explicit session ids. Unknown ids and missing files are recorded in the run as
+            Skipped entries with a reason; the rest of the targets still run.
+
+    RunSpec:
+      type: object
+      required: [timeLimitMin]
+      properties:
+        timeLimitMin:
+          type: integer
+          minimum: 0
+          description: >
+            Whole-run length in minutes (phases scaled). Must be >= 1 for recurring triggers.
+        overrides:
+          $ref: "#/components/schemas/RunOverrides"
+
+    RunOverrides:
+      type: object
+      description: >
+        Per-fire config overlays applied on top of each target session's settings
+        (precedence: override > session config). Connection counts are budget-managed
+        and cannot be overridden.
+      properties:
+        profile: { type: string, enum: [write-heavy, read-heavy, spike] }
+        thinkMs: { type: integer, minimum: 0 }
+        txTimeout: { type: integer, minimum: 1 }
+        spikeCycles: { type: integer, minimum: 1 }
+        spikeHold: { type: integer, minimum: 1 }
+
+    Policy:
+      type: object
+      description: Fire-time behavior. Defaults are applied server-side and returned in responses.
+      properties:
+        ifRunning:
+          type: string
+          enum: [skip, stopAndRun]
+          default: skip
+          description: >
+            skip — the fire is skipped (recorded with a detail) when any target is busy;
+            stopAndRun — busy targets are stopped first (opt-in, destructive).
+        ifBudgetFull:
+          type: string
+          enum: [wait, skip]
+          default: wait
+        waitBudgetSec:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 300
+          description: How long a wait-policy fire waits for connection budget
+        staggerSec:
+          type: integer
+          minimum: 0
+          maximum: 60
+          default: 2
+          description: Delay between per-database starts
+        catchUp:
+          type: boolean
+          default: false
+          description: >
+            Fire a run missed while the process was down. false (default) records the fire as
+            missed; a missed `once` schedule is disabled either way.
+
+    RunRef:
+      type: object
+      description: Last fire attempt. Skipped/missed fires carry a detail and no runId.
+      required: [outcome]
+      properties:
+        runId: { type: string }
+        at: { type: string, format: date-time }
+        outcome: { $ref: "#/components/schemas/FireOutcome" }
+        detail: { type: string, description: "e.g. \"targets busy: [id]\" or the budget shortfall" }
+
+    FireOutcome:
+      type: string
+      enum: [fired, skipped, missed, failed]
+
+    RunRecord:
+      type: object
+      description: One recorded execution — a schedule fire or a manual start (singleton or bulk).
+      required: [id, origin, startedAt, outcome, sessions]
+      properties:
+        id:
+          type: string
+          examples: ["run_20260829T181951_9395"]
+        origin:
+          type: string
+          enum: [manual, schedule]
+        scheduleId: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, description: Empty while running }
+        outcome: { $ref: "#/components/schemas/RunOutcome" }
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/SessionRun" }
+
+    RunOutcome:
+      type: string
+      enum: [running, ok, partial, failed, cancelled, skipped]
+      description: >
+        ok — all started sessions Completed; partial — mixed; failed — none completed and at
+        least one failed; cancelled — via the cancel endpoint (or process restart);
+        skipped — nothing actually started.
+
+    SessionRun:
+      type: object
+      required: [id, relPath, status, tps, success, errors]
+      properties:
+        id: { type: string, description: Session id }
+        relPath: { type: string }
+        status:
+          type: string
+          description: >
+            Terminal session status (Completed / Failed / Idle), or Skipped / Cancelled.
+            First writer wins — later updates to a terminal entry are ignored.
+        lastError: { type: string }
+        reportDir: { type: string }
+        tps: { type: number }
+        success: { type: integer, format: int64 }
+        errors: { type: integer, format: int64 }
+        pending:
+          type: boolean
+          description: true while the session is still active; absent once terminal
+        reason: { type: string, description: "Why skipped/cancelled: busy, missing, unknown session id, budget, …" }
+
+    TriggerResponse:
+      type: object
+      required: [triggered, schedule]
+      properties:
+        triggered: { type: boolean, const: true }
+        schedule: { type: string }
+        note: { type: string }
+
+    ConfigSettings:
+      type: object
+      description: Redacted settings (GET) merged with UI defaults; `pass` is never returned.
+      required: [version, host, port, user, hasPass, pass, discoverDir, discoverMask, discoverRecursive, maxTotalConns]
+      properties:
+        version: { type: integer }
+        host: { type: string }
+        port: { type: integer }
+        user: { type: string }
+        hasPass: { type: boolean }
+        pass: { type: string, description: Always empty }
+        discoverDir: { type: string }
+        discoverMask: { type: string }
+        discoverRecursive: { type: boolean }
+        maxTotalConns: { type: integer }
+        settingsPath: { type: string }
+        defaultProfile: { type: string }
+        defaultConnMin: { type: integer }
+        defaultConnMax: { type: integer }
+        defaultWarmup: { type: integer }
+        defaultMain: { type: integer }
+        defaultCooldown: { type: integer }
+        authRequired: { type: boolean, description: True when the server runs with --ui-token }
+        hasRunning: { type: boolean }
+
+    ConfigUpdate:
+      type: object
+      required: [host, port, user, discoverDir]
+      properties:
+        host: { type: string }
+        port: { type: integer, minimum: 1 }
+        user: { type: string }
+        pass:
+          type: string
+          description: Blank keeps the stored password
+        discoverDir: { type: string }
+        discoverMask: { type: string, default: "*.fdb" }
+        discoverRecursive: { type: boolean }
+        maxTotalConns:
+          type: integer
+          minimum: 1
+          description: Fleet connection budget; resizing applies to running sessions live
+
+    DiscoverRequest:
+      type: object
+      properties:
+        folder:
+          type: string
+          description: Optional subdirectory under the discovery root
+        mask:
+          type: string
+          default: "*.fdb"
+        discoverDir:
+          type: string
+          description: Optional discovery-root override
+        recursive: { type: boolean, default: true }

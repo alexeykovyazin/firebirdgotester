@@ -1,6 +1,6 @@
 # Improvements Plan — API-first run & scheduling
 
-Status: **implemented, 2026-08-29** (Phases 1–4 complete; Phase 5 partially — see "Implementation status" at the end).
+Status: **implemented, 2026-08-29** (all phases; Phase 5's secure credential storage deferred — see "Implementation status" at the end).
 Goal: make `fb-loadgen` fully drivable **without the UI** — an API for *running* load tests (exists today) and for **scheduling** them (missing), plus the run history and unattended-operation features that scheduling implies. The UI stays and gets parity tabs for the new features.
 
 ---
@@ -214,8 +214,8 @@ curl -s -X POST $BASE/api/schedules -H "Content-Type: application/json" -d '{
 | 2 — Schedules engine + API | **Done** | `schedule/` package (model, cron/interval/once via robfig/cron v3 + tzdata, tick engine, atomic store `fb-loadgen.schedules.json`, missed/catch-up policy), `/api/schedules*` in `ui/handlers_schedule.go` |
 | 3 — Unattended operation | **Done** | `schedule/notify.go` (async webhook with HMAC + retries), `GET /metrics` (Prometheus text, no client dep), retention with schedule-referenced runs protected |
 | 4 — UI parity | **Done** | `ui/static`: Sessions/Schedules/Runs tabs, schedule create/edit form, run history with per-session detail |
-| 5 — Hardening | **Partial** | Done: `--api-only`, `--ui-auth-all`, `--cors-origin`, async start (`"wait": false` → 202), `--schedules-file`/`--runs-file`/`--webhook-*` flags. Not done: OpenAPI spec, DPAPI/env password storage (plaintext password in `fb-loadgen.ui.json` remains) |
+| 5 — Hardening | **Done** | Done: `--api-only`, `--ui-auth-all`, `--cors-origin`, async start (`"wait": false` → 202), `--schedules-file`/`--runs-file`/`--webhook-*` flags, OpenAPI 3.1 spec (`api/openapi.yaml` — 28 paths / 34 operations, validated against the live API). Deferred: secure credential storage (plaintext password in `fb-loadgen.ui.json` remains) |
 
 Review findings folded in: fire/skip/missed semantics (`lastFire` vs run records), typed `RunOverrides` with precedence (no conn overrides — budget owns them), per-target skip with reasons for dangling/missing/unknown targets, `timeLimitMin >= 1` guard on recurring triggers, once-schedules spend themselves after one attempt, interval anchored at fire time, budget-wait runs in the engine's pending state, retention keeps `lastFire`-referenced runs, `GET /api/health` + `/api/version` served, manual starts recorded as runs (`origin: manual`), startup marks interrupted runs cancelled.
 
-Deviations from the original plan: global webhook config moved from `UISettings` (would force a v3 settings migration) to `--webhook-url`/`--webhook-secret` flags plus per-schedule `notifyUrl`; OpenAPI spec deferred.
+Deviations from the original plan: global webhook config moved from `UISettings` (would force a v3 settings migration) to `--webhook-url`/`--webhook-secret` flags plus per-schedule `notifyUrl`; the OpenAPI spec is hand-maintained at `api/openapi.yaml` rather than generated from code (2026-08-30: written and validated against the live API).

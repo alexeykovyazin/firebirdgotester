@@ -2,6 +2,8 @@
 
 Complete instruction and examples for the **IBSurgeon Firebird Load Generator** control-plane REST API.
 
+> **Machine-readable spec:** [api/openapi.yaml](api/openapi.yaml) (OpenAPI 3.1) describes every endpoint, schema and status code below — use it for client generation, Swagger UI or contract tests.
+
 The web UI at `http://127.0.0.1:9000` is a thin client over this API — everything the UI can do is available programmatically.
 
 - **Base URL**: `http://127.0.0.1:9000` (set with `--ui-addr`; defaults to localhost only)
