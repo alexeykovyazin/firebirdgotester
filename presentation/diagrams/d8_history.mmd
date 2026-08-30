@@ -1,0 +1,5 @@
+flowchart LR
+    R["Run finishes"] --> S[("runs.json<br/>retention 500 / 30 d")]
+    R --> WH["Webhook<br/>X-FBLoadGen-Signature"]
+    R --> PR["/metrics Prometheus<br/>gauges + counters"]
+    S --> API["GET /api/runs"]

@@ -2,6 +2,27 @@
 
 A Go CLI load simulator for **Firebird** databases, built around the classic **EMPLOYEE** sample schema. It spawns workers (one dedicated connection each), runs weighted mixes of SELECT / INSERT / UPDATE / DELETE / stored-procedure calls, ramps connections through warmup → main → cooldown, and writes latency / throughput / error reports.
 
+## 📊 Presentation
+
+The product deck is published on **GitHub Pages** — [download the PPTX](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pptx) · [view the PDF](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pdf) · [slides gallery](https://alexeykovyazin.github.io/firebirdgotester/).
+
+<details>
+<summary><b>View the slides (17)</b></summary>
+
+| | |
+|---|---|
+| ![Slide 1](presentation/slides/slide-01.png) | ![Slide 2](presentation/slides/slide-02.png) |
+| ![Slide 3](presentation/slides/slide-03.png) | ![Slide 4](presentation/slides/slide-04.png) |
+| ![Slide 5](presentation/slides/slide-05.png) | ![Slide 6](presentation/slides/slide-06.png) |
+| ![Slide 7](presentation/slides/slide-07.png) | ![Slide 8](presentation/slides/slide-08.png) |
+| ![Slide 9](presentation/slides/slide-09.png) | ![Slide 10](presentation/slides/slide-10.png) |
+| ![Slide 11](presentation/slides/slide-11.png) | ![Slide 12](presentation/slides/slide-12.png) |
+| ![Slide 13](presentation/slides/slide-13.png) | ![Slide 14](presentation/slides/slide-14.png) |
+| ![Slide 15](presentation/slides/slide-15.png) | ![Slide 16](presentation/slides/slide-16.png) |
+| ![Slide 17](presentation/slides/slide-17.png) | |
+
+</details>
+
 ## Features
 
 - **Three workload profiles**: `write-heavy`, `read-heavy`, and `spike`
@@ -99,7 +120,7 @@ Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). 
 
 ## REST API
 
-The web UI is a thin client over a JSON REST API served on the same address (default `http://127.0.0.1:9000`). Full instruction and examples: **[API.md](API.md)**. Start with `--ui-token <secret>` to require `Authorization: Bearer <secret>` on mutating calls.
+The web UI is a thin client over a JSON REST API served on the same address (default `http://127.0.0.1:9000`). Full instruction and examples: **[API.md](API.md)**; machine-readable OpenAPI 3.1 spec: **[api/openapi.yaml](api/openapi.yaml)**. Start with `--ui-token <secret>` to require `Authorization: Bearer <secret>` on mutating calls.
 
 | Operation | Method & path | Body |
 |-----------|---------------|------|
