@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IBSurgeon Firebird Load Generator — Presentation</title>
+<style>
+  :root { --accent:#2563eb; --text:#1c2733; --muted:#5f6f83; --bg:#f5f7fa; --panel:#fff; --border:#d8dfe8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:28px 32px; background:var(--panel); border-bottom:1px solid var(--border); }
+  header h1 { margin:0 0 6px; font-size:22px; }
+  header h1 b { color:var(--accent); }
+  header p { margin:0; color:var(--muted); font-size:14px; }
+  .actions { padding:20px 32px; display:flex; gap:12px; flex-wrap:wrap; }
+  .btn { display:inline-block; padding:10px 18px; border-radius:6px; text-decoration:none;
+         font-weight:600; font-size:14px; border:1px solid var(--accent); color:var(--accent); background:var(--panel); }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .btn:hover { filter:brightness(1.06); }
+  .frame { margin:0 32px 32px; background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .frame iframe { display:block; width:100%; height:820px; border:0; }
+  .grid { padding:0 32px 40px; display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+  .grid a { display:block; background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .grid img { width:100%; display:block; }
+  .grid a:hover { border-color:var(--accent); }
+  footer { padding:0 32px 40px; color:var(--muted); font-size:13px; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>IBSurgeon</b> Firebird Load Generator — Presentation</h1>
+  <p>Load testing for Firebird: from a one-shot CLI to a scheduled, multi-database fleet with a full REST API.</p>
+</header>
+<div class="actions">
+  <a class="btn primary" href="IBSurgeon_LoadGenerator.pptx">⬇ Download PPTX</a>
+  <a class="btn" href="IBSurgeon_LoadGenerator.pdf">⬇ Download PDF</a>
+  <a class="btn" href="https://github.com/alexeykovyazin/firebirdgotester#-presentation">📖 README</a>
+</div>
+<div class="frame"><iframe src="IBSurgeon_LoadGenerator.pdf" title="Presentation PDF"></iframe></div>
+<div class="grid" id="g"></div>
+<footer>Sources: <a href="https://github.com/alexeykovyazin/firebirdgoteter">firebirdgotester</a> · built with mermaid + pptxgenjs (<code>presentation/build.mjs</code>)</footer>
+<script>
+  for (let i = 1; i <= 17; i++) {
+    const n = String(i).padStart(2, "0");
+    const a = document.createElement("a");
+    a.href = "slides/slide-" + n + ".png";
+    a.target = "_blank";
+    a.innerHTML = '<img src="slides/slide-' + n + '.png" alt="Slide ' + i + '" loading="lazy">';
+    document.getElementById("g").appendChild(a);
+  }
+</script>
+</body>
+</html>
