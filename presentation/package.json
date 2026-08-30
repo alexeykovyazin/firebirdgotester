@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@mermaid-js/mermaid-cli": "^11.16.0",
-    "pptxgenjs": "^4.0.1"
-  }
-}

@@ -1,6 +1,0 @@
-System Status:
-  Profile:             spike
-  Scheduler:           Phase: cooldown (100.0%), Workers: 0, Elapsed: 20m58.1960297s
-  Cache:               Cache: 22 depts, 104 emps, 16 projs, 14114 custs, 15 jobs
-  Test Duration:       21m11.8363678s
-  Last Report:         0s ago

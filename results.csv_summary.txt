@@ -1,1 +1,0 @@
-Total: 260310, Success: 99.1%, TPS: 204.7, Lat: avg=18ms min=5ms max=25ms p50=0s p95=0s p99=0s, Workers: 0/20, Profile: spike
