@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant B as Browser SPA
+    participant A as REST API
+    participant M as Session Manager
+    participant W as Workers
+    B->>A: GET /api/sessions (poll 1.5 s)
+    A-->>B: snapshots + fleet
+    B->>A: POST /start
+    A->>M: validate > budget > gate > cache
+    M->>W: ramp workers per phase
+    W-->>M: live metrics
+    A-->>B: Running: TPS, latency

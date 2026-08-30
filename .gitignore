@@ -23,3 +23,8 @@ EMPLOYEE.FDB.ReplLog/
 # Local tool artifacts
 .zcode/
 *.exe~
+presentation/node_modules/
+
+# generated deck artifacts
+presentation/render/
+presentation/*.pptx

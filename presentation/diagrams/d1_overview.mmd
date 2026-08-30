@@ -1,0 +1,8 @@
+flowchart LR
+    A["Discover *.fdb<br/>under scan root"] --> B["Schema gate<br/>EMPLOYEE-compatible?"]
+    B --> C["Startup cache<br/>valid FK ranges"]
+    C --> D["Ramp scheduler<br/>warmup / main / cooldown"]
+    D --> W["Workers 1..N<br/>one connection each"]
+    W --> F[("Firebird")]
+    W --> M["Metrics<br/>TPS / latency / errors"]
+    M --> R["Reports<br/>CSV / text / API"]

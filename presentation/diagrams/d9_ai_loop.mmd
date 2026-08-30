@@ -1,0 +1,9 @@
+flowchart LR
+    O["1 · OBSERVE<br/>GET /api/fleet<br/>GET /api/runs<br/>GET /metrics"]
+    D["2 · DECIDE<br/>spike needed?<br/>pick profile + size"]
+    A["3 · ACT<br/>POST /api/schedules/{id}/trigger<br/>PATCH run spec"]
+    C["Control plane<br/>spike run · budget · policies<br/>writes run record"]
+    O --> D
+    D --> A
+    A --> C
+    C -->|"webhook: run.finished<br/>(HMAC-signed)"| O
