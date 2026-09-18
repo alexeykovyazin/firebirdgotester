@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"fb-loadgen/config"
-	"fb-loadgen/db"
 	"fb-loadgen/ops"
 	"fb-loadgen/profile"
 	"fb-loadgen/worker"
@@ -18,16 +17,21 @@ import (
 // Scheduler manages the connection ramp-up and ramp-down phases
 type Scheduler struct {
 	config      *config.Config
-	connFactory *db.ConnectionFactory
+	connFactory worker.Connector
 	cache       *ops.Cache
 	profile     profile.Profile
 	metrics     *worker.MetricsCollector
 	pauseGate   *worker.PauseGate
 
 	workers     []*worker.Worker
+	nextID      int // monotonic, so a failed add/remove cannot reuse a live ID
 	workerMutex sync.RWMutex
 	ctx         context.Context
 	cancel      context.CancelFunc
+
+	// workerStopTimeout overrides the per-worker Stop timeout; 0 keeps the
+	// worker package default. Set by tests.
+	workerStopTimeout time.Duration
 
 	currentPhase Phase
 	startTime    time.Time
@@ -78,12 +82,12 @@ func (p Phase) String() string {
 const walkInterval = time.Second
 
 // NewScheduler creates a new ramp scheduler
-func NewScheduler(cfg *config.Config, connFactory *db.ConnectionFactory, cache *ops.Cache, profile profile.Profile, metrics *worker.MetricsCollector) *Scheduler {
+func NewScheduler(cfg *config.Config, connFactory worker.Connector, cache *ops.Cache, profile profile.Profile, metrics *worker.MetricsCollector) *Scheduler {
 	return NewSchedulerWithPause(cfg, connFactory, cache, profile, metrics, nil)
 }
 
 // NewSchedulerWithPause creates a scheduler that honors an optional pause gate.
-func NewSchedulerWithPause(cfg *config.Config, connFactory *db.ConnectionFactory, cache *ops.Cache, profile profile.Profile, metrics *worker.MetricsCollector, pause *worker.PauseGate) *Scheduler {
+func NewSchedulerWithPause(cfg *config.Config, connFactory worker.Connector, cache *ops.Cache, profile profile.Profile, metrics *worker.MetricsCollector, pause *worker.PauseGate) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var spikeManager *SpikeManager
@@ -250,7 +254,7 @@ func (s *Scheduler) update() {
 		s.handleCooldown()
 	}
 
-	s.metrics.SetConnectionCount(int64(len(s.workers)))
+	s.metrics.SetConnectionCount(int64(s.GetCurrentWorkerCount()))
 }
 
 func (s *Scheduler) updatePhase() {
@@ -381,59 +385,88 @@ func (s *Scheduler) ensureWorkerCount(target int) error {
 	if s.ctx.Err() != nil || s.stopping.Load() {
 		return nil
 	}
+	if target < 0 {
+		target = 0
+	}
 
 	s.workerMutex.Lock()
-	defer s.workerMutex.Unlock()
-
 	if s.ctx.Err() != nil || s.stopping.Load() {
+		s.workerMutex.Unlock()
+		return nil
+	}
+	current := len(s.workers)
+	var removed []*worker.Worker
+	if current > target {
+		// Detach first, then stop outside the lock. Stop can block for its
+		// full timeout, and holding the write lock that long stalls the run
+		// loop and every status reader (web UI, reporter).
+		removed = append(removed, s.workers[target:]...)
+		s.workers = s.workers[:target]
+	}
+	s.workerMutex.Unlock()
+
+	if len(removed) > 0 {
+		s.stopWorkers(removed)
 		return nil
 	}
 
-	current := len(s.workers)
-
-	if current < target {
-		for i := current; i < target; i++ {
-			if s.ctx.Err() != nil || s.stopping.Load() {
-				return nil
-			}
-			if err := s.addWorker(); err != nil {
-				fmt.Printf("Failed to add worker %d: %v\n", i, err)
-			}
+	for i := current; i < target; i++ {
+		if s.ctx.Err() != nil || s.stopping.Load() {
+			return nil
 		}
-	} else if current > target {
-		for i := current - 1; i >= target; i-- {
-			if err := s.removeWorker(i); err != nil {
-				fmt.Printf("Failed to remove worker %d: %v\n", i, err)
-			}
+		if err := s.addWorker(); err != nil {
+			// Fail this one worker and let the next tick retry. Retrying
+			// in-line would serialise one connect timeout per missing worker
+			// into a single tick, which is how a server at its connection
+			// limit used to stall the whole scheduler.
+			fmt.Printf("Failed to add worker: %v\n", err)
+			break
 		}
 	}
 	return nil
 }
 
 func (s *Scheduler) addWorker() error {
-	workerID := len(s.workers)
-	w := worker.NewWorkerWithPause(workerID, s.ctx, s.connFactory, s.cache, s.profile, s.config, s.metrics, s.pauseGate)
+	s.workerMutex.Lock()
+	workerID := s.nextID
+	s.nextID++
+	s.workerMutex.Unlock()
 
+	w := worker.NewWorkerWithPause(workerID, s.ctx, s.connFactory, s.cache, s.profile, s.config, s.metrics, s.pauseGate)
+	if s.workerStopTimeout > 0 {
+		w.SetStopTimeout(s.workerStopTimeout)
+	}
+
+	// Start opens the connection. A worker that fails to connect never starts
+	// a goroutine and must not enter the set, or the scheduler would count a
+	// worker that has no database handle.
 	if err := w.Start(); err != nil {
 		return err
 	}
 
+	s.workerMutex.Lock()
 	s.workers = append(s.workers, w)
+	s.workerMutex.Unlock()
 	return nil
 }
 
-func (s *Scheduler) removeWorker(index int) error {
-	if index < 0 || index >= len(s.workers) {
-		return fmt.Errorf("invalid worker index: %d", index)
+// stopWorkers stops already-detached workers in parallel. A worker whose Stop
+// times out is reported but not retried and not put back: its context is
+// cancelled and its connection closed, so its goroutine exits on its own next
+// loop iteration. Leaving it in the set would pin the worker count and stop
+// the ramp from ever shrinking.
+func (s *Scheduler) stopWorkers(workers []*worker.Worker) {
+	var wg sync.WaitGroup
+	for _, w := range workers {
+		wg.Add(1)
+		go func(w *worker.Worker) {
+			defer wg.Done()
+			if err := w.Stop(); err != nil {
+				fmt.Printf("Failed to remove worker %d: %v\n", w.GetID(), err)
+			}
+		}(w)
 	}
-
-	w := s.workers[index]
-	if err := w.Stop(); err != nil {
-		return err
-	}
-
-	s.workers = append(s.workers[:index], s.workers[index+1:]...)
-	return nil
+	wg.Wait()
 }
 
 func (s *Scheduler) drainWorkers() error {
@@ -442,17 +475,7 @@ func (s *Scheduler) drainWorkers() error {
 	s.workers = nil
 	s.workerMutex.Unlock()
 
-	var wg sync.WaitGroup
-	for _, w := range workers {
-		wg.Add(1)
-		go func(w *worker.Worker) {
-			defer wg.Done()
-			if err := w.Stop(); err != nil {
-				fmt.Printf("Error stopping worker: %v\n", err)
-			}
-		}(w)
-	}
-	wg.Wait()
+	s.stopWorkers(workers)
 	return nil
 }
 
