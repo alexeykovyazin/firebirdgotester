@@ -1,0 +1,18 @@
+OLTP-EMUL workload assets
+=========================
+
+The files in emul/assets/ (oltp30_DDL.sql, oltp30_sp.sql, oltp_common_sp.sql)
+are taken verbatim from:
+
+    https://github.com/FirebirdSQL/oltp-emul
+    OLTP-EMUL test for Firebird DBMS, emulating OLTP workload.
+    Copyright (C) Pavel Zotov, Moscow, Russia, 2014-2026.
+
+License: MIT. Permission confirmed by the author for use and redistribution
+as part of this project (written confirmation on file with the maintainer;
+to be attached here upon receipt).
+
+Upstream commit the assets were taken from is recorded in emul/assets/VERSION.
+
+Modifications made by fb-loadgen, when any, are documented at the top of the
+modified file. Everything else is executed as published upstream.

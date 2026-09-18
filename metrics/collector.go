@@ -285,8 +285,11 @@ func (mc *MetricsCollector) GetReport() *Report {
 	// Get scheduler stats
 	schedulerStats := mc.scheduler.GetStats()
 
-	// Get cache stats
-	cacheStats := mc.cache.GetStats()
+	// Get cache stats (nil for profiles that need no key cache, e.g. oltp-emul)
+	cacheStats := ""
+	if mc.cache != nil {
+		cacheStats = mc.cache.GetStats()
+	}
 
 	// Get profile stats
 	profileStats := mc.profile.Name()

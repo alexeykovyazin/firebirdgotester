@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 
 	"fb-loadgen/config"
 	"fb-loadgen/db"
+	"fb-loadgen/emul"
 	"fb-loadgen/errlog"
 	"fb-loadgen/metrics"
 	"fb-loadgen/ops"
@@ -28,6 +31,10 @@ func main() {
 		config.PrintUsage()
 		os.Exit(0)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "provision" {
+		runProvision(os.Args[2:])
+		return
+	}
 
 	cfg, err := config.ParseFlags()
 	if err != nil {
@@ -40,6 +47,59 @@ func main() {
 	}
 
 	runCLI(cfg)
+}
+
+// runProvision implements `fb-loadgen provision ...`: create and populate an
+// oltpemul database (see OLTP_EMUL_PLAN.md). Flags mirror the run flags so
+// the same DSN can be reused verbatim.
+func runProvision(args []string) {
+	fs := flag.NewFlagSet("provision", flag.ExitOnError)
+	dsn := fs.String("dsn", "localhost/3050:C:\\data\\oltpemul.fdb", "DSN of the database to create (host[/port]:server-side-path)")
+	user := fs.String("user", "SYSDBA", "DB user")
+	pass := fs.String("pass", "masterkey", "DB password")
+	pageSize := fs.Int("page-size", 8192, "Database page size (oltp-emul standard: 8192)")
+	initDocs := fs.Int("init-docs", 3000, "Documents to create before the run (start small; 3000-5000 for a first test)")
+	workingMode := fs.String("working-mode", "COMMON", "Settings working mode (COMMON = full workload; DEBUG_01/02 simplify invoice logic)")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	host, port, dbPath := config.ParseDSN(*dsn)
+	cfg := emul.Config{
+		Host:        host,
+		Port:        fmt.Sprintf("%d", port),
+		User:        *user,
+		Password:    *pass,
+		DBPath:      dbPath,
+		PageSize:    *pageSize,
+		WorkingMode: *workingMode,
+	}
+	fmt.Printf("Provisioning oltpemul database at %s:%s/%s (page size %d)\n", host, cfg.Port, dbPath, *pageSize)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT)
+		<-sig
+		fmt.Println("\nProvision cancelled.")
+		cancel()
+	}()
+
+	if err := emul.Provision(ctx, cfg, func(f string, a ...any) { fmt.Println("  " + fmt.Sprintf(f, a...)) }); err != nil {
+		log.Fatalf("Provision failed: %v", err)
+	}
+	if *initDocs > 0 {
+		db, err := sql.Open("firebirdsql", cfg.DSN())
+		if err != nil {
+			log.Fatalf("Connect failed: %v", err)
+		}
+		defer db.Close()
+		if err := emul.Fill(ctx, db, *initDocs, func(f string, a ...any) { fmt.Println("  " + fmt.Sprintf(f, a...)) }); err != nil {
+			log.Fatalf("Fill failed: %v", err)
+		}
+	}
+	fmt.Println("Provision complete. Run with: --profile oltp-emul --dsn " + *dsn)
 }
 
 func runUI(cfg *config.Config) {
@@ -149,6 +209,58 @@ func normalizeUIAddr(addr string) string {
 	return addr
 }
 
+// startEmulSidecars launches the oltp-emul monitor (mon$ memory peaks) and
+// the invariant self-check loop for the duration of the run. Both die with
+// the run context.
+func startEmulSidecars(ctx context.Context, db *sql.DB, cfg *config.Config, wm *worker.MetricsCollector) {
+	if cfg.EmulMonitorEvery > 0 {
+		mon := emul.NewMonitor(time.Duration(cfg.EmulMonitorEvery) * time.Second)
+		var peaks emul.Peaks
+		go func() {
+			_ = mon.Run(ctx, db, func(s emul.Sample) {
+				peaks.Observe(s)
+				fmt.Printf("[emul-mon] db=%dMB att=%dMB trn=%dMB stmt=%dMB\n",
+					s.DBBytes/(1<<20), s.AttBytes/(1<<20), s.TrnBytes/(1<<20), s.StmtBytes/(1<<20))
+			})
+			if p, n := peaks.Result(); n > 0 {
+				fmt.Printf("[emul-mon] run peaks: db=%dMB att=%dMB trn=%dMB stmt=%dMB over %d samples\n",
+					p.DBBytes/(1<<20), p.AttBytes/(1<<20), p.TrnBytes/(1<<20), p.StmtBytes/(1<<20), n)
+			}
+		}()
+	}
+	if cfg.EmulInvariantEvery > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(cfg.EmulInvariantEvery) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					func() {
+						tx, err := db.BeginTx(ctx, nil)
+						if err != nil {
+							wm.RecordError(fmt.Errorf("emul invariants: begin: %w", err))
+							return
+						}
+						defer tx.Rollback()
+						if err := emul.CheckInvariants(ctx, tx); err != nil {
+							wm.RecordError(err)
+							fmt.Printf("[emul-inv] FAILED: %v\n", err)
+							return
+						}
+						if err := tx.Commit(); err != nil {
+							wm.RecordError(fmt.Errorf("emul invariants: commit: %w", err))
+							return
+						}
+						fmt.Println("[emul-inv] stock and money invariants OK")
+					}()
+				}
+			}
+		}()
+	}
+}
+
 func runCLI(cfg *config.Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -156,11 +268,24 @@ func runCLI(cfg *config.Config) {
 	connFactory := db.NewConnectionFactory(cfg)
 
 	var cache *ops.Cache
+	var emulDB *sql.DB
 	var err error
 	if !cfg.DryRun {
-		cache, err = ops.NewCache(connFactory)
-		if err != nil {
-			log.Fatalf("Failed to create cache: %v", err)
+		if cfg.Profile == "oltp-emul" {
+			// The oltpemul schema replaces the EMPLOYEE one: no key cache.
+			emulDB, err = connFactory.Open()
+			if err != nil {
+				log.Fatalf("Failed to connect to oltpemul database: %v", err)
+			}
+			defer emulDB.Close()
+			if err := emul.SchemaGuard(ctx, emulDB); err != nil {
+				log.Fatalf("%v", err)
+			}
+		} else {
+			cache, err = ops.NewCache(connFactory)
+			if err != nil {
+				log.Fatalf("Failed to create cache: %v", err)
+			}
 		}
 	} else {
 		fmt.Println("Dry-run mode: will connect, load cache, and exit without running load")
@@ -173,6 +298,14 @@ func runCLI(cfg *config.Config) {
 	writeOps := ops.NewWriteOperations(connFactory, cache)
 
 	profileFactory := profile.NewProfileFactory(readOps, writeOps, cache)
+	if emulDB != nil {
+		units, err := emul.LoadUnits(ctx, emulDB)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		profileFactory.SetEmulUnits(units)
+		fmt.Printf("oltp-emul: %d units loaded from business_ops\n", len(units))
+	}
 	prof, err := profileFactory.CreateProfile(cfg.Profile)
 	if err != nil {
 		log.Fatalf("Failed to create profile: %v", err)
@@ -214,6 +347,10 @@ func runCLI(cfg *config.Config) {
 
 	if err := scheduler.Start(); err != nil {
 		log.Fatalf("Failed to start scheduler: %v", err)
+	}
+
+	if emulDB != nil {
+		startEmulSidecars(ctx, emulDB, cfg, workerMetrics)
 	}
 
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")

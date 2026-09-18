@@ -1,10 +1,18 @@
 package ops
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 )
+
+// expectedUnderLoad is implemented by workload errors that are normal events
+// under load (e.g. emul.UnitError for deadlocks and business rejections):
+// workers log them and continue instead of treating them as failures.
+type expectedUnderLoad interface {
+	ExpectedUnderLoad() bool
+}
 
 // FirebirdException represents a classified Firebird exception
 type FirebirdException struct {
@@ -30,6 +38,13 @@ func IsExpectedException(err error) bool {
 func ClassifyError(err error) (bool, error) {
 	if err == nil {
 		return true, nil
+	}
+
+	// Workload-specific classification hook (emul units mark conflicts and
+	// business rejections as expected under load).
+	var eul expectedUnderLoad
+	if errors.As(err, &eul) && eul.ExpectedUnderLoad() {
+		return true, err
 	}
 
 	// Convert to string for pattern matching

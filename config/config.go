@@ -39,6 +39,10 @@ type Config struct {
 	SpikeCycles int
 	SpikeHold   int
 
+	// oltp-emul profile extras
+	EmulInvariantEvery int // seconds between invariant self-checks (0 = off)
+	EmulMonitorEvery   int // seconds between mon$ memory snapshots (0 = off)
+
 	// Output
 	CSV         string
 	ReportEvery int
@@ -92,6 +96,9 @@ func ParseFlags() (*Config, error) {
 
 	flag.IntVar(&cfg.SpikeCycles, "spike-cycles", 3, "Number of spike cycles during main period")
 	flag.IntVar(&cfg.SpikeHold, "spike-hold", 10, "Seconds to sustain peak before dropping")
+
+	flag.IntVar(&cfg.EmulInvariantEvery, "emul-invariant-every", 60, "oltp-emul: seconds between stock/money invariant self-checks (0 = off)")
+	flag.IntVar(&cfg.EmulMonitorEvery, "emul-monitor-every", 10, "oltp-emul: seconds between mon$ memory snapshots (0 = off)")
 
 	flag.StringVar(&cfg.CSV, "csv", "results.csv", "Path to CSV output file")
 	flag.IntVar(&cfg.ReportEvery, "report-every", 5, "Console report interval in seconds")
@@ -160,17 +167,23 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("port must be >= 1")
 		}
 		// Profile optional in UI mode (per-row)
-		if c.Profile != "" && c.Profile != "write-heavy" && c.Profile != "read-heavy" && c.Profile != "spike" {
+		if c.Profile != "" && c.Profile != "write-heavy" && c.Profile != "read-heavy" && c.Profile != "spike" && c.Profile != "oltp-emul" {
 			return fmt.Errorf("invalid profile: %s", c.Profile)
 		}
 		return c.validateCommon()
 	}
 
 	if c.Profile == "" {
-		return fmt.Errorf("profile is required (--profile write-heavy|read-heavy|spike)")
+		return fmt.Errorf("profile is required (--profile write-heavy|read-heavy|spike|oltp-emul)")
 	}
-	if c.Profile != "write-heavy" && c.Profile != "read-heavy" && c.Profile != "spike" {
-		return fmt.Errorf("invalid profile: %s (must be write-heavy, read-heavy, or spike)", c.Profile)
+	if c.Profile != "write-heavy" && c.Profile != "read-heavy" && c.Profile != "spike" && c.Profile != "oltp-emul" {
+		return fmt.Errorf("invalid profile: %s (must be write-heavy, read-heavy, spike, or oltp-emul)", c.Profile)
+	}
+	if c.EmulInvariantEvery < 0 {
+		return fmt.Errorf("emul-invariant-every must be >= 0, got %d", c.EmulInvariantEvery)
+	}
+	if c.EmulMonitorEvery < 0 {
+		return fmt.Errorf("emul-monitor-every must be >= 0, got %d", c.EmulMonitorEvery)
 	}
 
 	if c.ConnInit < 1 {
@@ -274,6 +287,13 @@ func parsePort(s string) (int, error) {
 	return port, err
 }
 
+// ParseDSN splits a "host[/port]:database" DSN into its parts (defaults:
+// localhost:3050). Used by the provision subcommand.
+func ParseDSN(dsn string) (host string, port int, database string) {
+	c := &Config{}
+	return c.parseDSN(dsn)
+}
+
 // DSNString returns the raw DSN field value
 func (c *Config) DSNString() string {
 	return c.DSN
@@ -313,7 +333,7 @@ func PrintUsage() {
 	fmt.Fprintf(os.Stderr, "  --host          string   Host for discovered DBs (default: localhost)\n")
 	fmt.Fprintf(os.Stderr, "  --port          int      Port for discovered DBs (default: 3050)\n\n")
 	fmt.Fprintf(os.Stderr, "Profile:\n")
-	fmt.Fprintf(os.Stderr, "  --profile       string   write-heavy | read-heavy | spike (required unless --ui)\n\n")
+	fmt.Fprintf(os.Stderr, "  --profile       string   write-heavy | read-heavy | spike | oltp-emul (required unless --ui)\n\n")
 	fmt.Fprintf(os.Stderr, "Connection scaling:\n")
 	fmt.Fprintf(os.Stderr, "  --conn-init / --conn-min   int   Min/initial connections (default: 2)\n")
 	fmt.Fprintf(os.Stderr, "  --conn-peak / --conn-max   int   Max/peak connections (default: 20)\n\n")
@@ -324,6 +344,9 @@ func PrintUsage() {
 	fmt.Fprintf(os.Stderr, "Spike profile extras:\n")
 	fmt.Fprintf(os.Stderr, "  --spike-cycles  int      Spike cycles (default: 3)\n")
 	fmt.Fprintf(os.Stderr, "  --spike-hold    int      Spike hold seconds (default: 10)\n\n")
+	fmt.Fprintf(os.Stderr, "oltp-emul profile extras (requires a provisioned oltpemul database; see OLTP_EMUL_PLAN.md):\n")
+	fmt.Fprintf(os.Stderr, "  --emul-invariant-every int  Seconds between stock/money invariant self-checks (default: 60, 0=off)\n")
+	fmt.Fprintf(os.Stderr, "  --emul-monitor-every   int  Seconds between mon$ memory snapshots (default: 10, 0=off)\n\n")
 	fmt.Fprintf(os.Stderr, "Web UI / multi-DB:\n")
 	fmt.Fprintf(os.Stderr, "  --ui                     Start embedded web control plane\n")
 	fmt.Fprintf(os.Stderr, "  --ui-addr       string   Listen address (default: 127.0.0.1:9000)\n")
