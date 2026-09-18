@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"fb-loadgen/config"
-	"fb-loadgen/db"
 	"fb-loadgen/errlog"
 	"fb-loadgen/ops"
 	"fb-loadgen/profile"
@@ -20,12 +20,28 @@ import (
 // DebugEnabled controls debug output
 var DebugEnabled = false
 
+// defaultStopTimeout bounds how long Stop waits for the worker goroutine.
+const defaultStopTimeout = 5 * time.Second
+
+// ErrNoConnection reports a worker with no usable database handle, either
+// because the connection was never opened or because Stop closed it. The run
+// loop treats it as fatal: the worker exits and the ramp scheduler is free to
+// start a replacement.
+var ErrNoConnection = errors.New("worker has no usable database connection")
+
+// Connector opens and closes the per-worker database handle.
+// *db.ConnectionFactory satisfies it; tests substitute a stub.
+type Connector interface {
+	Open() (*sql.DB, error)
+	Close(db *sql.DB) error
+}
+
 // Worker represents a single worker goroutine that executes database operations
 type Worker struct {
 	id            int
 	ctx           context.Context
 	cancel        context.CancelFunc
-	connFactory   *db.ConnectionFactory
+	connFactory   Connector
 	cache         *ops.Cache
 	profile       profile.Profile
 	config        *config.Config
@@ -33,20 +49,25 @@ type Worker struct {
 	pauseGate     *PauseGate
 	thinkDuration time.Duration
 	txTimeout     time.Duration
+	stopTimeout   time.Duration
 
-	// Worker state
+	// mu guards the fields below. Stop runs on the caller's goroutine while
+	// run/cleanup run on the worker goroutine, and both touch dbConn.
+	mu      sync.Mutex
 	dbConn  *sql.DB
+	closed  bool
 	running bool
-	wg      sync.WaitGroup
+
+	wg sync.WaitGroup
 }
 
 // NewWorker creates a new worker instance
-func NewWorker(id int, ctx context.Context, connFactory *db.ConnectionFactory, cache *ops.Cache, profile profile.Profile, config *config.Config, metrics *MetricsCollector) *Worker {
+func NewWorker(id int, ctx context.Context, connFactory Connector, cache *ops.Cache, profile profile.Profile, config *config.Config, metrics *MetricsCollector) *Worker {
 	return NewWorkerWithPause(id, ctx, connFactory, cache, profile, config, metrics, nil)
 }
 
 // NewWorkerWithPause creates a worker that honors an optional pause gate.
-func NewWorkerWithPause(id int, ctx context.Context, connFactory *db.ConnectionFactory, cache *ops.Cache, profile profile.Profile, config *config.Config, metrics *MetricsCollector, pause *PauseGate) *Worker {
+func NewWorkerWithPause(id int, ctx context.Context, connFactory Connector, cache *ops.Cache, profile profile.Profile, config *config.Config, metrics *MetricsCollector, pause *PauseGate) *Worker {
 	workerCtx, cancel := context.WithCancel(ctx)
 
 	DebugEnabled = config.Debug
@@ -63,27 +84,71 @@ func NewWorkerWithPause(id int, ctx context.Context, connFactory *db.ConnectionF
 		pauseGate:     pause,
 		thinkDuration: config.GetThinkDuration(),
 		txTimeout:     config.GetTxTimeout(),
+		stopTimeout:   defaultStopTimeout,
 		running:       false,
 	}
 }
 
-// Start starts the worker goroutine
-func (w *Worker) Start() error {
-	if w.running {
-		return fmt.Errorf("worker %d is already running", w.id)
+// SetStopTimeout overrides how long Stop waits for the worker goroutine to
+// exit before reporting a timeout. Values <= 0 restore the default.
+func (w *Worker) SetStopTimeout(d time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if d <= 0 {
+		d = defaultStopTimeout
 	}
+	w.stopTimeout = d
+}
 
-	// Open database connection
+// conn returns the current database handle, or nil once Stop has closed it.
+// Callers must treat nil as fatal rather than dereferencing it.
+func (w *Worker) conn() *sql.DB {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return nil
+	}
+	return w.dbConn
+}
+
+// Start opens the database connection and, only if that succeeds, starts the
+// worker goroutine. A worker that cannot connect is marked dead so it never
+// enters the operation loop without a handle.
+func (w *Worker) Start() error {
+	w.mu.Lock()
+	switch {
+	case w.running:
+		w.mu.Unlock()
+		return fmt.Errorf("worker %d is already running", w.id)
+	case w.closed:
+		w.mu.Unlock()
+		return fmt.Errorf("worker %d has already been stopped", w.id)
+	}
+	w.mu.Unlock()
+
 	dbConn, err := w.connFactory.Open()
+	if err == nil && dbConn == nil {
+		err = ErrNoConnection
+	}
 	if err != nil {
 		w.metrics.LogSQLError(w.id, "Open", "connect", err)
+		// Retire this worker: cancel its derived context so it is not left
+		// registered on the parent, and make sure Start cannot be retried
+		// into a half-initialized state. The ramp scheduler retries with a
+		// fresh worker instead.
+		w.cancel()
+		w.mu.Lock()
+		w.closed = true
+		w.mu.Unlock()
 		return fmt.Errorf("worker %d failed to open database connection: %w", w.id, err)
 	}
+
+	w.mu.Lock()
 	w.dbConn = dbConn
-
 	w.running = true
-	w.wg.Add(1)
+	w.mu.Unlock()
 
+	w.wg.Add(1)
 	go w.run()
 	return nil
 }
@@ -91,15 +156,25 @@ func (w *Worker) Start() error {
 // Stop stops the worker and closes the database connection.
 // In-flight Firebird calls may ignore context cancel, so the connection is
 // closed asynchronously and Wait is bounded to avoid hanging Ctrl-C / Stop.
+//
+// The handle is closed but never set to nil while the goroutine may still be
+// running: a closed *sql.DB returns an error from every call, whereas a nil
+// one panics. On timeout the goroutine is left to unwind on its own — its
+// context is cancelled and its handle closed, so its next loop iteration exits.
 func (w *Worker) Stop() error {
+	w.mu.Lock()
 	if !w.running {
+		w.mu.Unlock()
 		return nil
 	}
 	w.running = false
+	w.closed = true
+	conn := w.dbConn
+	timeout := w.stopTimeout
+	w.mu.Unlock()
+
 	w.cancel()
 
-	conn := w.dbConn
-	w.dbConn = nil
 	if conn != nil {
 		go func() { _ = w.connFactory.Close(conn) }()
 	}
@@ -110,10 +185,14 @@ func (w *Worker) Stop() error {
 		close(done)
 	}()
 
+	if timeout <= 0 {
+		timeout = defaultStopTimeout
+	}
+
 	select {
 	case <-done:
 		return nil
-	case <-time.After(5 * time.Second):
+	case <-time.After(timeout):
 		return fmt.Errorf("worker %d stop timed out", w.id)
 	}
 }
@@ -122,6 +201,18 @@ func (w *Worker) Stop() error {
 func (w *Worker) run() {
 	defer w.wg.Done()
 	defer w.cleanup()
+	// Last-resort guard. A load generator drives many databases from one
+	// process, alongside the web UI session, so a single worker must fail on
+	// its own rather than take all of them down. The panic is recorded, this
+	// worker exits, and the ramp scheduler starts a replacement.
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("worker %d panic: %v", w.id, r)
+			fmt.Printf("[Worker-%d] recovered from panic: %v\n%s\n", w.id, r, debug.Stack())
+			w.metrics.LogSQLError(w.id, "run", "panic", err)
+			w.metrics.RecordError(err)
+		}
+	}()
 
 	for {
 		select {
@@ -134,6 +225,11 @@ func (w *Worker) run() {
 
 			if err := w.executeOperation(); err != nil {
 				if isCancelErr(err) || w.ctx.Err() != nil {
+					return
+				}
+				// No usable handle: Stop closed it, or the pool is gone.
+				// Exit rather than spin on a dead connection.
+				if isDeadConnErr(err) {
 					return
 				}
 				w.metrics.RecordError(err)
@@ -158,13 +254,20 @@ func (w *Worker) executeOperation() error {
 		fmt.Printf("[Worker-%d] Starting operation...\n", w.id)
 	}
 
+	// Take the handle once, under the lock. Stop can close it concurrently;
+	// a closed handle returns an error, but dereferencing a nil one panics.
+	conn := w.conn()
+	if conn == nil {
+		return fmt.Errorf("worker %d: %w", w.id, ErrNoConnection)
+	}
+
 	// Begin transaction with timeout
 	ctx, cancel := context.WithTimeout(w.ctx, w.txTimeout)
 	defer cancel()
 
-	tx, err := w.dbConn.BeginTx(ctx, nil)
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		if isCancelErr(err) || w.ctx.Err() != nil {
+		if isCancelErr(err) || w.ctx.Err() != nil || isDeadConnErr(err) {
 			return err
 		}
 		if DebugEnabled {
@@ -247,12 +350,32 @@ func isCancelErr(err error) bool {
 		strings.Contains(s, "transaction has already been rolled back")
 }
 
-// cleanup performs cleanup when the worker stops
+// isDeadConnErr reports a handle this worker can no longer use, so the run
+// loop stops instead of retrying against it.
+func isDeadConnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrNoConnection) || errors.Is(err, sql.ErrConnDone) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "sql: database is closed")
+}
+
+// cleanup performs cleanup when the worker stops. It runs on the worker
+// goroutine, before wg.Done, so nothing else reads dbConn afterwards.
 func (w *Worker) cleanup() {
+	w.mu.Lock()
+	conn := w.dbConn
+	w.dbConn = nil
 	w.running = false
-	if w.dbConn != nil {
-		w.connFactory.Close(w.dbConn)
-		w.dbConn = nil
+	stopClosed := w.closed
+	w.closed = true
+	w.mu.Unlock()
+
+	// Stop already closed the handle; skip the redundant second close.
+	if conn != nil && !stopClosed {
+		w.connFactory.Close(conn)
 	}
 }
 
@@ -263,6 +386,8 @@ func (w *Worker) GetID() int {
 
 // IsRunning returns true if the worker is currently running
 func (w *Worker) IsRunning() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	return w.running
 }
 
