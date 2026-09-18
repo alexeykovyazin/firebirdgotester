@@ -17,8 +17,9 @@ import (
 	"fb-loadgen/profile"
 )
 
-// DebugEnabled controls debug output
-var DebugEnabled = false
+// DebugEnabled controls debug output. The constructor writes it while worker
+// goroutines from previous constructions may still read it, so it is atomic.
+var DebugEnabled atomic.Bool
 
 // defaultStopTimeout bounds how long Stop waits for the worker goroutine.
 const defaultStopTimeout = 5 * time.Second
@@ -70,7 +71,7 @@ func NewWorker(id int, ctx context.Context, connFactory Connector, cache *ops.Ca
 func NewWorkerWithPause(id int, ctx context.Context, connFactory Connector, cache *ops.Cache, profile profile.Profile, config *config.Config, metrics *MetricsCollector, pause *PauseGate) *Worker {
 	workerCtx, cancel := context.WithCancel(ctx)
 
-	DebugEnabled = config.Debug
+	DebugEnabled.Store(config.Debug)
 
 	return &Worker{
 		id:            id,
@@ -250,7 +251,7 @@ func (w *Worker) run() {
 func (w *Worker) executeOperation() error {
 	startTime := time.Now()
 
-	if DebugEnabled {
+	if DebugEnabled.Load() {
 		fmt.Printf("[Worker-%d] Starting operation...\n", w.id)
 	}
 
@@ -270,7 +271,7 @@ func (w *Worker) executeOperation() error {
 		if isCancelErr(err) || w.ctx.Err() != nil || isDeadConnErr(err) {
 			return err
 		}
-		if DebugEnabled {
+		if DebugEnabled.Load() {
 			fmt.Printf("[Worker-%d] FAILED to begin transaction: %v\n", w.id, err)
 		}
 		w.metrics.LogSQLError(w.id, "BeginTx", "begin", err)
@@ -286,7 +287,7 @@ func (w *Worker) executeOperation() error {
 		return err
 	}
 
-	if DebugEnabled {
+	if DebugEnabled.Load() {
 		fmt.Printf("[Worker-%d] Executing operation %s...\n", w.id, opName)
 	}
 
@@ -303,12 +304,12 @@ func (w *Worker) executeOperation() error {
 		}
 		w.metrics.LogSQLError(w.id, opName, kind, classifiedErr)
 		if isExpected {
-			if DebugEnabled {
+			if DebugEnabled.Load() {
 				fmt.Printf("[Worker-%d] Operation %s FAILED (expected): %v\n", w.id, opName, classifiedErr)
 			}
 			return classifiedErr
 		}
-		if DebugEnabled {
+		if DebugEnabled.Load() {
 			fmt.Printf("[Worker-%d] Operation %s FAILED (unexpected): %v\n", w.id, opName, err)
 		}
 		return fmt.Errorf("worker %d unexpected error: %w", w.id, classifiedErr)
@@ -321,7 +322,7 @@ func (w *Worker) executeOperation() error {
 		}
 		w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
 		w.metrics.LogSQLError(w.id, opName, "commit", err)
-		if DebugEnabled {
+		if DebugEnabled.Load() {
 			fmt.Printf("[Worker-%d] Operation %s FAILED to commit: %v\n", w.id, opName, err)
 		}
 		return fmt.Errorf("worker %d failed to commit transaction: %w", w.id, err)
@@ -329,7 +330,7 @@ func (w *Worker) executeOperation() error {
 
 	// Record successful transaction
 	w.metrics.RecordTransactionNamed(true, time.Since(startTime), opName)
-	if DebugEnabled {
+	if DebugEnabled.Load() {
 		fmt.Printf("[Worker-%d] Operation %s SUCCESS (%.2fms)\n", w.id, opName, float64(time.Since(startTime).Microseconds())/1000.0)
 	}
 	return nil
