@@ -7,14 +7,17 @@ import (
 	"time"
 )
 
-// Sample is one monitoring snapshot of Firebird's MON$ memory counters,
+// Sample is one monitoring snapshot of Firebird's memory counters,
 // mirroring the four levels firebirdtest.com charts (all values in bytes).
+// On servers with MON$MEMORY_USAGE (FB 4.0+) the values are the
+// server-side running peaks (MON$MAX_MEMORY_USED); on FB 3.0 they are the
+// live usage at sampling time and peaks are tracked client-side.
 type Sample struct {
 	TS        time.Time `json:"ts"`
-	DBBytes   int64     `json:"dbBytes"`   // sum of MON$ATTACHMENTS.MON$MEMORY_USED
-	AttBytes  int64     `json:"attBytes"`  // max single attachment
-	TrnBytes  int64     `json:"trnBytes"`  // max single transaction
-	StmtBytes int64     `json:"stmtBytes"` // max single statement
+	DBBytes   int64     `json:"dbBytes"`   // database level
+	AttBytes  int64     `json:"attBytes"`  // attachment level
+	TrnBytes  int64     `json:"trnBytes"`  // transaction level
+	StmtBytes int64     `json:"stmtBytes"` // statement level
 }
 
 // Peaks accumulates the maximum of each level across all samples of a run -
@@ -52,11 +55,15 @@ func (p *Peaks) Result() (Sample, int) {
 	return p.peak, p.count
 }
 
-// Monitor periodically snapshots MON$ memory counters on a dedicated
-// connection of db (excluded from the load pool sizing). Feed the channel
-// samples into Peaks and/or a live UI stream.
+// Monitor periodically snapshots memory usage on a dedicated connection of
+// db (excluded from the load pool sizing). Feed the channel samples into
+// Peaks and/or a live UI stream.
 type Monitor struct {
 	interval time.Duration
+
+	// onError receives the first sampling error (usually a version or
+	// permission problem); subsequent errors are suppressed.
+	onError func(error)
 }
 
 func NewMonitor(interval time.Duration) *Monitor {
@@ -65,6 +72,10 @@ func NewMonitor(interval time.Duration) *Monitor {
 	}
 	return &Monitor{interval: interval}
 }
+
+// SetErrorHandler installs a callback invoked once with the first sampling
+// error. Without it, sampling errors are silent.
+func (m *Monitor) SetErrorHandler(f func(error)) { m.onError = f }
 
 // Run blocks until ctx is done, sampling every interval. One dedicated
 // *sql.Conn is used so the monitoring traffic does not interleave with
@@ -76,32 +87,62 @@ func (m *Monitor) Run(ctx context.Context, db *sql.DB, sink func(Sample)) error 
 	}
 	defer conn.Close()
 
-	tick := time.NewTicker(m.interval)
-	defer tick.Stop()
+	// FB 4.0+ has MON$MEMORY_USAGE with per-level running peaks; FB 3.0
+	// only exposes live MON$MEMORY_USED on the per-object MON$ tables.
+	newStyle := false
+	var n int
+	if err := conn.QueryRowContext(ctx,
+		`select count(*) from rdb$relations where rdb$relation_name = 'MON$MEMORY_USAGE'`).Scan(&n); err == nil {
+		newStyle = n > 0
+	}
+
+	reportErr := func(err error) {
+		if m.onError != nil {
+			m.onError(err)
+			m.onError = nil
+		}
+	}
 
 	sample := func() {
 		var s Sample
 		s.TS = time.Now()
-		var attMax, trnMax, stmtMax sql.NullInt64
-		err := conn.QueryRowContext(ctx, `
-			select coalesce(sum(mon$memory_used),0), coalesce(max(mon$memory_used),0)
-			from mon$attachments`).Scan(&s.DBBytes, &attMax)
-		if err != nil {
-			return // transient (sweep, shutdown) - skip this sample
+		if newStyle {
+			err := conn.QueryRowContext(ctx, `
+				select
+				  coalesce(max(case when mon$stat_group = 0 then mon$max_memory_used end), 0),
+				  coalesce(max(case when mon$stat_group = 1 then mon$max_memory_used end), 0),
+				  coalesce(max(case when mon$stat_group = 2 then mon$max_memory_used end), 0),
+				  coalesce(max(case when mon$stat_group = 3 then mon$max_memory_used end), 0)
+				from mon$memory_usage`).Scan(&s.DBBytes, &s.AttBytes, &s.TrnBytes, &s.StmtBytes)
+			if err != nil {
+				reportErr(err)
+				return
+			}
+		} else {
+			var attSum, trnMax, stmtMax sql.NullInt64
+			err := conn.QueryRowContext(ctx, `
+				select coalesce(sum(mon$memory_used),0), coalesce(max(mon$memory_used),0)
+				from mon$attachments`).Scan(&s.DBBytes, &attSum)
+			if err != nil {
+				reportErr(err)
+				return
+			}
+			_ = conn.QueryRowContext(ctx,
+				`select coalesce(max(mon$memory_used),0) from mon$transactions`).Scan(&trnMax)
+			_ = conn.QueryRowContext(ctx,
+				`select coalesce(max(mon$memory_used),0) from mon$statements`).Scan(&stmtMax)
+			s.AttBytes = attSum.Int64
+			s.TrnBytes = trnMax.Int64
+			s.StmtBytes = stmtMax.Int64
 		}
-		_ = conn.QueryRowContext(ctx,
-			`select coalesce(max(mon$memory_used),0) from mon$transactions`).Scan(&trnMax)
-		_ = conn.QueryRowContext(ctx,
-			`select coalesce(max(mon$memory_used),0) from mon$statements`).Scan(&stmtMax)
-		s.AttBytes = attMax.Int64
-		s.TrnBytes = trnMax.Int64
-		s.StmtBytes = stmtMax.Int64
 		if sink != nil {
 			sink(s)
 		}
 	}
 
 	sample()
+	tick := time.NewTicker(m.interval)
+	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():

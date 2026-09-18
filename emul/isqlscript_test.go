@@ -153,6 +153,7 @@ func TestParseScript_GoldenAssets(t *testing.T) {
 		"oltp30_DDL.sql":        {396, 60, 64},
 		"oltp30_sp.sql":         {47, 29, 64},
 		"oltp_common_sp.sql":    {64, 38, 64},
+		"oltp_adjust_DDL.sql":   {29, 2, 64},
 		"oltp_main_filling.sql": {1533, 0, 64},
 		"oltp_data_filling.sql": {16518, 0, 256},
 	}
@@ -255,6 +256,7 @@ func TestAssetsVerbatimSizes(t *testing.T) {
 		"oltp30_DDL.sql":        9388,
 		"oltp30_sp.sql":         5608,
 		"oltp_common_sp.sql":    4710,
+		"oltp_adjust_DDL.sql":   838,
 		"oltp_main_filling.sql": 2248,
 		"oltp_data_filling.sql": 17092,
 	}

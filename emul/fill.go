@@ -33,7 +33,17 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 
 	var done, conflicts, rejected, failures int
 	lastReport := time.Now()
+	consecutiveFailures := 0
+	var firstErr error
 	const checkEvery = 25
+	const maxConsecutiveFailures = 50 // real errors: systematic problem
+	const maxStalledChecks = 40       // 40*checkEvery units without doc growth
+
+	// Rejected (business) and conflicting units are normal during fill:
+	// a state_next unit may run before its prerequisites exist and is
+	// simply retried later (upstream swallows those the same way).
+	stalledChecks := 0
+	lastDocCount := -1
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -45,7 +55,7 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 		}
 
 		var tx *sql.Tx
-		tx, err = db.BeginTx(ctx, nil)
+		tx, err = db.BeginTx(ctx, TxOptions())
 		if err != nil {
 			return fmt.Errorf("emul: fill begin tx: %w", err)
 		}
@@ -57,8 +67,12 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 				return fmt.Errorf("emul: fill commit %s: %w", unit.Name, err)
 			}
 			done++
+			consecutiveFailures = 0
 		default:
 			_ = tx.Rollback()
+			if firstErr == nil {
+				firstErr = execErr
+			}
 			switch outcome {
 			case OutcomeConflict:
 				conflicts++
@@ -66,6 +80,11 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 				rejected++
 			default:
 				failures++
+				consecutiveFailures++
+				if consecutiveFailures >= maxConsecutiveFailures {
+					return fmt.Errorf("emul: fill aborted after %d consecutive failed units; last: %w (first: %v)",
+						consecutiveFailures, execErr, firstErr)
+				}
 			}
 		}
 
@@ -81,6 +100,16 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 					have, initDocs, conflicts, rejected, failures)
 				if have >= initDocs {
 					return nil
+				}
+				if have == lastDocCount {
+					stalledChecks++
+					if stalledChecks >= maxStalledChecks {
+						return fmt.Errorf("emul: fill stalled: document count stuck at %d after %d units (%d conflicts, %d rejected, %d failed); last error: %v",
+							have, stalledChecks*checkEvery, conflicts, rejected, failures, firstErr)
+					}
+				} else {
+					stalledChecks = 0
+					lastDocCount = have
 				}
 			}
 			lastReport = time.Now()

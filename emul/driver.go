@@ -22,7 +22,10 @@ const (
 
 func newBackupManager(cfg Config) (*firebirdsql.BackupManager, error) {
 	addr := net.JoinHostPort(cfg.Host, cfg.Port)
-	mgr, err := firebirdsql.NewBackupManager(addr, cfg.User, cfg.Password, firebirdsql.ServiceManagerOptions{})
+	mgr, err := firebirdsql.NewBackupManager(addr, cfg.User, cfg.Password, firebirdsql.ServiceManagerOptions{
+		AuthPlugin: "Srp256",
+		WireCrypt:  false,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("services manager on %s: %w", addr, err)
 	}
