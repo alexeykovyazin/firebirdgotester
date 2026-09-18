@@ -91,6 +91,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.auth(s.handleRemove))
 	s.mux.HandleFunc("GET /api/sessions/{id}/report", s.authRead(s.handleReportList))
 	s.mux.HandleFunc("GET /api/sessions/{id}/report/{file}", s.authRead(s.handleReportDownload))
+	s.mux.HandleFunc("GET /api/sessions/{id}/emul/units", s.authRead(s.handleEmulUnits))
+	s.mux.HandleFunc("PUT /api/sessions/{id}/emul/weights", s.auth(s.handleEmulWeights))
 	s.mux.HandleFunc("POST /api/sessions/start-all", s.auth(s.handleStartAll))
 	s.mux.HandleFunc("POST /api/sessions/stop-all", s.auth(s.handleStopAll))
 	s.mux.HandleFunc("POST /api/sessions/pause-all", s.auth(s.handlePauseAll))

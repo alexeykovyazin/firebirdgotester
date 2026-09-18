@@ -278,6 +278,78 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/RunRecord" }
 
+  /api/sessions/{id}/emul/units:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Config]
+      summary: "oltp-emul: list business_ops unit registry of this database"
+      description: >
+        Requires an oltpemul-provisioned database (table BUSINESS_OPS).
+        Returns unit name, mode, kind and random_selection_weight for each
+        workload unit.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Unit registry
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [units]
+                properties:
+                  units:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, mode, kind, weight]
+                      properties:
+                        name: { type: string }
+                        mode: { type: string }
+                        kind: { type: string }
+                        weight: { type: integer }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Database has no oltpemul schema (BUSINESS_OPS missing)
+
+  /api/sessions/{id}/emul/weights:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    put:
+      tags: [Config]
+      summary: "oltp-emul: update unit selection weights"
+      description: >
+        Updates random_selection_weight for the given units in one
+        transaction. Weight 0 removes a unit from the rotation.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [weights]
+              properties:
+                weights:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  example:
+                    SP_CLIENT_ORDER: 20
+                    SP_RESERVE_WRITE_OFF: 10
+      responses:
+        "200":
+          description: Updated unit registry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  units: { type: array, items: { type: object } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/sessions/{id}/report:
     parameters:
       - $ref: "#/components/parameters/SessionId"

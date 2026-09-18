@@ -442,6 +442,18 @@ func (m *Manager) Get(id string) (Snapshot, error) {
 	return s.Snapshot(), nil
 }
 
+// GetConnectionInfo returns the raw connection parameters of a session
+// (used by emul endpoints to inspect that database's business_ops registry).
+func (m *Manager) GetConnectionInfo(id string) (SessionConfig, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return SessionConfig{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Config, nil
+}
+
 func (m *Manager) snapshotsLocked() []Snapshot {
 	out := make([]Snapshot, 0, len(m.sessions))
 	for _, s := range m.sessions {

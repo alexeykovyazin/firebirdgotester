@@ -14,10 +14,10 @@ import (
 // stored procedure implementing a business action (order, invoice, payment,
 // cancellation, self-check).
 type Unit struct {
-	Name   string
-	Mode   string // stock | payments | service
-	Kind   string // creation | removal | state_next | state_back | service
-	Weight int    // random_selection_weight; 0-weight units are never picked
+	Name   string `json:"name"`
+	Mode   string `json:"mode"` // stock | payments | service
+	Kind   string `json:"kind"` // creation | removal | state_next | state_back | service
+	Weight int    `json:"weight"` // random_selection_weight; 0-weight units are never picked
 }
 
 // Unit phases: during warmup the database must GROW, so cancellations
