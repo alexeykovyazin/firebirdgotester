@@ -27,11 +27,16 @@ func asset(name string) (string, error) {
 }
 
 // Script execution order, mirroring upstream 1run_oltp_emul.sh build phase.
+// provisionScripts run in this order; oltp_adjust_DDL must come AFTER
+// settings injection (it reads separate_workers and rebuilds perf_estimated
+// with its before-insert trigger) and BEFORE any unit executes (units call
+// sp_add_perf_log, which inserts into v_perf_estimated).
 var provisionScripts = []string{
 	"oltp30_DDL.sql",
 	"oltp30_sp.sql",
 	"oltp_common_sp.sql",
 	"oltp_main_filling.sql",
+	"oltp_adjust_DDL.sql",
 	"oltp_data_filling.sql",
 }
 
@@ -51,8 +56,11 @@ type Config struct {
 	// trip. Set 0 to keep the driver default.
 	PageSize int
 
-	// WorkingMode stored in the settings table ("COMMON" for the real
-	// workload; upstream DEBUG_01/DEBUG_02 simplify the invoice logic).
+	// WorkingMode stored in the settings table. It is NOT 'common': it
+	// selects one of the workload profiles seeded by oltp_main_filling.sql
+	// (DEBUG_01..04, DEBUG_1A, SMALL_01..03, MEDIUM_01..03, LARGE_01..03,
+	// HEAVY_01), which key settings like C_NUMBER_OF_AGENTS and doc-size
+	// limits. Upstream sample configs default to DEBUG_01.
 	WorkingMode string
 }
 
@@ -62,7 +70,7 @@ func (c *Config) DSN() string {
 
 func (c *Config) workingMode() string {
 	if c.WorkingMode == "" {
-		return "COMMON"
+		return "SMALL_01"
 	}
 	return c.WorkingMode
 }
@@ -87,16 +95,14 @@ func Provision(ctx context.Context, cfg Config, progress Progress) error {
 	if progress == nil {
 		progress = nopProgress
 	}
-	if err := createDatabase(ctx, cfg); err != nil {
+	if err := createDatabase(ctx, cfg, progress); err != nil {
 		return fmt.Errorf("emul: create database: %w", err)
 	}
-	progress("database created (page size %d)", cfg.pageSize())
 
-	if err := resizePageSize(ctx, cfg); err != nil {
-		return fmt.Errorf("emul: apply page size %d: %w", cfg.pageSize(), err)
-	}
-
-	db, err := sql.Open("firebirdsql", cfg.DSN())
+	// charset NONE matches upstream isql sessions (the database is created
+	// CHARACTER SET NONE; e.g. adjust_DDL declares varchar(32765), which
+	// would exceed the statement limit under a UTF8 connection).
+	db, err := sql.Open("firebirdsql", cfg.DSN()+"?charset=NONE")
 	if err != nil {
 		return fmt.Errorf("emul: open: %w", err)
 	}
@@ -124,43 +130,34 @@ func Provision(ctx context.Context, cfg Config, progress Progress) error {
 			progress("settings injected (working_mode=%s)", cfg.workingMode())
 		}
 	}
+
+	// Final build step upstream (1run_oltp_emul.sh "ACTIVATE DB-LEVEL
+	// TRIGGERS"): re-enable the CONNECT trigger so every new connection
+	// loads its USER_SESSION context via sp_init_ctx. Without this, every
+	// unit fails with EX_CONTEXT_VAR_NOT_FOUND.
+	if err := activateTriggers(ctx, db); err != nil {
+		return fmt.Errorf("emul: activate triggers: %w", err)
+	}
+	progress("trg_connect activated")
+
 	return verifySchema(ctx, db)
 }
 
-// createDatabase creates an empty database file via the fork's
-// firebirdsql_createdb driver variant.
-func createDatabase(ctx context.Context, cfg Config) error {
-	db, err := sql.Open("firebirdsql_createdb", cfg.DSN())
-	if err != nil {
-		return err
+// activateTriggers re-enables the connect trigger and disables the
+// disconnect one (we have no EDS connection pool to track).
+func activateTriggers(ctx context.Context, db *sql.DB) error {
+	stmts := []string{
+		`alter trigger trg_connect active`,
+		// Best effort: TRG_DISCONNECT only exists in some builds.
+		`alter trigger trg_disconnect inactive`,
 	}
-	defer db.Close()
-	// Any statement on the connection materializes the create.
-	if _, err := db.ExecContext(ctx, "select * from rdb$database"); err != nil {
-		return err
-	}
-	return nil
-}
-
-// resizePageSize matches oltp-emul's hardcoded page size 8192: the driver
-// always creates at 4096, so a services-manager backup + restore round trip
-// rewrites the file at the requested page size.
-func resizePageSize(ctx context.Context, cfg Config) error {
-	want := cfg.pageSize()
-	if want == 4096 {
-		return nil
-	}
-	mgr, err := newBackupManager(cfg)
-	if err != nil {
-		return err
-	}
-	tmp := cfg.DBPath + ".tmp.fbk"
-	defer func() { _ = removeLocalFile(tmp) }()
-	if err := mgr.Backup(cfg.DBPath, tmp, backupOptions(), nil); err != nil {
-		return fmt.Errorf("backup: %w", err)
-	}
-	if err := mgr.Restore(tmp, cfg.DBPath, restoreOptions(want), nil); err != nil {
-		return fmt.Errorf("restore: %w", err)
+	for _, s := range stmts {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			if strings.Contains(err.Error(), "TRG_DISCONNECT") {
+				continue
+			}
+			return err
+		}
 	}
 	return nil
 }
@@ -204,21 +201,41 @@ func verifySchema(ctx context.Context, db *sql.DB) error {
 // upstream 1run_oltp_emul.sh. sp_init_ctx (a CONNECT trigger) reads these
 // rows into USER_SESSION variables on every connection, so they drive unit
 // behavior at runtime.
+//
+// The settings table has a computed unique index on mcode (COMMON and INIT
+// scopes collapse to the same key), so each mcode is updated wherever it
+// already lives and only inserted when absent - never inserted per-scope.
 func injectSettings(ctx context.Context, db *sql.DB, cfg Config) error {
-	settings := []struct{ scope, mcode, svalue string }{
-		{"init", "working_mode", cfg.workingMode()},
-		{"common", "working_mode", cfg.workingMode()},
-		{"common", "unit_selection_method", "random"},
-		{"common", "separate_workers", "0"},
-		{"common", "update_conflict_percent", "0"},
-		{"common", "enable_mon_query", "0"},
+	settings := []struct{ mcode, svalue string }{
+		{"working_mode", cfg.workingMode()},
+		{"use_es", "0"},
+		{"unit_selection_method", "random"},
+		{"separate_workers", "0"},
+		{"update_conflict_percent", "0"},
+		{"enable_mon_query", "0"},
+		// Remaining placeholders main_filling seeds as
+		// '*** TAKE AT RUNTIME FROM CONFIG ***' - defaults mirror the
+		// upstream sample configs (non-replicated standalone test).
+		{"used_in_replication", "0"},
+		{"mon_unit_list", ""},
+		{"halt_test_on_errors", "/CK/"},
+		{"qmism_verify_bitset", "1"},
+		{"recalc_idx_min_interval", "30"},
 	}
 	for _, s := range settings {
-		_, err := db.ExecContext(ctx,
-			`update or insert into settings(working_mode, mcode, svalue) values (upper(?), upper(?), ?) matching (working_mode, mcode)`,
-			s.scope, s.mcode, s.svalue)
+		res, err := db.ExecContext(ctx,
+			`update settings set svalue = ? where upper(mcode) = upper(?)`,
+			s.svalue, s.mcode)
 		if err != nil {
-			return fmt.Errorf("setting %s.%s: %w", s.scope, s.mcode, err)
+			return fmt.Errorf("setting %s: update: %w", s.mcode, err)
+		}
+		if affected, _ := res.RowsAffected(); affected > 0 {
+			continue
+		}
+		if _, err := db.ExecContext(ctx,
+			`insert into settings(working_mode, mcode, svalue) values (upper('init'), upper(?), ?)`,
+			s.mcode, s.svalue); err != nil {
+			return fmt.Errorf("setting %s: insert: %w", s.mcode, err)
 		}
 	}
 	return nil

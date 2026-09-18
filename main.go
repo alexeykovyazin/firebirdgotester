@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -59,7 +60,7 @@ func runProvision(args []string) {
 	pass := fs.String("pass", "masterkey", "DB password")
 	pageSize := fs.Int("page-size", 8192, "Database page size (oltp-emul standard: 8192)")
 	initDocs := fs.Int("init-docs", 3000, "Documents to create before the run (start small; 3000-5000 for a first test)")
-	workingMode := fs.String("working-mode", "COMMON", "Settings working mode (COMMON = full workload; DEBUG_01/02 simplify invoice logic)")
+	workingMode := fs.String("working-mode", "SMALL_01", "Workload profile: DEBUG_01..04, DEBUG_1A, SMALL_01..03, MEDIUM_01..03, LARGE_01..03, HEAVY_01 (sets wares count, doc sizes, agent count)")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
@@ -210,14 +211,24 @@ func normalizeUIAddr(addr string) string {
 }
 
 // startEmulSidecars launches the oltp-emul monitor (mon$ memory peaks) and
-// the invariant self-check loop for the duration of the run. Both die with
-// the run context.
-func startEmulSidecars(ctx context.Context, db *sql.DB, cfg *config.Config, wm *worker.MetricsCollector) {
+// the invariant self-check loop for the duration of the run. Both open their
+// OWN database pools - the run pool is capped at one connection per factory
+// and fully held by workers. Both die with the run context.
+func startEmulSidecars(ctx context.Context, cfg *config.Config, wm *worker.MetricsCollector) {
 	if cfg.EmulMonitorEvery > 0 {
-		mon := emul.NewMonitor(time.Duration(cfg.EmulMonitorEvery) * time.Second)
-		var peaks emul.Peaks
 		go func() {
-			_ = mon.Run(ctx, db, func(s emul.Sample) {
+			monDB, err := sql.Open("firebirdsql", cfg.ConnectionString())
+			if err != nil {
+				fmt.Printf("[emul-mon] open failed: %v\n", err)
+				return
+			}
+			defer monDB.Close()
+			mon := emul.NewMonitor(time.Duration(cfg.EmulMonitorEvery) * time.Second)
+			mon.SetErrorHandler(func(err error) {
+				fmt.Printf("[emul-mon] sampling stopped: %v\n", err)
+			})
+			var peaks emul.Peaks
+			_ = mon.Run(ctx, monDB, func(s emul.Sample) {
 				peaks.Observe(s)
 				fmt.Printf("[emul-mon] db=%dMB att=%dMB trn=%dMB stmt=%dMB\n",
 					s.DBBytes/(1<<20), s.AttBytes/(1<<20), s.TrnBytes/(1<<20), s.StmtBytes/(1<<20))
@@ -230,6 +241,12 @@ func startEmulSidecars(ctx context.Context, db *sql.DB, cfg *config.Config, wm *
 	}
 	if cfg.EmulInvariantEvery > 0 {
 		go func() {
+			invDB, err := sql.Open("firebirdsql", cfg.ConnectionString())
+			if err != nil {
+				fmt.Printf("[emul-inv] open failed: %v\n", err)
+				return
+			}
+			defer invDB.Close()
 			ticker := time.NewTicker(time.Duration(cfg.EmulInvariantEvery) * time.Second)
 			defer ticker.Stop()
 			for {
@@ -238,13 +255,23 @@ func startEmulSidecars(ctx context.Context, db *sql.DB, cfg *config.Config, wm *
 					return
 				case <-ticker.C:
 					func() {
-						tx, err := db.BeginTx(ctx, nil)
+							tx, err := invDB.BeginTx(ctx, emul.TxOptions())
 						if err != nil {
 							wm.RecordError(fmt.Errorf("emul invariants: begin: %w", err))
 							return
 						}
 						defer tx.Rollback()
 						if err := emul.CheckInvariants(ctx, tx); err != nil {
+							// FB 3.0 rejects READ-COMMITTED transactions in the
+							// check; the driver has no snapshot+nowait level yet
+							// (needs LevelSnapshotNoWait in the firebirdsql fork).
+							// Stop checking instead of spamming failures.
+							if strings.Contains(err.Error(), "EX_SNAPSHOT_ISOLATION_REQUIRED") ||
+								strings.Contains(err.Error(), "EX_NOWAIT_OR_TIMEOUT_REQUIRED") {
+								fmt.Printf("[emul-inv] server requires a snapshot+nowait transaction; " +
+									"invariant checks disabled on this engine (driver limitation)\n")
+								return
+							}
 							wm.RecordError(err)
 							fmt.Printf("[emul-inv] FAILED: %v\n", err)
 							return
@@ -350,7 +377,7 @@ func runCLI(cfg *config.Config) {
 	}
 
 	if emulDB != nil {
-		startEmulSidecars(ctx, emulDB, cfg, workerMetrics)
+		startEmulSidecars(ctx, cfg, workerMetrics)
 	}
 
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")

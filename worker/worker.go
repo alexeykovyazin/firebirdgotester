@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fb-loadgen/config"
+	"fb-loadgen/emul"
 	"fb-loadgen/errlog"
 	"fb-loadgen/ops"
 	"fb-loadgen/profile"
@@ -266,7 +267,13 @@ func (w *Worker) executeOperation() error {
 	ctx, cancel := context.WithTimeout(w.ctx, w.txTimeout)
 	defer cancel()
 
-	tx, err := conn.BeginTx(ctx, nil)
+	// oltp-emul units require NOWAIT transactions (SP_CHECK_NOWAIT_OR_TIMEOUT
+	// rejects WAIT); other profiles keep the driver default.
+	var txOpts *sql.TxOptions
+	if w.config != nil && w.config.Profile == "oltp-emul" {
+		txOpts = emul.TxOptions()
+	}
+	tx, err := conn.BeginTx(ctx, txOpts)
 	if err != nil {
 		if isCancelErr(err) || w.ctx.Err() != nil || isDeadConnErr(err) {
 			return err

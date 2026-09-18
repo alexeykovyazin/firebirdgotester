@@ -24,9 +24,9 @@ type Unit struct {
 // (kind=removal) and backward state changes are excluded - mirroring the
 // warmup filter inside upstream srv_random_unit_choice.
 var warmupKinds = map[string]bool{
-	"creation":    true,
-	"state_next":  true,
-	"service":     true,
+	"creation":   true,
+	"state_next": true,
+	"service":    true,
 }
 
 // Queryer covers *sql.DB and *sql.Tx.
@@ -144,6 +144,25 @@ func (o Outcome) String() string {
 	default:
 		return "failure"
 	}
+}
+
+// NoWaitIsolation is the driver's custom sql.TxOptions isolation value:
+// READ COMMITTED with NOWAIT lock resolution. oltp-emul units REQUIRE
+// transactions started NO WAIT (or with a lock timeout) - SP_CHECK_NOWAIT_
+// OR_TIMEOUT rejects otherwise - so workers running the oltp-emul profile
+// must begin transactions with these options.
+const NoWaitIsolation = sql.IsolationLevel(1000) // firebirdsql.LevelReadCommittedNoWait
+
+// TxOptions returns the transaction options required for unit execution.
+func TxOptions() *sql.TxOptions {
+	return &sql.TxOptions{Isolation: NoWaitIsolation}
+}
+
+// SnapshotTxOptions returns the transaction options required by the
+// invariant self-checks: SRV_MAKE_INVNT_SALDO / SRV_MAKE_MONEY_SALDO demand
+// TIL = SNAPSHOT (they total the turnover logs and need a stable view).
+func SnapshotTxOptions() *sql.TxOptions {
+	return &sql.TxOptions{Isolation: sql.LevelRepeatableRead}
 }
 
 // ExecuteUnit runs one business unit inside the caller's transaction. A unit
