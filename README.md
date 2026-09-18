@@ -46,7 +46,7 @@ The product deck is published on **GitHub Pages** — [download the PPTX](https:
 
 - **Go 1.24.5+** (see `go.mod`)
 - A running **Firebird** server
-- One or more **EMPLOYEE**-compatible databases (sample `EMPLOYEE.FDB` included)
+- One or more **EMPLOYEE**-compatible databases (schema in `EMPLOYEE_metadata.sql`)
 - Default credentials used by the tool: `SYSDBA` / `masterkey`
 
 ## Build
@@ -60,6 +60,20 @@ go build -o fb-loadgen .
 ```
 
 There is no published module install path; build from the repository root.
+
+Alternatively, grab a prebuilt binary from [GitHub Releases](https://github.com/alexeykovyazin/firebirdgotester/releases) (Windows, Linux, macOS; see *Releases* below).
+
+## CI & Releases
+
+- **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `go vet`, the full test suite (with `-race`), and a compile check on Linux, Windows, and macOS.
+- **Releases** (`.github/workflows/release.yml`) are published by pushing a version tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow cross-compiles `fb-loadgen` for `windows/amd64`, `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64`, packages each archive with `LICENSE` and `README.md`, generates `checksums.txt` (SHA-256), and attaches everything to an auto-annotated GitHub Release.
 
 ## Quick start
 

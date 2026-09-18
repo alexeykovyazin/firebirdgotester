@@ -3,6 +3,7 @@
 /fb-loadgen.exe
 *.exe
 *.test
+/dist/
 
 # Runtime / local settings (may contain credentials)
 fb-loadgen.ui.json
