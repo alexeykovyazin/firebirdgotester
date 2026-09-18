@@ -144,17 +144,17 @@ Guard rails:
   subcommand AND `POST /api/dbs/{id}/emul/provision` (async job: create → scripts → fill, with progress and
   cancel). Dry-run keeps its contract: print config, touch nothing.
 
-## 6. Driver spike (phase 0.5) — before anything else
+## 6. Driver spike — RESOLVED (2026-09-18)
 
-Verified against `IBSurgeon/firebirdsql-go` in the module cache:
-- **No exported CreateDatabase/DropDatabase.** Wire opcodes (`op_create`, `op_drop_database`) exist in
-  consts.go; no client API wraps them. Options: (a) add small `CreateDatabase(dsn, options)` to the fork
-  (IBSurgeon maintains it — cleanest), (b) create via the fork's services manager (backup_manager.go restore),
-  (c) shell out to isql. Recommendation: (a), fallback (c) behind the same `Provision()` signature.
-- **GDS-code error surface**: wireprotocol.go collects `gdsCodes`; confirm the public error type exposes them
-  and that `errors.As` reaches it. Acceptance test: classify a real deadlock and update_conflict.
-- Also confirm: EXECUTE PROCEDURE with multi-output units through database/sql; charset round-trip of the
-  dictionary seed (DB created `CHARACTER SET NONE`, our connections typically UTF-8).
+Verified against `IBSurgeon/firebirdsql-go` (v0.0.0-20260828114643) in the module cache:
+- **Database creation: already supported by the fork.** A registered driver variant
+  `sql.Open("firebirdsql_createdb", dsn)` creates the database on connect. Its `opCreate` hardcodes page
+  size 4096, so to match oltp-emul's page size 8192 the provisioner creates via `firebirdsql_createdb`,
+  then runs the fork's services manager (`NewBackupManager` → backup to temp .fbk → restore with
+  `RestoreOptions{PageSize: 8192, Replace: true}`). Fully in-driver, no fork changes, no isql dependency.
+- **Error classification: solved.** `*firebirdsql.FbError` via `errors.As` exposes `GDSCodes []int`
+  (+ SQLCode/SQLState/params); constants `ISCDeadlock = 335544336`, `ISCUpdateConflict = 335544451`.
+- **Charset**: to verify live in phase-1 smoke (DB is created `CHARACTER SET NONE`; our connections are UTF-8).
 
 ## 7. UI — firebirdtest.com-style dashboard
 

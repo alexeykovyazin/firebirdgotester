@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 
+	"fb-loadgen/emul"
 	"fb-loadgen/ops"
 )
 
@@ -116,9 +117,10 @@ func (bp *BaseProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, c
 
 // ProfileFactory creates profiles
 type ProfileFactory struct {
-	readOps  *ops.ReadOperations
-	writeOps *ops.WriteOperations
-	cache    *ops.Cache
+	readOps   *ops.ReadOperations
+	writeOps  *ops.WriteOperations
+	cache     *ops.Cache
+	emulUnits []emul.Unit // loaded business_ops registry (oltp-emul profile)
 }
 
 // NewProfileFactory creates a new profile factory
@@ -139,6 +141,8 @@ func (pf *ProfileFactory) CreateProfile(name string) (Profile, error) {
 		return NewReadHeavyProfile(pf.readOps, pf.writeOps, pf.cache), nil
 	case "spike":
 		return NewSpikeProfile(pf.readOps, pf.writeOps, pf.cache), nil
+	case "oltp-emul":
+		return pf.buildEmulProfile()
 	default:
 		return nil, fmt.Errorf("unknown profile: %s", name)
 	}
@@ -146,7 +150,7 @@ func (pf *ProfileFactory) CreateProfile(name string) (Profile, error) {
 
 // GetAvailableProfiles returns a list of available profile names
 func (pf *ProfileFactory) GetAvailableProfiles() []string {
-	return []string{"write-heavy", "read-heavy", "spike"}
+	return []string{"write-heavy", "read-heavy", "spike", "oltp-emul"}
 }
 
 // ValidateProfile checks if a profile name is valid
