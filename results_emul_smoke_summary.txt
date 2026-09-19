@@ -1,1 +1,0 @@
-Total: 930, Success: 90.5%, TPS: 30.9, Lat: avg=283ms min=100ms max=500ms p50=100ms p95=250ms p99=500ms, Workers: 0/5, Profile: oltp-emul

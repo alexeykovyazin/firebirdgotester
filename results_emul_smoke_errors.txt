@@ -1,3 +1,0 @@
-Error Breakdown:
-  unknown_error                                     :       77 (  87.5%)
-  deadlock                                          :       11 (  12.5%)
