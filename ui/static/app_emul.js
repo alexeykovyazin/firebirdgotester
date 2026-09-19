@@ -43,13 +43,9 @@ function emulSparkline(svgId, points, valueOf) {
   svg.appendChild(label);
 }
 
+// thin wrapper over the global api() helper (app.js) — stringifies bodies
 async function emulJson(method, path, body) {
-  const headers = { "Content-Type": "application/json" };
-  if (authToken) headers["Authorization"] = "Bearer " + authToken;
-  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
-  return data;
+  return api(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
 // ---------- database dropdown + provision ----------
@@ -110,7 +106,7 @@ async function emulProvision() {
     });
     emulState.provJobId = d.jobId;
   } catch (e) {
-    document.getElementById("emulProvStatus").textContent = "error: " + e.message;
+    emulSetStatus("Provision failed to start: " + e.message, "err");
   }
 }
 
@@ -118,10 +114,10 @@ async function emulPollProvision() {
   if (!emulState.provJobId) return;
   try {
     const d = await emulJson("GET", "/api/emul/provision/" + emulState.provJobId);
-    const el = document.getElementById("emulProvStatus");
-    el.textContent = `${d.stage} ${(d.progress * 100).toFixed(0)}% — ${d.message || ""}`;
+    emulSetStatus(`Provisioning: ${d.stage} ${(d.progress * 100).toFixed(0)}% — ${d.message || ""}`, "info");
     if (d.done) {
-      el.textContent = d.ok ? "done — session added to fleet" : "failed: " + d.message;
+      emulSetStatus(d.ok ? "Provision complete — added to fleet" : "Provision failed: " + d.message,
+                    d.ok ? "ok" : "err");
       emulState.provJobId = null;
       await emulRefreshDbList();
     }
@@ -145,6 +141,9 @@ async function emulLoadSession() {
     document.getElementById("emulThink").value = s.thinkMs;
     document.getElementById("emulInvEvery").value = s.emulInvariantEvery || 60;
     document.getElementById("emulMonEvery").value = s.emulMonitorEvery || 10;
+    // time limit: shared preference with the Sessions-tab row dropdown
+    document.getElementById("emulTimeLimit").value =
+      String(rowLimits[id] !== undefined ? rowLimits[id] : 15);
     await emulLoadUnits();
   } catch {
     /* session may be transiently unavailable */
@@ -182,9 +181,9 @@ async function emulSaveWeights() {
   });
   try {
     await emulJson("PUT", "/api/sessions/" + id + "/emul/weights", { weights });
-    document.getElementById("emulWeightsMsg").textContent = "saved";
+    emulSetStatus("Unit weights saved", "ok");
   } catch (e) {
-    document.getElementById("emulWeightsMsg").textContent = "error: " + e.message;
+    emulSetStatus("Save weights failed: " + e.message, "err");
   }
 }
 
@@ -203,9 +202,9 @@ async function emulApplySettings() {
       emulMonitorEvery: Number(document.getElementById("emulMonEvery").value) || 10,
     });
     document.getElementById("emulConnMax").value = s.connMax + " (budget)";
-    document.getElementById("emulApplyMsg").textContent = "applied";
+    emulSetStatus("Settings applied", "ok");
   } catch (e) {
-    document.getElementById("emulApplyMsg").textContent = "error: " + e.message;
+    emulSetStatus("Apply settings failed: " + e.message, "err");
   }
 }
 
@@ -236,7 +235,7 @@ function emulLifecycle(sess, gateOk) {
   const stopBtn = document.getElementById("btnEmulStop");
   const pauseBtn = document.getElementById("btnEmulPause");
   const resumeBtn = document.getElementById("btnEmulResume");
-  const applyBtn = document.getElementById("btnEmulApply");
+  const applyBtn = document.getElementById("btnEmulApplySettings");
 
   startBtn.disabled = !gateOk || !(st === "Idle" || st === "Failed" || st === "Completed");
   stopBtn.disabled = !(st === "Running" || st === "Paused" || st === "Starting");
@@ -255,10 +254,10 @@ function emulLifecycle(sess, gateOk) {
   switch (st) {
     case "Running":
     case "Starting":
-      emulSetStatus("Running — " + (emulState.livePhase || st), "info");
+      emulSetStatus("Running — " + (emulState.livePhase || st) + emulRemainingSuffix(sess), "info");
       break;
     case "Paused":
-      emulSetStatus("Paused", "info");
+      emulSetStatus("Paused" + emulRemainingSuffix(sess), "info");
       break;
     case "Completed":
       emulSetStatus("Completed — final report below", "ok");
@@ -269,6 +268,14 @@ function emulLifecycle(sess, gateOk) {
     default:
       emulSetStatus("Ready — set settings and press Start", "");
   }
+}
+
+// emulRemainingSuffix renders the countdown for time-limited runs.
+function emulRemainingSuffix(sess) {
+  if (!sess || !sess.timeLimitMin) return "";
+  const sec = Math.max(0, Math.round(sess.remainingSec || 0));
+  const mm = Math.floor(sec / 60), ss = sec % 60;
+  return " · " + mm + ":" + String(ss).padStart(2, "0") + " remaining";
 }
 
 // emulGate checks the selected database has the oltpemul schema; the
@@ -387,10 +394,13 @@ refresh = async function () {
     } else {
       emulRenderState({}, sess);
     }
-    // re-gate only where readiness can change; keep the last verdict while
-    // the run is active so the status line does not flicker
-    if (emulState.gateOk === null || sess.status === "Idle" || sess.status === "Failed") {
+    // re-gate only where readiness can change (selection or entering a
+    // state that requires a fresh verdict) — not on every poll
+    if (emulState.gateSessionId !== id ||
+        ((sess.status === "Idle" || sess.status === "Failed") && emulState.gateStatus !== sess.status)) {
       emulState.gateOk = await emulGate();
+      emulState.gateSessionId = id;
+      emulState.gateStatus = sess.status;
     }
     emulLifecycle(sess, emulState.gateOk);
     await emulLoadRuns();
@@ -404,20 +414,35 @@ document.getElementById("btnEmulRefresh").addEventListener("click", async () => 
   await emulRefreshDbList().catch(() => {});
   await emulLoadProfiles().catch(() => {});
   await emulLoadSession().catch(() => {});
-});
-document.getElementById("btnEmulProvision").addEventListener("click", () => emulProvision());
+});document.getElementById("btnEmulProvision").addEventListener("click", () => emulProvision());
 document.getElementById("btnEmulProvCancel").addEventListener("click", () => {
   if (emulState.provJobId) emulJson("DELETE", "/api/emul/provision/" + emulState.provJobId).catch(() => {});
 });
 document.getElementById("btnEmulWeights").addEventListener("click", () => emulSaveWeights());
-document.getElementById("btnEmulApply").addEventListener("click", () => emulApplySettings());
+document.getElementById("btnEmulApplySettings").addEventListener("click", () => emulApplySettings());
+document.getElementById("emulTimeLimit").addEventListener("change", () => {
+  // share the Sessions-tab per-database preference so both controls agree
+  const id = emulSel();
+  if (!id) return;
+  rowLimits[id] = emulCurrentTimeLimit();
+  try { localStorage.setItem("fb-time-limits-v2", JSON.stringify(rowLimits)); } catch { /* private mode */ }
+});
 document.getElementById("btnEmulStart").addEventListener("click", async () => {
-  // complete lifecycle: apply the form settings, then start
+  // complete lifecycle: apply the form settings, then start with the
+  // selected time limit (0 = No limit)
   await emulApplySettings();
-  await emulControl("start");
+  const id = emulSel();
+  if (!id) return;
+  try {
+    await emulJson("POST", `/api/sessions/${id}/start`, { timeLimitMin: emulCurrentTimeLimit() });
+  } catch (e) {
+    emulSetStatus("oltp-emul start failed: " + e.message, "err");
+    toast("oltp-emul start failed: " + e.message, true);
+  }
 });
 document.getElementById("btnEmulPause").addEventListener("click", () => emulControl("pause"));
 document.getElementById("btnEmulResume").addEventListener("click", () => emulControl("resume"));
 document.getElementById("btnEmulStop").addEventListener("click", () => emulControl("stop"));
 
+emulInitTimeLimit();
 emulLoadProfiles().catch(() => {});

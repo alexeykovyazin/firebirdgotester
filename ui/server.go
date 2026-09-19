@@ -75,6 +75,18 @@ func (s *Server) routes() {
 		panic(err)
 	}
 	staticServer := http.FileServer(http.FS(static))
+	// Embedded UI assets have no modification time, so FileServer sends no
+	// validators and browsers heuristically cache them — a stale app_emul.js
+	// silently breaks the tab after an upgrade. Force revalidation for code
+	// and markup; images stay cacheable.
+	staticWithHeaders := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, ".html"), strings.HasSuffix(r.URL.Path, ".js"),
+			strings.HasSuffix(r.URL.Path, ".css"), r.URL.Path == "/":
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		staticServer.ServeHTTP(w, r)
+	})
 
 	s.mux.HandleFunc("GET /api/config", s.authRead(s.handleConfig))
 	s.mux.HandleFunc("PUT /api/config", s.auth(s.handleSaveConfig))
@@ -131,7 +143,7 @@ func (s *Server) routes() {
 			writeError(w, http.StatusNotFound, fmt.Errorf("UI disabled (--api-only); see /api/ and /metrics"))
 			return
 		}
-		staticServer.ServeHTTP(w, r)
+		staticWithHeaders.ServeHTTP(w, r)
 	})
 }
 

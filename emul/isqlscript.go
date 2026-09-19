@@ -58,7 +58,8 @@ func ParseScript(script string) ([]Statement, error) {
 	var stmts []Statement
 	term := ";"
 	line := 1
-	start := 0 // start offset of current chunk (for reporting)
+	start := 0     // start offset of current chunk (for reporting)
+	chunkLine := 1 // line the current chunk starts on (tracked incrementally)
 
 	i := 0
 	n := len(script)
@@ -104,7 +105,7 @@ func ParseScript(script string) ([]Statement, error) {
 		default:
 			if strings.HasPrefix(script[i:], term) {
 				chunk := script[start:i]
-				stmt, isTermDirective, err := classify(chunk, start2line(script, start), term, &term)
+				stmt, isTermDirective, err := classify(chunk, chunkLine, term, &term)
 				if err != nil {
 					return nil, err
 				}
@@ -113,6 +114,7 @@ func ParseScript(script string) ([]Statement, error) {
 				}
 				i += len(term)
 				start = i
+				chunkLine = line // next chunk starts on the terminator's line
 			} else {
 				i++
 			}
@@ -121,7 +123,7 @@ func ParseScript(script string) ([]Statement, error) {
 
 	// Trailing chunk after the last terminator.
 	if rest := strings.TrimSpace(script[start:]); rest != "" {
-		stmt, isTerm, err := classify(script[start:], start2line(script, start), term, &term)
+		stmt, isTerm, err := classify(script[start:], chunkLine, term, &term)
 		if err != nil {
 			return nil, err
 		}
@@ -222,8 +224,4 @@ func scanQuoted(s string, i int, q byte) (end int, newlines int, ok bool) {
 		}
 	}
 	return 0, newlines, false
-}
-
-func start2line(script string, off int) int {
-	return 1 + strings.Count(script[:off], "\n")
 }

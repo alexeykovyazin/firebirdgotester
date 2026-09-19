@@ -479,8 +479,10 @@
       </label>
       <button id="btnEmulRefresh">Refresh</button>
       <span id="emulCtlStatus" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+      <label>Time limit
+        <select id="emulTimeLimit"></select>
+      </label>
       <span style="display:flex; gap:8px;">
-        <button id="btnEmulApply">Apply settings</button>
         <button id="btnEmulStart">Start</button>
         <button id="btnEmulPause">Pause</button>
         <button id="btnEmulResume">Resume</button>
@@ -504,7 +506,6 @@
         <div class="row">
           <button class="primary" id="btnEmulProvision">Provision</button>
           <button id="btnEmulProvCancel">Cancel job</button>
-          <span id="emulProvStatus" class="muted"></span>
         </div>
       </div>
 
@@ -522,8 +523,7 @@
           <label>Monitor every s <input type="number" id="emulMon" value="10" /></label>
         </div>
         <div class="row">
-          <button id="btnEmulApply">Apply settings</button>
-          <span id="emulApplyMsg" class="muted"></span>
+          <button id="btnEmulApplySettings">Apply settings</button>
         </div>
       </div>
 
@@ -537,7 +537,6 @@
         </div>
         <div class="row">
           <button id="btnEmulWeights">Save weights</button>
-          <span id="emulWeightsMsg" class="muted"></span>
         </div>
       </div>
     </div>
