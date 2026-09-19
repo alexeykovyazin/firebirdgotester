@@ -7,6 +7,8 @@ const emulState = {
   provJobId: null,
   units: [],
   lastRuns: 0,
+  gateOk: null,
+  livePhase: null,
 };
 
 const emulSel = () => document.getElementById("emulDb").value || null;
@@ -207,34 +209,80 @@ async function emulApplySettings() {
   }
 }
 
+function emulSetStatus(text, kind) {
+  const el = document.getElementById("emulCtlStatus");
+  const color = kind === "err" ? "red" : kind === "ok" ? "green" : kind === "info" ? "#2563eb" : "inherit";
+  el.innerHTML = text ? '<span style="color:' + color + '">' + text + "</span>" : "";
+}
+
 async function emulControl(action) {
   const id = emulSel();
   if (!id) return;
-  const status = document.getElementById("emulCtlStatus");
-  status.textContent = "";
   try {
     await emulJson("POST", `/api/sessions/${id}/${action}`, {});
+    emulSetStatus("oltp-emul: " + action + " accepted", "info");
     toast("oltp-emul: " + action + " ok", false);
   } catch (e) {
-    status.innerHTML = '<span style="color:red">' + e.message + "</span>";
+    emulSetStatus("oltp-emul " + action + " failed: " + e.message, "err");
     toast("oltp-emul " + action + " failed: " + e.message, true);
   }
 }
 
-// emulGate checks the selected database has the oltpemul schema and
-// enables/disables Start accordingly, with the reason next to the button.
+// emulLifecycle renders the current lifecycle stage in the left status
+// line and enables/disables the control buttons accordingly.
+function emulLifecycle(sess, gateOk) {
+  const st = sess ? sess.status : null;
+  const startBtn = document.getElementById("btnEmulStart");
+  const stopBtn = document.getElementById("btnEmulStop");
+  const pauseBtn = document.getElementById("btnEmulPause");
+  const resumeBtn = document.getElementById("btnEmulResume");
+  const applyBtn = document.getElementById("btnEmulApply");
+
+  startBtn.disabled = !gateOk || !(st === "Idle" || st === "Failed" || st === "Completed");
+  stopBtn.disabled = !(st === "Running" || st === "Paused" || st === "Starting");
+  pauseBtn.disabled = st !== "Running";
+  resumeBtn.disabled = st !== "Paused";
+  applyBtn.disabled = !(st === "Idle" || st === "Failed" || st === "Completed");
+
+  if (emulState.provJobId) {
+    emulSetStatus("Provisioning in progress…", "info");
+    return;
+  }
+  if (!gateOk) {
+    emulSetStatus("Not an oltpemul database — provision it below, then start", "err");
+    return;
+  }
+  switch (st) {
+    case "Running":
+    case "Starting":
+      emulSetStatus("Running — " + (emulState.livePhase || st), "info");
+      break;
+    case "Paused":
+      emulSetStatus("Paused", "info");
+      break;
+    case "Completed":
+      emulSetStatus("Completed — final report below", "ok");
+      break;
+    case "Failed":
+      emulSetStatus("Failed: " + (sess && sess.lastError ? sess.lastError : "unknown error"), "err");
+      break;
+    default:
+      emulSetStatus("Ready — set settings and press Start", "");
+  }
+}
+
+// emulGate checks the selected database has the oltpemul schema; the
+// result feeds the lifecycle status and Start button state.
 async function emulGate() {
   const id = emulSel();
-  if (!id) return;
-  const startBtn = document.getElementById("btnEmulStart");
-  const status = document.getElementById("emulCtlStatus");
+  if (!id) return true;
   try {
     await emulJson("GET", "/api/sessions/" + id + "/emul/units");
-    startBtn.disabled = false;
-    status.textContent = "";
+    emulState.gateOk = true;
+    return true;
   } catch (e) {
-    startBtn.disabled = true;
-    status.innerHTML = '<span style="color:red">not an oltpemul database — provision it first (below)</span>';
+    emulState.gateOk = false;
+    return false;
   }
 }
 
@@ -324,8 +372,18 @@ refresh = async function () {
       emulJson("GET", "/api/sessions/" + id),
       emulJson("GET", "/api/sessions/" + id + "/emul/state").catch(() => null),
     ]);
-    if (state) emulRenderState(state, sess);
-    else emulRenderState({}, sess);
+    if (state) {
+      emulState.livePhase = state.phase || null;
+      emulRenderState(state, sess);
+    } else {
+      emulRenderState({}, sess);
+    }
+    // re-gate only where readiness can change; keep the last verdict while
+    // the run is active so the status line does not flicker
+    if (emulState.gateOk === null || sess.status === "Idle" || sess.status === "Failed") {
+      emulState.gateOk = await emulGate();
+    }
+    emulLifecycle(sess, emulState.gateOk);
     await emulLoadRuns();
   } catch { /* transient */ }
 };
@@ -344,7 +402,13 @@ document.getElementById("btnEmulProvCancel").addEventListener("click", () => {
 });
 document.getElementById("btnEmulWeights").addEventListener("click", () => emulSaveWeights());
 document.getElementById("btnEmulApply").addEventListener("click", () => emulApplySettings());
-document.getElementById("btnEmulStart").addEventListener("click", () => emulControl("start"));
+document.getElementById("btnEmulStart").addEventListener("click", async () => {
+  // complete lifecycle: apply the form settings, then start
+  await emulApplySettings();
+  await emulControl("start");
+});
+document.getElementById("btnEmulPause").addEventListener("click", () => emulControl("pause"));
+document.getElementById("btnEmulResume").addEventListener("click", () => emulControl("resume"));
 document.getElementById("btnEmulStop").addEventListener("click", () => emulControl("stop"));
 
 emulLoadProfiles().catch(() => {});
