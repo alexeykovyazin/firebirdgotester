@@ -10,6 +10,8 @@ fb-loadgen.ui.json
 reports/
 results.csv
 results.csv_*.txt
+results_emul_smoke*
+fb-loadgen.runs.json
 *_sql_errors.log
 sql_errors.log
 
