@@ -102,7 +102,7 @@ function codeBox(s, lines, x, y, w, h) {
     notes: "Facts: profiles in profile/ (write-heavy, read-heavy, spike); 10+ concurrent sessions exercised in the demo rig; API surface in API.md." });
   const stats = [
     ["1", "Go binary — CLI, UI and API in one executable"],
-    ["3", "workload profiles: write-heavy, read-heavy, spike"],
+    ["4", "workload profiles: write-heavy, read-heavy, spike, oltp-emul"],
     ["10+", "databases per control plane, one worker = one connection"],
     ["100%", "API-first: schedules, runs and metrics without the UI"],
   ];
@@ -403,6 +403,71 @@ function codeBox(s, lines, x, y, w, h) {
   });
 }
 
+// ---------- 14b. OLTP-EMUL mode ----------
+{
+  const s = baseSlide({ title: "OLTP-EMUL — a business process, not just SQL",
+    kicker: "Borrows the FirebirdSQL oltp-emul model (MIT, Pavel Zotov): a car-service supply business runs inside the database as stored procedures.",
+    notes: "Units are executable SPs from the business_ops registry; Go picks them weighted-random and executes one per transaction in READ COMMITTED NO WAIT. Score = successful units per main-phase minute. Invariants: SRV_MAKE_INVNT_SALDO / SRV_MAKE_MONEY_SALDO must hold." });
+  const flow = [
+    ["Customer order", "stock · creation"],
+    ["Supplier order", "stock · creation"],
+    ["Supplier invoice", "stock · creation"],
+    ["Invoice → stock", "stock · state_next"],
+    ["Reserve / sale", "stock · state_next"],
+    ["Pay supplier / customer", "payments · creation"],
+    ["Every step cancellable", "removal · state_back"],
+  ];
+  flow.forEach(([name, meta], i) => {
+    const x = 0.55 + (i % 4) * 3.12, y = 1.5 + Math.floor(i / 4) * 1.35;
+    panel(s, x, y, 2.9, 1.15);
+    s.addText(name, { x: x + 0.15, y: y + 0.12, w: 2.6, h: 0.45, fontSize: 12.5, bold: true, color: TEXT, fontFace: "Segoe UI" });
+    s.addText(meta, { x: x + 0.15, y: y + 0.6, w: 2.6, h: 0.35, fontSize: 10.5, color: ACCENT, fontFace: "Segoe UI" });
+  });
+  panel(s, 9.95, 1.5, 2.85, 2.6);
+  s.addText("The score", { x: 10.15, y: 1.65, w: 2.45, h: 0.35, fontSize: 14, bold: true, color: ACCENT, fontFace: "Segoe UI" });
+  s.addText("successful business actions per minute — weighted random unit mix; warmup grows the database, measurement adds churn.",
+    { x: 10.15, y: 2.05, w: 2.5, h: 1.9, fontSize: 11, color: TEXT, fontFace: "Segoe UI" });
+  const chips = [
+    "Invariants: stock and money must stay conserved — checked live",
+    "Deadlocks and business rejections are expected load events",
+    "mon$ memory peaks at 4 levels: db / attachments / transactions / statements",
+    "Model & SQL: github.com/FirebirdSQL/oltp-emul (MIT, Pavel Zotov)",
+  ];
+  chips.forEach((c, i) => chip(s, c, 0.55 + (i % 2) * 6.25, 4.45 + Math.floor(i / 2) * 1.15, 6.0));
+  s.addText("20 units, 1 transaction each. The database is the application — the generator decides what happens next.",
+    { x: 0.57, y: 6.7, w: 12.2, h: 0.4, fontSize: 13, color: MUTED, align: "center", fontFace: "Segoe UI" });
+}
+
+// ---------- 14c. lifecycle ----------
+{
+  const s = baseSlide({ title: "Provision → run → report — one lifecycle",
+    kicker: "The OLTPEMUL tab drives the whole flow: provision a benchmark database, run it, read the score.",
+    notes: "Provision: create (page size 8192) + vendored DDL/SP scripts + settings + dictionaries + documents, then the schema guard gates every start. Scripts are verbatim upstream oltp-emul (MIT); the splitter is quote-aware with golden tests." });
+  const cards = [
+    ["1 · Provision", ["fb-loadgen provision \\", "  --dsn \"127.0.0.1/3055:C:\\\\data\\\\olt.fdb\" \\", "  --working-mode SMALL_01 \\", "  --init-docs 3000"], "create DB → DDL → procedures → settings → dictionaries → documents. Async job with progress; the database self-registers in the fleet."],
+    ["2 · Run", ["OLTPEMUL tab → Start", "# unit mix editable live", "PUT /api/sessions/$ID/emul/weights"], "Schema guard first. Weighted random units, one transaction each, per-unit outcomes: ok / conflict / rejected / failure."],
+    ["3 · Report", ["results_emul.txt", "+ live score, per-unit table,", "  memory peaks, invariants"], "Score (actions/min) frozen into the report dir and run history — compare runs over time."],
+  ];
+  cards.forEach(([name, lines, cap], i) => {
+    const x = 0.55 + i * 4.28;
+    panel(s, x, 1.5, 4.05, 4.9);
+    s.addText(name, { x: x + 0.2, y: 1.68, w: 3.65, h: 0.4, fontSize: 15, bold: true, color: ACCENT, fontFace: "Segoe UI" });
+    codeBox(s, lines, x + 0.2, 2.2, 3.65, i === 1 ? 1.6 : 2.2);
+    s.addText(cap, { x: x + 0.2, y: 4.5, w: 3.65, h: 1.7, fontSize: 11, color: MUTED, fontFace: "Segoe UI" });
+  });
+  chip(s, "works headless too: the same REST API drives provisioning, starting and stopping", 0.55, 6.6, 12.2);
+}
+
+// ---------- 14d. dashboard ----------
+{
+  const s = baseSlide({ title: "The OLTPEMUL dashboard — truth per unit",
+    kicker: "Live score, memory peaks, invariant status and the per-unit outcome table — one tab, one database, one click to start.",
+    notes: "Screenshot is the live UI. Per-unit table separates ok / conflict / rejected / failure with avg and max latency. History compares scores across runs." });
+  card(s, "ui_oltpemul.png", 0.55, 1.45, 12.25, 4.6);
+  const chips = ["score sparkline per 10 s interval", "memory peaks: db / att / trn / stmt", "per-unit ok · conflict · rejected · fail + avg/max ms", "last runs: score comparison over time"];
+  chips.forEach((c, i) => chip(s, c, 0.55 + i * 3.12, 6.25, 2.95, { bold: true }));
+}
+
 // ---------- 15. scenarios ----------
 {
   const s = baseSlide({ title: "Typical scenarios",
@@ -438,6 +503,8 @@ function codeBox(s, lines, x, y, w, h) {
     "Webhooks + Prometheus /metrics\n",
     "API hardening: auth, CORS, headless mode\n",
     "OpenAPI 3.1 spec for the whole API\n",
+    "oltp-emul business-process mode + OLTPEMUL dashboard\n",
+    "CI (vet + race + 3 OS) and multi-platform releases\n",
     "IBSurgeon driver fork under the hood",
   ].join(""), { x: 0.8, y: 2.2, w: 5.5, h: 3.6, fontSize: 13.5, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.4 });
   panel(s, 6.8, 1.5, 6.0, 4.7);
