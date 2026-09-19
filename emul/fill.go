@@ -33,6 +33,7 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 
 	var done, conflicts, rejected, failures int
 	lastReport := time.Now()
+	iterations := 0
 	consecutiveFailures := 0
 	var firstErr error
 	const checkEvery = 25
@@ -93,7 +94,8 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 				done, conflicts, rejected, failures)
 			return nil
 		}
-		if done%checkEvery == 0 || time.Since(lastReport) > 5*time.Second {
+		iterations++
+		if iterations%checkEvery == 0 || time.Since(lastReport) > 5*time.Second {
 			var have int
 			if err := db.QueryRowContext(ctx, `select count(*) from doc_list`).Scan(&have); err == nil {
 				progress("fill: %d/%d documents (%d conflicts, %d rejected, %d failed units)",

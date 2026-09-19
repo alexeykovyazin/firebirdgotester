@@ -103,6 +103,7 @@ func Provision(ctx context.Context, cfg Config, progress Progress) error {
 	if err == nil {
 		if perr := db.PingContext(ctx); perr == nil && provisioned(ctx, db) {
 			// Idempotent path: the oltpemul schema is already there.
+			db.Close()
 			progress("schema already present, skipping create and scripts")
 			return nil
 		}

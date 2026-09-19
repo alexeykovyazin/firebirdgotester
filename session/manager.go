@@ -198,6 +198,11 @@ func (m *Manager) HasRunningSessions() bool {
 func (m *Manager) UpdateConnectionSettings(s config.UISettings, persist bool) error {
 	prev := m.ConnectionSettings()
 	s = s.MergePassKeepExisting(prev)
+	// a save that carries no emul session registrations must not wipe the
+	// registered ones (same protection pattern as MergePassKeepExisting)
+	if len(s.EmulSessions) == 0 {
+		s.EmulSessions = prev.EmulSessions
+	}
 	if s.DiscoverMask == "" {
 		s.DiscoverMask = "*.fdb"
 	}
@@ -1181,6 +1186,9 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 func (s *Session) cleanupLocked(retainMetrics bool) {
 	s.scheduler = nil
 	s.pauseGate = nil
+	// oltp-emul sidecars stop on EVERY finish path (explicit stop, natural
+	// completion, start abort) — not just the Stop button.
+	s.emulStopLocked()
 	if !retainMetrics {
 		s.metrics = nil
 	} else {
@@ -1193,6 +1201,20 @@ func (s *Session) cleanupLocked(retainMetrics bool) {
 	s.errorLog = nil
 	s.runCfg = nil
 	s.reportDir = ""
+}
+
+// emulStopLocked cancels the emul sidecars (memory monitor, invariant loop,
+// series ticker) and closes their dedicated pool. Idempotent; caller holds
+// s.mu.
+func (s *Session) emulStopLocked() {
+	if s.emulCancel != nil {
+		s.emulCancel()
+		s.emulCancel = nil
+	}
+	if s.emulPool != nil {
+		_ = s.emulPool.Close()
+		s.emulPool = nil
+	}
 }
 
 // Pause freezes workers and phase clock.
@@ -1264,15 +1286,8 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	if sched != nil {
 		_ = sched.Stop()
 	}
-	if s.emulCancel != nil {
-		s.emulCancel() // stops monitor/invariant/series sidecars
-	}
-	if s.emulPool != nil {
-		_ = s.emulPool.Close()
-		s.emulPool = nil
-	}
 	// freeze the final per-unit table while the collector is still alive
-	// (Stop nils s.metrics further down).
+	// (cleanupLocked nils s.metrics further down and stops the sidecars).
 	s.mu.Lock()
 	if s.emulState != nil && s.metrics != nil {
 		frozen := s.emulState.JSON(s.metrics.GetUnitStats(), s.emulUnits)
