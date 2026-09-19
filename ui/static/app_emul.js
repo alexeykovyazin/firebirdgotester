@@ -60,14 +60,22 @@ async function emulRefreshDbList() {
   for (const s of data.sessions || []) {
     const opt = document.createElement("option");
     opt.value = s.id;
-    opt.textContent = `${s.relPath} (${s.profile})`;
+    const emulReady = s.profile === "oltp-emul";
+    opt.textContent = `${s.relPath}${emulReady ? " ✓ oltp-emul" : ""}`;
     sel.appendChild(opt);
+  }
+  // Default to an oltp-emul session; never silently fall back to a
+  // non-oltpemul database (Start would fail its schema guard).
+  if (!prev || !data.sessions.some((s) => s.id === prev)) {
+    const ready = (data.sessions || []).find((s) => s.profile === "oltp-emul");
+    if (ready) sel.value = ready.id;
   }
   if (prev && data.sessions.some((s) => s.id === prev)) sel.value = prev;
   if (!sel.value && data.sessions.length) sel.value = data.sessions[0].id;
   if (sel.value !== emulState.sessionId) {
     emulState.sessionId = sel.value;
     await emulLoadSession();
+    await emulGate();
   }
 }
 
@@ -202,10 +210,31 @@ async function emulApplySettings() {
 async function emulControl(action) {
   const id = emulSel();
   if (!id) return;
+  const status = document.getElementById("emulCtlStatus");
+  status.textContent = "";
   try {
     await emulJson("POST", `/api/sessions/${id}/${action}`, {});
+    toast("oltp-emul: " + action + " ok", false);
   } catch (e) {
-    document.getElementById("emulApplyMsg").textContent = "error: " + e.message;
+    status.innerHTML = '<span style="color:red">' + e.message + "</span>";
+    toast("oltp-emul " + action + " failed: " + e.message, true);
+  }
+}
+
+// emulGate checks the selected database has the oltpemul schema and
+// enables/disables Start accordingly, with the reason next to the button.
+async function emulGate() {
+  const id = emulSel();
+  if (!id) return;
+  const startBtn = document.getElementById("btnEmulStart");
+  const status = document.getElementById("emulCtlStatus");
+  try {
+    await emulJson("GET", "/api/sessions/" + id + "/emul/units");
+    startBtn.disabled = false;
+    status.textContent = "";
+  } catch (e) {
+    startBtn.disabled = true;
+    status.innerHTML = '<span style="color:red">not an oltpemul database — provision it first (below)</span>';
   }
 }
 

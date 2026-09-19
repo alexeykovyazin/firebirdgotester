@@ -486,6 +486,13 @@ func (m *Manager) RegisterDatabase(absPath, user, pass string) (Snapshot, error)
 	sc := DefaultsFromCLI(m.shared, info, host, port)
 	sc.User = user
 	sc.Pass = pass
+	// re-apply saved per-session preferences (profile, phases, ...) so a
+	// restored out-of-root session keeps its oltp-emul configuration
+	if saved, _, _ := config.LoadUISettings(m.settingsPath); len(saved.Sessions) > 0 {
+		if p, ok := saved.Sessions[abs]; ok {
+			ApplyPrefs(&sc, p)
+		}
+	}
 	sess := &Session{ID: IDFromAbsPath(abs), Config: sc, Status: StatusIdle}
 	m.sessions[abs] = sess
 	m.applyEvenConnBudgetLocked()
