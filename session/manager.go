@@ -488,10 +488,17 @@ func (m *Manager) RegisterDatabase(absPath, user, pass string) (Snapshot, error)
 	sc.Pass = pass
 	// re-apply saved per-session preferences (profile, phases, ...) so a
 	// restored out-of-root session keeps its oltp-emul configuration
+	prefsProfile := ""
 	if saved, _, _ := config.LoadUISettings(m.settingsPath); len(saved.Sessions) > 0 {
 		if p, ok := saved.Sessions[abs]; ok {
 			ApplyPrefs(&sc, p)
+			prefsProfile = p.Profile
 		}
+	}
+	// a database registered through the emul provision job is an oltpemul
+	// database by definition; default its profile accordingly
+	if prefsProfile == "" {
+		sc.Profile = "oltp-emul"
 	}
 	sess := &Session{ID: IDFromAbsPath(abs), Config: sc, Status: StatusIdle}
 	m.sessions[abs] = sess
