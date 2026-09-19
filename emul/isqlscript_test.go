@@ -141,21 +141,26 @@ func kinds(stmts []Statement) []StmtKind {
 // corrupt a real database. Counts are exact and calibrated against upstream
 // commit e9b158e8 (see assets/VERSION); refresh them when updating assets.
 func TestParseScript_GoldenAssets(t *testing.T) {
+	type lineAnchor struct {
+		line   int
+		prefix string
+	}
 	golden := map[string]struct {
 		stmts      int
 		procedures int // statements beginning "create or alter procedure"
 		maxStmtKB  int // no single statement may exceed this (merge detector)
+		anchors    []lineAnchor
 	}{
 		// Counts include only TOP-LEVEL occurrences: upstream sources contain
 		// a few "create or alter procedure" texts inside string literals
 		// (common_sp generates procedure DDL dynamically) that correctly do
 		// not parse as statements.
-		"oltp30_DDL.sql":        {396, 60, 64},
-		"oltp30_sp.sql":         {47, 29, 64},
-		"oltp_common_sp.sql":    {64, 38, 64},
-		"oltp_adjust_DDL.sql":   {29, 2, 64},
-		"oltp_main_filling.sql": {1533, 0, 64},
-		"oltp_data_filling.sql": {16518, 0, 256},
+		"oltp30_DDL.sql":        {396, 60, 64, []lineAnchor{{618, "recreate table settings"}, {8768, "create or alter procedure srv_random_unit_choice"}}},
+		"oltp30_sp.sql":         {47, 29, 64, []lineAnchor{{397, "create or alter procedure sp_client_order"}}},
+		"oltp_common_sp.sql":    {64, 38, 64, []lineAnchor{{418, "create or alter procedure fn_halt_sign"}}},
+		"oltp_adjust_DDL.sql":   {29, 2, 64, nil},
+		"oltp_main_filling.sql": {1533, 0, 64, nil},
+		"oltp_data_filling.sql": {16518, 0, 256, nil},
 	}
 	for name, g := range golden {
 		t.Run(name, func(t *testing.T) {
@@ -186,6 +191,21 @@ func TestParseScript_GoldenAssets(t *testing.T) {
 			}
 			if procs != g.procedures {
 				t.Errorf("got %d procedure statements, want exactly %d (a merged or split procedure = parser bug)", procs, g.procedures)
+			}
+			// spot-check statement start lines (first statement of each
+			// named procedure) — catches off-by-one line drift
+			for _, want := range g.anchors {
+				found := false
+				for _, st := range stmts {
+					if st.Kind == StmtSQL && st.Line == want.line &&
+						strings.HasPrefix(strings.ToLower(st.SQL), want.prefix) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("no statement at line %d starting with %q", want.line, want.prefix)
+				}
 			}
 			if commits == 0 {
 				t.Errorf("no COMMIT statements found - script likely misparsed")
@@ -247,6 +267,29 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// BenchmarkParseDataFilling guards the incremental line tracking: parsing
+// the largest asset must stay linear (the old start2line implementation was
+// quadratic — ~4.7 s for this file).
+func BenchmarkParseDataFilling(b *testing.B) {
+	script := mustAssetB(b, "oltp_data_filling.sql")
+	b.SetBytes(int64(len(script)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := ParseScript(script); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func mustAssetB(b *testing.B, name string) string {
+	b.Helper()
+	data, err := assetsFS.ReadFile("assets/" + name)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return string(data)
 }
 
 // Guard against accidental asset edits: the vendored files are verbatim

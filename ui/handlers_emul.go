@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,6 +169,19 @@ func (s *Server) handleEmulProvision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	host, port, dbPath := config.ParseDSN(body.DSN)
+	if root := s.manager.SharedConfig().EmulAllowDir; root != "" {
+		absRoot, rerr := filepath.Abs(root)
+		absPath, perr := filepath.Abs(dbPath)
+		if rerr != nil || perr != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid path"))
+			return
+		}
+		if absPath != absRoot && !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) {
+			writeError(w, http.StatusBadRequest,
+				fmt.Errorf("provision path escapes --emul-allow-dir %q", root))
+			return
+		}
+	}
 	jobID := fmt.Sprintf("%x", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &provisionJob{

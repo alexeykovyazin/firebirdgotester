@@ -43,6 +43,7 @@ type Config struct {
 	EmulInvariantEvery int    // seconds between invariant self-checks (0 = off)
 	EmulMonitorEvery   int    // seconds between mon$ memory snapshots (0 = off)
 	EmulWorkingMode    string // settings working-mode echo (set at provision time)
+	EmulAllowDir       string // when set, provisioning is restricted to this root
 
 	// Output
 	CSV         string
@@ -98,6 +99,7 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.SpikeCycles, "spike-cycles", 3, "Number of spike cycles during main period")
 	flag.IntVar(&cfg.SpikeHold, "spike-hold", 10, "Seconds to sustain peak before dropping")
 
+	flag.StringVar(&cfg.EmulAllowDir, "emul-allow-dir", "", "oltp-emul: restrict provisioning to this root (empty = unrestricted)")
 	flag.IntVar(&cfg.EmulInvariantEvery, "emul-invariant-every", 60, "oltp-emul: seconds between stock/money invariant self-checks (0 = off)")
 	flag.IntVar(&cfg.EmulMonitorEvery, "emul-monitor-every", 10, "oltp-emul: seconds between mon$ memory snapshots (0 = off)")
 
