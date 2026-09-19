@@ -1,6 +1,8 @@
 # Improvement Plan — Post-Review (2026-09-19)
 
-Source: full project review performed on 2026-09-19 against commit `50e3634`.
+Source: full project review performed on 2026-09-19 against commit `50e3634`;
+v2 adds three findings from the second pass (R15–R17: save-connection data loss,
+duplicate button id, JS helper duplication) and corrects R13's design.
 Every problem below was verified in source before being listed; file:line references
 are to that commit and may shift as fixes land. Items are grouped into four phases
 ordered by dependency and value; each phase ends with CI green and can ship alone.
@@ -9,8 +11,8 @@ Summary:
 
 | Phase | Theme | Items | Est. |
 |-------|-------|-------|------|
-| 1 | Correctness: leaks & error handling | R1–R4 | 0.5–1 d |
-| 2 | Lifecycle UX: time limit, status | R5–R7 | 0.5–1 d |
+| 1 | Correctness: leaks & error handling | R1–R4, R15 | 0.5–1 d |
+| 2 | Lifecycle UX: time limit, status | R5–R7, R16–R17 | 0.5–1 d |
 | 3 | Structure & performance | R8–R11 | 1–1.5 d |
 | 4 | Security & hardening | R12–R14 | 1.5–2.5 d |
 
@@ -125,6 +127,34 @@ invariants reporting `ok` again after recovery; the FB3 case still disables once
 or a manual DEBUG_01 run against a broken DSN), the count query runs at most every
 `checkEvery` iterations.
 
+### R15. "Save connection" wipes registered emul sessions (P1, found in second pass)
+
+**Problem.** `ui/server.go handleSaveConfig` builds a fresh `config.UISettings`
+from the request body — without `EmulSessions` — and passes it to
+`UpdateConnectionSettings(settings, true)`, which persists it. Clicking
+**Save connection** (a routine action) therefore deletes the registered
+out-of-root oltpemul sessions from `fb-loadgen.ui.json`; they vanish from the
+fleet after the next UI restart. Same wipe class as the PATCH-time bug fixed in
+`1052a8f`'s follow-ups, but on a different, unguarded save path — the earlier fix
+(`ConnectionSettings` carrying `EmulSessions`) does not help here because
+`handleSaveConfig` builds the struct from the request directly.
+
+**Design.** Structural, so every current and future save path is covered: in
+`UpdateConnectionSettings`, after `MergePassKeepExisting`, add
+```go
+if len(s.EmulSessions) == 0 { s.EmulSessions = prev.EmulSessions }
+```
+(mirroring the existing `MergePassKeepExisting` / max-total-conns fallback
+pattern). Optionally also assert in `RegisterDatabase` that a follow-up save
+keeps the ref.
+
+**Tests.** Unit test on `UpdateConnectionSettings`: settings without
+`EmulSessions` + prev with two refs → persisted struct keeps both. Manual: save
+connection in the UI → file still contains `emulSessions`.
+
+**Acceptance.** Save connection → restart UI → the oltpemul session is still in
+the fleet.
+
 ---
 
 ## Phase 2 — Lifecycle UX: time limit & status
@@ -141,6 +171,10 @@ run to end after ~30 s of main phase. This exact confusion occurred in live use.
    30 / 60 / 120 / 600 min — **default 15**, mirroring the Sessions tab; persist the
    choice per database via the existing prefs mechanism if cheap, else session-only.
 2. Start handler: `POST start {"timeLimitMin": N}` from the dropdown instead of `{}`.
+   The dropdown **shares the Sessions-tab per-database preference** (the
+   `fb-time-limits-v2` localStorage map the Sessions row dropdown already uses) —
+   two controls writing the same field must not fight; read it on load, write it
+   on change.
 3. Lifecycle status line shows the countdown when timed:
    `Running — main (12:34 remaining)` — data already in
    `sess.remainingSec` / `sess.timeLimitMin`.
@@ -180,6 +214,41 @@ poll while Idle). Optionally run the probe only when the OLTPEMUL tab is active
 
 **Acceptance.** Network tab shows the units probe once per selection change, not
 per poll.
+
+### R16. Duplicate `btnEmulApply` id — one Apply button is dead (P2, found in second pass)
+
+**Problem.** The lifecycle rework added "Apply settings" to the control row while
+the original still sits in the Run settings panel — two elements share
+`id="btnEmulApply"`. `getElementById` binds the click handler to the first only,
+so the panel's button is dead, and the duplicate id is exactly the bug class that
+hit `emulInv` earlier.
+
+**Design.** Remove the control-row Apply button — it is redundant by design:
+**Start already applies the settings form first** (lifecycle behavior). The Run
+settings panel keeps its Apply (with the `emulApplyMsg` feedback span). While in
+the file, rename the panel button id to `btnEmulApplySettings` and run a
+duplicate-id check over `index.html` as a one-off (extend to a CI check later —
+see R14's route-table pattern).
+
+**Acceptance.** One `btnEmulApplySettings` in the DOM; clicking it applies and
+reports; no duplicate ids in the document.
+
+### R17. Consolidate status surfaces and the duplicated fetch helper (P3)
+
+**Problem.** The tab writes status to four places (`emulCtlStatus` lifecycle
+line, `emulApplyMsg`, `emulWeightsMsg`, `emulProvStatus`) — provisioning writes
+to two of them per tick, apply writes to only one, so feedback is inconsistent.
+Separately, `app_emul.js` defines `emulJson()`, a near-copy of the global
+`api()` helper in `app.js`.
+
+**Design.** Route **all** status feedback through `emulSetStatus()` (the
+lifecycle line) — the per-panel spans are removed; `emulJson(method, path, body)`
+becomes a three-line wrapper over `api()` (or is deleted and callers pass
+`{method, body: JSON.stringify(x)}` to `api()` directly).
+
+**Acceptance.** Every user-visible outcome (apply, weights, provision, start/
+stop, gate) appears in exactly one place: the lifecycle line; one fetch helper
+remains.
 
 ---
 
@@ -272,10 +341,11 @@ and the emul persistence adds a second copy (`EmulSessionRef.Pass`).
    (service accounts have no unlocked keyring — fall back to file with 0600).
 2. **Encrypted file with machine-bound key** (DPAPI on Windows, TPM-less fallback
    to a generated key file with 0600): no user interaction, portable across restarts.
-3. **Minimal hardening**: keep plaintext but enforce `0600` on all persisted files
-   and redact `EmulSessions` from `GET /api/config` (currently the pass fields are
-   absent from Snapshots but `EmulSessionRef` rides along in the raw file only —
-   verify nothing new serializes it).
+3. **Minimal hardening**: keep plaintext but enforce `0600` on all persisted files.
+   Verified safe today: `GET /api/config` returns the explicit `RedactedForAPI()`
+   allowlist (`config/persist.go:111`), which does not include `EmulSessions` — so
+   the plaintext pass in that struct never reaches the API. The exposure is
+   file-system-only; options 1/2 close that.
 
 Recommended: option 2 for v1 (matches the headless/service usage), option 1 later
 if interactive users ask.
@@ -292,10 +362,13 @@ for the user apart from one-time migration.
 **Problem.** `POST /api/emul/provision` (auth'd) accepts any server-side path — an
 authed caller can fill the server disk with databases.
 
-**Design.** New flag `--emul-allow-dir <root>` (default: the discover root). The
-provision job and `RegisterDatabase` reject DSNs whose path escapes it — mirroring
-the discovery root guard. The OLTPEMUL provision form shows the allowed root as a
-placeholder.
+**Design correction (v2).** The original draft defaulted the allowlist to the
+discover root — that would defeat RegisterDatabase's purpose, which is precisely
+to register databases *outside* the discover root. Corrected design: new flag
+`--emul-allow-dir <root>` that is **empty/unrestricted by default** (back-compat
+with everything shipped so far); when set, both the provision job and
+`RegisterDatabase` reject paths escaping it. The OLTPEMUL provision form shows
+the allowed root as a placeholder when set.
 
 **Acceptance.** Provisioning inside the root works; outside returns 400 with a
 clear message; the existing UI flow is unchanged when the root is the default.
