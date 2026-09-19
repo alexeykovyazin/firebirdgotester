@@ -1,13 +1,18 @@
 # IBSurgeon Firebird Load Generator (`fb-loadgen`)
 
-A Go CLI load simulator for **Firebird** databases, built around the classic **EMPLOYEE** sample schema. It spawns workers (one dedicated connection each), runs weighted mixes of SELECT / INSERT / UPDATE / DELETE / stored-procedure calls, ramps connections through warmup → main → cooldown, and writes latency / throughput / error reports.
+**A load-testing workbench for Firebird.** One Go binary that plays two roles:
+
+1. **A classic load generator** — weighted mixes of SELECT / INSERT / UPDATE / DELETE / stored-procedure calls against the familiar **EMPLOYEE** sample schema, with connection ramping (warmup → main → cooldown), latency/throughput/error reports and per-operation outcome tracking.
+2. **A business-process benchmark (OLTP-EMUL mode)** — runs the [FirebirdSQL oltp-emul](https://github.com/FirebirdSQL/oltp-emul) model: a car-service supply business (customer orders → supplier orders → invoices → stock → reservations → sales → payments, every step cancellable) implemented as stored procedures inside the database. The generator executes its 20 business operations in a weighted random mix and scores the server in **successful business actions per minute** — the same metric the [firebirdtest.com](https://www.firebirdtest.com/oltp-emul-fb/) benchmarks publish.
+
+Both roles are driven by one **web control plane**: a fleet of databases with Start / Stop / Pause per row, scheduled unattended runs, run history with webhooks, a Prometheus endpoint, and a dedicated **OLTPEMUL dashboard** tab with live score, per-unit truth and memory peaks.
 
 ## 📊 Presentation
 
 The product deck is published on **GitHub Pages** — [download the PPTX](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pptx) · [view the PDF](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pdf) · [slides gallery](https://alexeykovyazin.github.io/firebirdgotester/).
 
 <details>
-<summary><b>View the slides (17)</b></summary>
+<summary><b>View the slides (20)</b></summary>
 
 | | |
 |---|---|
@@ -19,35 +24,87 @@ The product deck is published on **GitHub Pages** — [download the PPTX](https:
 | ![Slide 11](presentation/slides/slide-11.png) | ![Slide 12](presentation/slides/slide-12.png) |
 | ![Slide 13](presentation/slides/slide-13.png) | ![Slide 14](presentation/slides/slide-14.png) |
 | ![Slide 15](presentation/slides/slide-15.png) | ![Slide 16](presentation/slides/slide-16.png) |
-| ![Slide 17](presentation/slides/slide-17.png) | |
+| ![Slide 17](presentation/slides/slide-17.png) | ![Slide 18](presentation/slides/slide-18.png) |
+| ![Slide 19](presentation/slides/slide-19.png) | ![Slide 20](presentation/slides/slide-20.png) |
 
 </details>
 
-## Features
+## What's inside
 
-- **Three workload profiles**: `write-heavy`, `read-heavy`, and `spike`
-- **Connection ramp**: linear warmup/cooldown; random-walk between min/max in main; sawtooth for spike
+**Benchmarking**
+
+- **Four workload profiles**: `write-heavy`, `read-heavy`, `spike` (EMPLOYEE schema) and `oltp-emul` (business-process benchmark, Firebird 3.0–5.0)
+- **Connection ramp**: linear warmup/cooldown; random walk between min/max in main; sawtooth for spike
+- **Schema-aware operations**: respects EMPLOYEE constraints (`PO_NUMBER`, salary bounds, status transitions, FKs); expected business exceptions (`order_already_shipped`, deadlocks under load) classified separately from real failures
+- **Metrics**: TPS, success/error counts, latency buckets and percentiles (p50 / p95 / p99), per-operation and per-unit breakdowns
+
+**OLTP-EMUL mode**
+
+- **Provisioning**: one command creates the benchmark database — verbatim upstream DDL/procedures (page size 8192), realistic dictionaries and documents, schema verification
+- **Weighted unit mix**: the `business_ops` registry drives selection; edit weights live from the UI, warmup grows the database before the measurement churns it
+- **Truth per unit**: every unit is one transaction with an outcome — ok / conflict (deadlock, update conflict) / rejected (business rule) / failure — plus avg/max latency
+- **Invariant self-checks**: stock and money must stay conserved across all operations; a violation means the generator corrupted business state
+- **Memory peaks**: `mon$` snapshots at four levels (database / attachments / transactions / statements), the metric behind the firebirdtest.com charts
+
+**Control plane & operations**
+
+- **Web UI control plane**: fleet table with per-row Start / Stop / Pause and a detail drawer (`--ui`)
+- **OLTPEMUL tab**: provisioning with progress, run settings, live unit-mix weights, score sparkline, per-unit table, final report and run-to-run comparison
 - **Multi-DB discovery**: recursive folder scan (default `*.fdb`); same basename in different subfolders are distinct sessions
-- **Web UI control plane**: table of databases with Start / Stop / Pause per row (`--ui`)
-- **Per-DB time limits**: run a session for 1–600 minutes (phases scale proportionally) or unlimited — 1-minute warmup, then steady load until stopped
-- **Scheduled runs**: once / interval / cron schedules with time zones, overlap & budget policies, staggering — fire runs unattended from the UI's Schedules tab or the REST API
-- **Run history & webhooks**: every run (scheduled or manual) is recorded with per-session outcomes and report dirs; optional webhook on completion, Prometheus `/metrics`
+- **Scheduled runs**: once / interval / cron with time zones, overlap & budget policies, staggering
+- **Run history & webhooks**: every run recorded with per-session outcomes; optional signed webhook on completion
 - **Live connection budget**: saving a smaller/larger total-connection limit resizes running sessions immediately
+- **REST API**: everything the UI does is an endpoint — see [API.md](API.md) and [api/openapi.yaml](api/openapi.yaml); `--api-only` runs it headless; `GET /metrics` is Prometheus-ready
 - **Themed UI**: light theme by default, dark toggle remembered per browser
-- **REST API**: full programmatic control (list / start / stop / status / schedules / history) — see [API.md](API.md); `--api-only` runs it headless
-- **Schema-aware operations**: respects EMPLOYEE constraints (`PO_NUMBER`, salary bounds, status transitions, FKs)
-- **Expected exception handling**: Firebird business exceptions (e.g. `order_already_shipped`) classified separately from real failures
-- **Startup lookup cache**: preloads valid dept / employee / project / customer / job salary ranges
-- **Metrics**: TPS, success/error counts, latency buckets and percentiles (p50 / p95 / p99)
-- **Reports**: live console output plus multi-file text sidecars from `--csv`
-- **Graceful shutdown**: `Ctrl+C` / `SIGTERM` stops the scheduler and flushes reports
+- **Reports**: live console output plus text sidecars (`results*.txt`, `results_emul.txt`, error log)
 
 ## Prerequisites
 
-- **Go 1.24.5+** (see `go.mod`)
+- **Go 1.24.5+** to build (see `go.mod`); prebuilt binaries on [Releases](https://github.com/alexeykovyazin/firebirdgotester/releases)
 - A running **Firebird** server
-- One or more **EMPLOYEE**-compatible databases (schema in `EMPLOYEE_metadata.sql`)
+- EMPLOYEE profiles: an **EMPLOYEE**-compatible database (schema in `EMPLOYEE_metadata.sql`)
+- OLTP-EMUL profile: a database **provisioned by this tool** (it creates the schema itself); targets Firebird **3.0, 4.0 and 5.0**
 - Default credentials used by the tool: `SYSDBA` / `masterkey`
+
+## Quick start
+
+```bash
+# Help
+./fb-loadgen --help
+
+# Classic: single-DB CLI run against the EMPLOYEE schema
+./fb-loadgen --profile write-heavy \
+  --dsn "localhost/3050:./EMPLOYEE.FDB" \
+  --warmup 30 --main 120 --cooldown 20
+
+# Dry-run: print resolved config and exit (no load)
+./fb-loadgen --profile write-heavy --dry-run
+
+# Web UI (multi-DB control plane) — binds to localhost by default
+./fb-loadgen --ui
+# Open http://127.0.0.1:9000
+```
+
+### OLTP-EMUL in three steps
+
+```bash
+# 1) Provision a benchmark database (creates schema + fills documents)
+fb-loadgen provision \
+  --dsn "127.0.0.1/3055:C:\\data\\oltpemul.fdb" \
+  --working-mode SMALL_01 --init-docs 3000
+
+# 2) Point the tool at it — CLI
+fb-loadgen --profile oltp-emul \
+  --dsn "127.0.0.1/3055:C:\\data\\oltpemul.fdb" \
+  --warmup 30 --main 300 --cooldown 20
+
+#    …or UI: start fb-loadgen --ui, open the OLTPEMUL tab,
+#    pick the database, press Start.
+```
+
+The **OLTPEMUL tab** shows the live score, a score sparkline, `mon$` memory peaks at four levels (db / attachments / transactions / statements), invariant status and the per-unit outcome table (ok / conflict / rejected / fail with avg/max ms). On stop it freezes a `results_emul.txt` report next to the standard result files and records the run for the **Last runs** comparison.
+
+More on the model and design decisions: [OLTP_EMUL_PLAN.md](OLTP_EMUL_PLAN.md). The vendored SQL scripts stay verbatim to upstream (MIT — credit and provenance in [`emul/assets/NOTICE`](emul/assets/NOTICE)).
 
 ## Build
 
@@ -75,19 +132,9 @@ git push origin v1.0.0
 
 The release workflow cross-compiles `fb-loadgen` for `windows/amd64`, `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64`, packages each archive with `LICENSE` and `README.md`, generates `checksums.txt` (SHA-256), and attaches everything to an auto-annotated GitHub Release.
 
-## Quick start
+## Quick start (control plane)
 
 ```bash
-# Help
-./fb-loadgen --help
-
-# Minimal single-DB CLI run
-./fb-loadgen --profile write-heavy \
-  --dsn "localhost/3050:./EMPLOYEE.FDB"
-
-# Dry-run: print resolved config and exit (no load)
-./fb-loadgen --profile write-heavy --dry-run
-
 # Web UI (multi-DB control plane) — binds to localhost by default
 ./fb-loadgen --ui \
   --discover-dir . \
@@ -122,15 +169,15 @@ Start with `--ui`. Default listen address is `127.0.0.1:9000` (localhost only). 
 - **Pause** freezes workers and the phase clock. **Stop** cancels immediately.
 - **Start All / Stop All / Pause All / Purge missing / Validate all** batch controls. Hard budget: `--max-total-conns` (default 200) with atomic reservation. Saving a smaller/larger budget resizes running sessions live — caps and reservations move to the new even split within about a second.
 
-```bash
-./fb-loadgen --ui \
-  --discover-dir "E:/FirebirdDBs" \
-  --discover-recursive \
-  --host localhost --port 3050 \
-  --conn-min 2 --conn-max 20 \
-  --max-total-conns 200
-```
+### OLTPEMUL tab
 
+The **OLTPEMUL** tab is the complete lifecycle for the business-process benchmark on one database:
+
+- **Lifecycle row**: database picker (oltpemul-capable databases are marked), lifecycle status (Ready / Running with phase / Completed / Failed / Not-an-oltpemul-database), and Start / Pause / Resume / Stop — enabled only for valid states. Start applies the settings form first.
+- **Provision panel**: create a benchmark database from scratch (DSN, working mode, init docs, page size) as an async job with progress and cancel; the result self-registers in the fleet.
+- **Run settings + unit-mix editor**: all 20 business units with editable weights (saved to the database's `business_ops` registry), presets for common mixes.
+- **Live results**: score (successful actions/min) with sparkline, `mon$` memory peaks at four levels, invariant status, per-unit outcome table.
+- **Final report + Last runs**: frozen score with config echo, raw report downloads, and a score/memory comparison across runs.
 
 ## REST API
 
@@ -145,6 +192,12 @@ The web UI is a thin client over a JSON REST API served on the same address (def
 | Pause / resume | `POST /api/sessions/{id}/pause` / `resume` | — |
 | Check DB connectivity + schema | `POST /api/sessions/{id}/validate` | — |
 | Start / stop all idle/active | `POST /api/sessions/start-all` / `stop-all` | same as start |
+| **emul:** unit registry | `GET /api/sessions/{id}/emul/units` | — |
+| **emul:** edit unit weights | `PUT /api/sessions/{id}/emul/weights` | `{"weights": {"SP_CLIENT_ORDER": 20}}` |
+| **emul:** live score/state | `GET /api/sessions/{id}/emul/state` | — |
+| **emul:** provision database | `POST /api/emul/provision` | `{"dsn": "...", "workingMode": "SMALL_01", "initDocs": 3000}` |
+| **emul:** provision job status/cancel | `GET/DELETE /api/emul/provision/{jobId}` | — |
+| **emul:** workload profiles | `GET /api/emul/profiles` | — |
 
 `{id}` is the stable per-database identifier returned by the list call (16-hex; derived from the absolute path).
 
@@ -165,6 +218,9 @@ curl -s $BASE/api/sessions/$ID | python -c "import json,sys; s=json.load(sys.std
 
 # 4) Stop
 curl -s -X POST $BASE/api/sessions/$ID/stop
+
+# 5) oltp-emul: live score and per-unit outcomes
+curl -s $BASE/api/sessions/$ID/emul/state | python -m json.tool
 ```
 
 Other read endpoints: `GET /api/fleet` (aggregated counters), `GET /api/config` (redacted settings), `GET /api/sessions/{id}/report` and `GET /api/sessions/{id}/report/{file}` (result files).
@@ -233,6 +289,17 @@ The UI's **Schedules** and **Runs** tabs cover all of this interactively. Headle
   --spike-cycles 3 --spike-hold 15 \
   --think-ms 20 \
   --csv spike_results.csv
+
+# 5. oltp-emul: provision, then run the business-process benchmark
+fb-loadgen provision \
+  --dsn "127.0.0.1/3055:C:\\data\\oltpemul.fdb" \
+  --working-mode MEDIUM_02 --init-docs 5000
+fb-loadgen --profile oltp-emul \
+  --dsn "127.0.0.1/3055:C:\\data\\oltpemul.fdb" \
+  --conn-init 2 --conn-peak 8 \
+  --warmup 60 --main 600 --cooldown 30 \
+  --emul-invariant-every 30 --emul-monitor-every 10 \
+  --csv emul_results.csv
 ```
 
 More echo-only examples: `example_usage.sh`.
@@ -256,7 +323,7 @@ More echo-only examples: `example_usage.sh`.
 
 ## Command-line options
 
-All runtime configuration is via CLI flags (no config file, no env vars for the main binary).
+All runtime configuration is via CLI flags (no config file, no env vars for the main binary). The `provision` subcommand has its own flags (`--dsn`, `--user`, `--pass`, `--page-size`, `--init-docs`, `--working-mode`).
 
 ### Connection
 
@@ -278,7 +345,7 @@ All runtime configuration is via CLI flags (no config file, no env vars for the 
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--profile` | `write-heavy` \| `read-heavy` \| `spike` | **required** |
+| `--profile` | `write-heavy` \| `read-heavy` \| `spike` \| `oltp-emul` | **required** |
 
 ### Connection scaling
 
@@ -305,6 +372,13 @@ CLI runs use these values directly. In the web UI, timed runs scale them proport
 |------|-------------|---------|
 | `--spike-cycles` | Sawtooth cycles during main (≥ 1 when profile=spike) | `3` |
 | `--spike-hold` | Seconds held at peak per cycle (≥ 1 when spike) | `10` |
+
+### oltp-emul extras
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--emul-invariant-every` | Seconds between stock/money invariant self-checks | `60` (0 = off) |
+| `--emul-monitor-every` | Seconds between `mon$` memory snapshots | `10` (0 = off) |
 
 ### Web UI / multi-DB
 
@@ -366,6 +440,29 @@ Each op runs in its own short transaction (`BEGIN` → op → `COMMIT` / `ROLLBA
 - Designed to alternate read-heavy vs write-heavy mixes around spike phases (see `profile/spike.go` and `Technical_task.md`)
 - Use `--spike-cycles` and `--spike-hold` to control burst shape
 
+### `oltp-emul` — business-process benchmark
+
+One transaction = one business unit, executed as a stored procedure in **READ COMMITTED NO WAIT** mode. Units come from the database's `business_ops` registry — each has a mode (`stock` / `payments` / `service`) and kind (`creation` / `removal` / `state_next` / `state_back` / `service`):
+
+| Representative units | Kind | What happens |
+|----------------------|------|--------------|
+| `sp_client_order` | creation | A customer orders a random set of parts |
+| `sp_supplier_order` / `sp_supplier_invoice` | creation | We order from the supplier; the invoice arrives |
+| `sp_add_invoice_to_stock` | state_next | Invoice content lands in stock |
+| `sp_customer_reserve` / `sp_reserve_write_off` | state_next | Reserve for sale, then sell + write off |
+| `sp_pay_to_supplier` / `sp_pay_from_customer` | creation | Money movements against balances |
+| `sp_cancel_*` | removal | Cancel any of the above (churn in the measurement phase) |
+| `srv_make_invnt_saldo` / `srv_make_money_saldo` | service | **Invariant checks**: stock and money must balance |
+
+Key semantics:
+
+- **One unit = one transaction**, committed on success, rolled back on any outcome other than ok
+- **Deadlocks, update conflicts and lock timeouts are normal load events** (outcome *conflict*); business rejections (`ex_*` exceptions) are *rejected*; everything else is a real *failure*
+- **Warmup vs measurement**: during warmup, removal units are excluded at provision time so the database grows; the measurement phase adds churn
+- **Units require NOWAIT transactions** — the server-side checks reject anything else
+- Only databases provisioned by this tool can run the profile (a schema guard fails fast otherwise)
+- 20 units are loaded from `business_ops`; weights are editable live from the UI/API
+
 ## Connection ramp
 
 ```
@@ -382,7 +479,7 @@ Pause (UI) Freeze ops + phase clock; keep connections open
 
 ## Schema awareness
 
-The tool targets the EMPLOYEE sample DB. Schema reference: `EMPLOYEE_metadata.sql`. Design notes: `Technical_task.md`. On UI **Start**, a schema gate requires a readable `EMPLOYEE` table.
+The classic profiles target the EMPLOYEE sample DB. Schema reference: `EMPLOYEE_metadata.sql`. Design notes: `Technical_task.md`. On UI **Start**, a schema gate requires a readable `EMPLOYEE` table. The `oltp-emul` profile instead requires the oltpemul schema (`BUSINESS_OPS` registry) — see the OLTPEMUL tab's provision panel.
 
 **Writable under load:** `CUSTOMER`, `SALES`, `EMPLOYEE` (salary), `EMPLOYEE_PROJECT`, `DEPARTMENT` (budget).
 
@@ -398,29 +495,33 @@ The tool targets the EMPLOYEE sample DB. Schema reference: `EMPLOYEE_metadata.sq
 | `CUST_NO` | Generated with `GEN_ID`, not invented client-side |
 | Arrays | `LANGUAGE_REQ` / related SPs are excluded from load |
 
-**Expected Firebird exceptions** (soft failures): `order_already_shipped`, `customer_on_hold`, `customer_check`, and similar business rejections — counted but not treated as fatal connection errors.
+**Expected Firebird exceptions** (soft failures): `order_already_shipped`, `customer_on_hold`, `customer_check`, and similar business rejections — counted but not treated as fatal connection errors. The `oltp-emul` profile classifies its own outcomes per unit (see above).
 
 ## Architecture
 
 ```
 CLI (--ui) → session.Manager → per-DB Session
            → discover (recursive *.fdb under allowlisted dir)
-           → ui (embed.FS table + REST)
+           → ui (embed.FS tabs + REST: sessions, schedules, runs, emul)
+           → emul sidecars (memory monitor, invariants) per oltp-emul run
 
 CLI (single) → config → db.ConnectionFactory (DialSettings)
              → ops.Cache → profile → ramp.Scheduler → worker
              → metrics
+CLI provision → emul.Provision (scripts via quote-aware isql splitter)
+              → emul.Fill (creation units)
 ```
 
 | Package | Role |
 |---------|------|
 | `config/` | Flags, DSN parsing, validation |
 | `discover/` | Recursive folder/mask scan; absPath identity |
-| `session/` | Multi-DB lifecycle, schema gate, Start/Stop/Pause |
-| `ui/` | Embedded HTML table + JSON API |
+| `session/` | Multi-DB lifecycle, schema gate, Start/Stop/Pause, run history |
+| `ui/` | Embedded tabs (Sessions / Schedules / Runs / OLTPEMUL) + JSON API |
+| `emul/` | oltp-emul engine: assets, script splitter, provision, fill, units, invariants, monitor |
 | `db/` | Dial settings + connection factory |
 | `ops/` | Cache, reads, writes, exception classification |
-| `profile/` | Weighted selectors for the three profiles |
+| `profile/` | Weighted selectors for all four profiles |
 | `worker/` | Per-connection worker loop, pause gate, metrics |
 | `ramp/` | Warmup / main (walk or spike) / cooldown |
 | `metrics/` | Aggregation, latency buckets, reporting |
@@ -434,6 +535,7 @@ Collected continuously:
 - Latency: avg, min, max, p50, p95, p99
 - Latency histogram buckets (ms): `<5`, `<10`, `<25`, `<50`, `<100`, `<250`, `<500`, `<1000`, `≥1000`
 - Worker counts (max / current) and active profile name
+- oltp-emul runs add: score (successful units/min), per-unit ok/conflict/rejected/failure, `mon$` memory peaks at four levels, invariant status
 
 ## Reports
 
@@ -452,10 +554,11 @@ When `--csv results.csv` is set:
 | `results.csv_performance.txt` | Performance snapshot |
 | `results.csv_status.txt` | Run status |
 | `results_sql_errors.log` | Every SQL/command failure (expected + unexpected), tab-separated |
+| `results_emul.txt` | oltp-emul runs: score, per-unit table, memory peaks, invariants, config echo |
 
-UI sessions write the same stream to `reports/<db>/<timestamp>/sql_errors.log` (downloadable from the detail drawer with other report files).
+UI sessions write the same stream to `reports/<db>/<timestamp>/` (downloadable from the detail drawer with other report files).
 
-Each log line looks like:
+Each error-log line looks like:
 
 ```text
 2026-07-31T00:01:02.123Z	kind=expected	worker=3	op=InsertSales	code=check_constraint	source=E:\db\EMPLOYEE.FDB	msg=...
@@ -467,21 +570,24 @@ Kinds: `expected`, `unexpected`, `begin`, `commit`, `connect`, `command`.
 
 ```
 fb-loadgen/
-├── main.go                 # CLI entry + --ui branch
+├── main.go                 # CLI entry, provision subcommand, --ui branch
 ├── integration_test.go     # CLI smoke tests (expects built ./fb-loadgen)
 ├── config/config.go
 ├── db/                     # dial settings + connection factory
 ├── discover/               # recursive *.fdb discovery
-├── session/                # multi-DB SessionManager
-├── ui/                     # embed.FS HTML table + REST API
+├── emul/                   # oltp-emul engine (assets, splitter, provision,
+│                           #   fill, units, invariants, monitor, NOTICE)
+├── session/                # multi-DB SessionManager + run history
+├── ui/                     # embed.FS tabs + REST API + emul endpoints
 ├── ops/                    # cache, reads, writes, errors, ops_test.go
-├── profile/                # write_heavy, read_heavy, spike
-├── worker/                 # workers + pause gate
+├── profile/                # write_heavy, read_heavy, spike, oltp_emul
+├── worker/                 # workers + pause gate + per-unit metrics
 ├── ramp/                   # warmup / walk / spike / cooldown
 ├── metrics/                # collector, reporter
-├── EMPLOYEE.FDB            # Sample database
+├── api/openapi.yaml        # OpenAPI 3.1 spec
 ├── EMPLOYEE_metadata.sql   # Schema dump
 ├── Technical_task.md       # Original design / constraint map
+├── OLTP_EMUL_PLAN.md       # oltp-emul integration design
 ├── example_usage.sh        # Printed example commands
 ├── API.md                  # REST API guide with examples
 ├── go.mod / go.sum
@@ -508,7 +614,11 @@ go test ./ops/ -v
 
 | Suite | What it covers |
 |-------|----------------|
-| `ops/ops_test.go` | Cache load, table counts, read/write ops, Firebird SQL idioms against a live DB |
+| `emul/isqlscript_test.go` | Golden tests: the vendored oltp-emul scripts must parse into exact statement/procedure counts |
+| `emul/` unit tests | Selector weights, splitter edge cases (`^` in strings, SET TERM switching) |
+| `worker/lifecycle_test.go` | Worker start/stop/pause lifecycle against a stub connector |
+| `ramp/lifecycle_test.go` | Scheduler ramp/phase transitions with a stub connector |
+| `ops/ops_test.go` | Cache load, table counts, read/write ops against a live DB |
 | `integration_test.go` | Help output, config validation, dry-run via a pre-built `./fb-loadgen` binary |
 
 Build the binary before non-short integration tests:
@@ -523,7 +633,8 @@ go test -v .
 | Dependency | Version | Role |
 |------------|---------|------|
 | Go | 1.24.5 | Language / toolchain |
-| `github.com/nakagami/firebirdsql` | v0.9.17 | Firebird driver (`database/sql`) |
+| `github.com/nakagami/firebirdsql` (IBSurgeon fork) | v0.9.17 replaced by `IBSurgeon/firebirdsql-go` | Firebird driver (`database/sql`), services manager, create-DB driver variant |
+| upstream oltp-emul SQL assets | commit e9b158e8 | Benchmark schema + procedures (MIT — see `emul/assets/NOTICE`) |
 
 Transitive: `chacha20`, `shopspring/decimal`, `golang.org/x/text`, `modernc.org/mathutil`, and related packages (see `go.sum`).
 
@@ -550,16 +661,18 @@ Transitive: `chacha20`, `shopspring/decimal`, `golang.org/x/text`, `modernc.org/
 | Connection failures | Firebird running; host/port; file path in DSN; firewall |
 | Auth errors | `--user` / `--pass`; Firebird user privileges |
 | Schema / SQL errors | Confirm EMPLOYEE schema (`EMPLOYEE_metadata.sql`); avoid corrupted `.FDB` |
+| "table BUSINESS_OPS not found" | The oltp-emul profile needs a provisioned database — run `fb-loadgen provision` first |
 | High error rate | Expected SP exceptions under write load; lower `--conn-peak`; raise `--think-ms` |
 | Lock contention | Fewer writers; shorter `--tx-timeout` visibility; inspect `*_errors.txt` |
 | Slow debugging | `--think-ms 0 --debug --warmup 5 --main 10 --cooldown 5 --conn-init 1 --conn-peak 3` |
 
 ## License
 
-GNU General Public License v3.0 — see [LICENSE](LICENSE).
+GNU General Public License v3.0 — see [LICENSE](LICENSE). The vendored oltp-emul SQL scripts are MIT-licensed by Pavel Zotov / FirebirdSQL — see [`emul/assets/NOTICE`](emul/assets/NOTICE).
 
 ## Further reading
 
+- [OLTP_EMUL_PLAN.md](OLTP_EMUL_PLAN.md) — how oltp-emul was integrated: what is borrowed, what is Go-side, phases and risks
 - [Technical_task.md](Technical_task.md) — schema constraint map, profile design, ramp model, error strategy
 - [EMPLOYEE_metadata.sql](EMPLOYEE_metadata.sql) — tables, procedures, and constraints
 - [example_usage.sh](example_usage.sh) — printable CLI cookbook
