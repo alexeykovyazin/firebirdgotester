@@ -31,3 +31,6 @@ presentation/node_modules/
 # generated deck artifacts
 presentation/render/
 presentation/*.pptx
+
+# local credentials/notes - never commit
+LinuxTextRCM.txt
