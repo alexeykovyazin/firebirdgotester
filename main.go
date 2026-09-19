@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -124,6 +123,9 @@ func runUI(cfg *config.Config) {
 	if _, err := manager.Discover("", cfg.DiscoverMask, nil, ""); err != nil {
 		log.Printf("Initial discover warning: %v", err)
 	}
+	if len(saved.EmulSessions) > 0 {
+		manager.RestoreEmulSessions(saved.EmulSessions)
+	}
 
 	// Run history and schedules (API-first control plane).
 	if err := manager.SetHistoryPath(cfg.RunsFile); err != nil {
@@ -210,82 +212,30 @@ func normalizeUIAddr(addr string) string {
 	return addr
 }
 
-// startEmulSidecars launches the oltp-emul monitor (mon$ memory peaks) and
-// the invariant self-check loop for the duration of the run. Both open their
-// OWN database pools - the run pool is capped at one connection per factory
-// and fully held by workers. Both die with the run context.
-func startEmulSidecars(ctx context.Context, cfg *config.Config, wm *worker.MetricsCollector) {
-	if cfg.EmulMonitorEvery > 0 {
-		go func() {
-			monDB, err := sql.Open("firebirdsql", cfg.ConnectionString())
-			if err != nil {
-				fmt.Printf("[emul-mon] open failed: %v\n", err)
-				return
-			}
-			defer monDB.Close()
-			mon := emul.NewMonitor(time.Duration(cfg.EmulMonitorEvery) * time.Second)
-			mon.SetErrorHandler(func(err error) {
-				fmt.Printf("[emul-mon] sampling stopped: %v\n", err)
-			})
-			var peaks emul.Peaks
-			_ = mon.Run(ctx, monDB, func(s emul.Sample) {
-				peaks.Observe(s)
-				fmt.Printf("[emul-mon] db=%dMB att=%dMB trn=%dMB stmt=%dMB\n",
-					s.DBBytes/(1<<20), s.AttBytes/(1<<20), s.TrnBytes/(1<<20), s.StmtBytes/(1<<20))
-			})
-			if p, n := peaks.Result(); n > 0 {
-				fmt.Printf("[emul-mon] run peaks: db=%dMB att=%dMB trn=%dMB stmt=%dMB over %d samples\n",
-					p.DBBytes/(1<<20), p.AttBytes/(1<<20), p.TrnBytes/(1<<20), p.StmtBytes/(1<<20), n)
-			}
-		}()
+// startEmulSidecars runs the shared emul.RunSidecars helper for CLI runs:
+// memory monitor, invariant checks, and the score/series ticker, all bound
+// to the run context. Returns the live state for the end-of-run summary.
+func startEmulSidecars(ctx context.Context, cfg *config.Config, sched *ramp.Scheduler, wm *worker.MetricsCollector, emulDB *sql.DB) *emul.EmulState {
+	counts := func() (int64, int64, string) {
+		ok, failed := wm.Counters()
+		return ok, ok + failed, sched.GetCurrentPhase().String()
 	}
-	if cfg.EmulInvariantEvery > 0 {
-		go func() {
-			invDB, err := sql.Open("firebirdsql", cfg.ConnectionString())
-			if err != nil {
-				fmt.Printf("[emul-inv] open failed: %v\n", err)
-				return
-			}
-			defer invDB.Close()
-			ticker := time.NewTicker(time.Duration(cfg.EmulInvariantEvery) * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					func() {
-							tx, err := invDB.BeginTx(ctx, emul.TxOptions())
-						if err != nil {
-							wm.RecordError(fmt.Errorf("emul invariants: begin: %w", err))
-							return
-						}
-						defer tx.Rollback()
-						if err := emul.CheckInvariants(ctx, tx); err != nil {
-							// FB 3.0 rejects READ-COMMITTED transactions in the
-							// check; the driver has no snapshot+nowait level yet
-							// (needs LevelSnapshotNoWait in the firebirdsql fork).
-							// Stop checking instead of spamming failures.
-							if strings.Contains(err.Error(), "EX_SNAPSHOT_ISOLATION_REQUIRED") ||
-								strings.Contains(err.Error(), "EX_NOWAIT_OR_TIMEOUT_REQUIRED") {
-								fmt.Printf("[emul-inv] server requires a snapshot+nowait transaction; " +
-									"invariant checks disabled on this engine (driver limitation)\n")
-								return
-							}
-							wm.RecordError(err)
-							fmt.Printf("[emul-inv] FAILED: %v\n", err)
-							return
-						}
-						if err := tx.Commit(); err != nil {
-							wm.RecordError(fmt.Errorf("emul invariants: commit: %w", err))
-							return
-						}
-						fmt.Println("[emul-inv] stock and money invariants OK")
-					}()
-				}
-			}
-		}()
-	}
+	state := emul.RunSidecars(ctx, emulDB,
+		time.Duration(cfg.EmulMonitorEvery)*time.Second,
+		time.Duration(cfg.EmulInvariantEvery)*time.Second,
+		10*time.Second,
+		counts,
+		func(format string, args ...any) { fmt.Printf(format+"\n", args...) })
+
+	go func() {
+		<-ctx.Done()
+		score, ok, total, peaks, invariant, wm2 := state.Final()
+		fmt.Printf("[emul] final: score=%.0f ops/min ok=%d/%d invariants=%s workingMode=%s\n",
+			score, ok, total, invariant, wm2)
+		fmt.Printf("[emul] memory peaks: db=%dMB att=%dMB trn=%dMB stmt=%dMB\n",
+			peaks.DBBytes/(1<<20), peaks.AttBytes/(1<<20), peaks.TrnBytes/(1<<20), peaks.StmtBytes/(1<<20))
+	}()
+	return state
 }
 
 func runCLI(cfg *config.Config) {
@@ -377,7 +327,7 @@ func runCLI(cfg *config.Config) {
 	}
 
 	if emulDB != nil {
-		startEmulSidecars(ctx, cfg, workerMetrics)
+		startEmulSidecars(ctx, cfg, scheduler, workerMetrics, emulDB)
 	}
 
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")

@@ -40,8 +40,9 @@ type Config struct {
 	SpikeHold   int
 
 	// oltp-emul profile extras
-	EmulInvariantEvery int // seconds between invariant self-checks (0 = off)
-	EmulMonitorEvery   int // seconds between mon$ memory snapshots (0 = off)
+	EmulInvariantEvery int    // seconds between invariant self-checks (0 = off)
+	EmulMonitorEvery   int    // seconds between mon$ memory snapshots (0 = off)
+	EmulWorkingMode    string // settings working-mode echo (set at provision time)
 
 	// Output
 	CSV         string

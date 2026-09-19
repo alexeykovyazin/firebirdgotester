@@ -15,8 +15,8 @@ import (
 // cancellation, self-check).
 type Unit struct {
 	Name   string `json:"name"`
-	Mode   string `json:"mode"` // stock | payments | service
-	Kind   string `json:"kind"` // creation | removal | state_next | state_back | service
+	Mode   string `json:"mode"`   // stock | payments | service
+	Kind   string `json:"kind"`   // creation | removal | state_next | state_back | service
 	Weight int    `json:"weight"` // random_selection_weight; 0-weight units are never picked
 }
 
@@ -205,6 +205,10 @@ func (e *UnitError) Unwrap() error { return e.Err }
 
 // ExpectedUnderLoad is true for every outcome except a real failure.
 func (e *UnitError) ExpectedUnderLoad() bool { return e.Outcome != OutcomeFailure }
+
+// UnitOutcome lets the worker route the outcome into per-unit aggregation
+// without importing concrete error types.
+func (e *UnitError) UnitOutcome() Outcome { return e.Outcome }
 
 // classifyUnitError maps a driver error onto an Outcome using the structured
 // GDS codes (message-independent, unlike the EMPLOYEE-profile classifier).

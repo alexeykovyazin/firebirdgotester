@@ -61,9 +61,9 @@ func TestRunUpdateIdempotent(t *testing.T) {
 
 func TestRunOutcomes(t *testing.T) {
 	cases := []struct {
-		name  string
-		stat  []string
-		want  RunOutcome
+		name string
+		stat []string
+		want RunOutcome
 	}{
 		{"all completed", []string{string(StatusCompleted), string(StatusCompleted)}, RunOK},
 		{"mixed", []string{string(StatusCompleted), string(StatusFailed)}, RunPartial},
