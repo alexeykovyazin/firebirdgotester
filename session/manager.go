@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"fb-loadgen/config"
 	"fb-loadgen/db"
 	"fb-loadgen/discover"
+	"fb-loadgen/emul"
 	"fb-loadgen/errlog"
 	"fb-loadgen/metrics"
 	"fb-loadgen/ops"
@@ -805,21 +807,51 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 	}
 	factory := db.NewConnectionFactory(runCfg)
 
-	if err := factory.ValidateSchemaGate(); err != nil {
-		return fail(err)
-	}
+	// The EMPLOYEE schema gate and key cache apply only to the EMPLOYEE
+	// profiles; oltp-emul runs against an oltpemul-provisioned database and
+	// loads its unit registry instead (no cache).
+	var cache *ops.Cache
+	var prof profile.Profile
+	if cfgCopy.Profile == "oltp-emul" {
+		emulDB, err := factory.Open()
+		if err != nil {
+			return fail(err)
+		}
+		defer emulDB.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := emul.SchemaGuard(ctx, emulDB); err != nil {
+			return fail(err)
+		}
+		emulUnits, err := emul.LoadUnits(ctx, emulDB)
+		if err != nil {
+			return fail(err)
+		}
+		profFactory := profile.NewProfileFactory(nil, nil, nil)
+		profFactory.SetEmulUnits(emulUnits)
+		prof, err = profFactory.CreateProfile(cfgCopy.Profile)
+		if err != nil {
+			return fail(err)
+		}
+	} else {
+		if err := factory.ValidateSchemaGate(); err != nil {
+			return fail(err)
+		}
 
-	cache, err := ops.NewCache(factory)
-	if err != nil {
-		return fail(err)
-	}
+		var err error
+		cache, err = ops.NewCache(factory)
+		if err != nil {
+			return fail(err)
+		}
 
-	readOps := ops.NewReadOperations(factory, cache)
-	writeOps := ops.NewWriteOperations(factory, cache)
-	profFactory := profile.NewProfileFactory(readOps, writeOps, cache)
-	prof, err := profFactory.CreateProfile(cfgCopy.Profile)
-	if err != nil {
-		return fail(err)
+		readOps := ops.NewReadOperations(factory, cache)
+		writeOps := ops.NewWriteOperations(factory, cache)
+		profFactory := profile.NewProfileFactory(readOps, writeOps, cache)
+		p, err := profFactory.CreateProfile(cfgCopy.Profile)
+		if err != nil {
+			return fail(err)
+		}
+		prof = p
 	}
 
 	if sp, ok := prof.(*profile.SpikeProfile); ok {

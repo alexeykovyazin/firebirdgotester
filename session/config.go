@@ -108,7 +108,7 @@ func IDFromAbsPath(absPath string) string {
 // Validate checks session config fields.
 func (c *SessionConfig) Validate() error {
 	switch c.Profile {
-	case "write-heavy", "read-heavy", "spike":
+	case "write-heavy", "read-heavy", "spike", "oltp-emul":
 	default:
 		return fmt.Errorf("invalid profile: %s", c.Profile)
 	}
