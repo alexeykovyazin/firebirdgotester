@@ -3,6 +3,7 @@ package emul
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -49,6 +50,7 @@ type OutcomeStats struct {
 // endpoint, final report). All methods are goroutine-safe.
 type EmulState struct {
 	mu sync.Mutex
+	wg sync.WaitGroup // sidecar goroutines launched by RunSidecars
 
 	scorePerMin float64
 	okUnits     int64
@@ -145,18 +147,25 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 		mon.SetErrorHandler(func(err error) {
 			logf("[emul-mon] sampling stopped: %v", err)
 		})
+		state.wg.Add(1)
 		go func() {
+			defer state.wg.Done()
 			_ = mon.Run(ctx, db, func(sm Sample) {
 				state.observeMem(sm)
 			})
 		}()
 	}
 
-	// Invariant self-checks.
+	// Invariant self-checks. A driver-limitation error disables the loop
+	// permanently; any other failure retries up to maxInvariantFailures
+	// before giving up (a transient blip must not silently kill the checks).
 	if invariantEvery > 0 && db != nil {
+		state.wg.Add(1)
 		go func() {
+			defer state.wg.Done()
 			ticker := time.NewTicker(invariantEvery)
 			defer ticker.Stop()
+			failStreak := 0
 			for {
 				select {
 				case <-ctx.Done():
@@ -168,22 +177,21 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 					}
 					if err := CheckInvariants(ctx, tx); err != nil {
 						_ = tx.Rollback()
-						msg := "failed: " + err.Error()
-						if containsAny(err.Error(),
-							"EX_SNAPSHOT_ISOLATION_REQUIRED", "EX_NOWAIT_OR_TIMEOUT_REQUIRED") {
-							msg = "disabled: server requires a snapshot+nowait transaction " +
-								"(driver limitation on this engine)"
-						}
-						state.SetInvariant(msg)
-						logf("[emul-inv] %s", msg)
-						if msg != "ok" && containsAny(msg, "disabled:") {
+						permanent, msg := invariantFailure(err, failStreak)
+						if permanent {
+							state.SetInvariant(msg)
+							logf("[emul-inv] %s", msg)
 							return
 						}
+						failStreak++
+						state.SetInvariant(msg)
+						logf("[emul-inv] %s", msg)
 						continue
 					}
 					if err := tx.Commit(); err != nil {
 						continue
 					}
+					failStreak = 0
 					state.SetInvariant("ok")
 					logf("[emul-inv] stock and money invariants OK")
 				}
@@ -193,7 +201,9 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 
 	// Score/series ticker.
 	if seriesEvery > 0 && counts != nil {
+		state.wg.Add(1)
 		go func() {
+			defer state.wg.Done()
 			ticker := time.NewTicker(seriesEvery)
 			defer ticker.Stop()
 			var lastOK, lastTotal int64
@@ -230,6 +240,26 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 	}
 
 	return state
+}
+
+const maxInvariantFailures = 3
+
+// invariantFailure classifies an invariant-check error: driver-limitation
+// errors disable the loop permanently, anything else is retried until
+// maxInvariantFailures consecutive attempts. The returned message is what
+// the UI and logs display.
+func invariantFailure(err error, failStreak int) (permanent bool, msg string) {
+	if containsAny(err.Error(),
+		"EX_SNAPSHOT_ISOLATION_REQUIRED", "EX_NOWAIT_OR_TIMEOUT_REQUIRED") {
+		return true, "disabled: server requires a snapshot+nowait transaction " +
+			"(driver limitation on this engine)"
+	}
+	if failStreak+1 >= maxInvariantFailures {
+		return true, fmt.Sprintf("disabled: invariant check failed %d times in a row: %v",
+			failStreak+1, err)
+	}
+	return false, fmt.Sprintf("failed (attempt %d of %d, will retry): %v",
+		failStreak+1, maxInvariantFailures, err)
 }
 
 func containsAny(s string, subs ...string) bool {
@@ -319,3 +349,7 @@ func (s *EmulState) Final() (scorePerMin float64, ok, total int64, peaks Sample,
 	defer s.mu.Unlock()
 	return s.scorePerMin, s.okUnits, s.totalUnits, s.memPeaks, s.invariant, s.workingMode
 }
+
+// Wait blocks until all sidecar goroutines launched by RunSidecars have
+// exited. Use after cancelling the run context.
+func (s *EmulState) Wait() { s.wg.Wait() }
