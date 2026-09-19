@@ -143,8 +143,8 @@ async function emulLoadSession() {
     document.getElementById("emulMain").value = s.main;
     document.getElementById("emulCooldown").value = s.cooldown;
     document.getElementById("emulThink").value = s.thinkMs;
-    document.getElementById("emulInv").value = s.emulInvariantEvery || 60;
-    document.getElementById("emulMon").value = s.emulMonitorEvery || 10;
+    document.getElementById("emulInvEvery").value = s.emulInvariantEvery || 60;
+    document.getElementById("emulMonEvery").value = s.emulMonitorEvery || 10;
     await emulLoadUnits();
   } catch {
     /* session may be transiently unavailable */
@@ -161,8 +161,8 @@ async function emulLoadUnits() {
     emulState.units = d.units || [];
     for (const u of emulState.units) {
       const tr = document.createElement("tr");
-      const input = `<input type="number" min="0" value="${u.weight}" data-unit="${u.unit}" style="width:80px" />`;
-      tr.innerHTML = `<td>${u.unit}</td><td>${u.kind}</td><td>${input}</td>`;
+      const input = `<input type="number" min="0" value="${u.weight}" data-unit="${u.name}" style="width:80px" />`;
+      tr.innerHTML = `<td>${u.name}</td><td>${u.kind}</td><td>${input}</td>`;
       body.appendChild(tr);
     }
   } catch (e) {
@@ -199,8 +199,8 @@ async function emulApplySettings() {
       main: Number(document.getElementById("emulMain").value) || 300,
       cooldown: Number(document.getElementById("emulCooldown").value) || 20,
       thinkMs: Number(document.getElementById("emulThink").value) || 50,
-      emulInvariantEvery: Number(document.getElementById("emulInv").value) || 60,
-      emulMonitorEvery: Number(document.getElementById("emulMon").value) || 10,
+      emulInvariantEvery: Number(document.getElementById("emulInvEvery").value) || 60,
+      emulMonitorEvery: Number(document.getElementById("emulMonEvery").value) || 10,
     });
     document.getElementById("emulConnMax").value = s.connMax + " (budget)";
     document.getElementById("emulApplyMsg").textContent = "applied";
@@ -290,19 +290,28 @@ async function emulGate() {
 
 function emulRenderState(d, sess) {
   document.getElementById("emulLivePhase").textContent = d.phase || "";
-  document.getElementById("emulScore").textContent = Math.round(d.scorePerMin);
+  document.getElementById("emulScore").textContent = Math.round(d.scorePerMin).toLocaleString();
   document.getElementById("emulOk").textContent = d.okUnits;
   document.getElementById("emulTotal").textContent = d.totalUnits;
   document.getElementById("emulMemDb").textContent = Math.round(d.memPeaks.dbBytes / (1 << 20));
-  const inv = document.getElementById("emulInv");
+  const inv = document.getElementById("emulInvState");
   inv.textContent = d.invariant || "—";
-  inv.style.color = d.invariant === "ok" ? "green" : d.invariant && d.invariant.startsWith("failed") ? "red" : "inherit";
+  inv.style.color = d.invariant === "ok" ? "green"
+    : d.invariant && (d.invariant.startsWith("failed") || d.invariant.startsWith("disabled")) ? "red"
+    : "inherit";
 
   emulSparkline("emulScoreChart", d.series || [], (p) => p.scorePerMin);
 
   const body = document.getElementById("emulPerUnitBody");
   body.innerHTML = "";
-  for (const u of d.perUnit || []) {
+  const unitRows = d.perUnit || [];
+  if (!unitRows.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td colspan="8" class="muted">no units executed yet</td>';
+    body.appendChild(tr);
+    return;
+  }
+  for (const u of unitRows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${u.unit}</td><td>${u.kind}</td><td>${u.ok}</td><td>${u.conflict}</td><td>${u.rejected}</td><td>${u.failure}</td><td>${u.avgMs}</td><td>${u.maxMs}</td>`;
     body.appendChild(tr);
