@@ -1,0 +1,358 @@
+=== Load Test Report ===
+Timestamp: 2026-09-19T09:40:08+02:00
+Elapsed: 5.0005772s
+Interval: 0s
+
+Operations:
+  Total: 142
+  Success: 126 (88.7%)
+  Errors: 16
+
+Performance:
+  Total TPS: 28.4
+  Interval TPS: +Inf
+  Average Latency: 283ms
+  Min Latency: 100ms
+  Max Latency: 500ms
+  P50 Latency: 100ms
+  P95 Latency: 250ms
+  P99 Latency: 500ms
+
+Concurrency:
+  Current Workers: 4
+  Max Workers: 4
+
+System:
+  Profile: oltp-emul
+  Scheduler: Phase: warmup (92.5%), Workers: 4, Elapsed: 4.6264038s
+  Cache: 
+
+Operation Distribution:
+  sp_customer_reserve: 3
+  sp_cancel_pay_from_customer: 1
+  sp_supplier_invoice: 12
+  sp_cancel_adding_invoice: 2
+  sp_pay_to_supplier: 10
+  sp_cancel_customer_reserve: 5
+  sp_client_order: 2
+  sp_pay_from_customer: 10
+  sp_add_invoice_to_stock: 8
+  srv_make_money_saldo: 9
+  srv_recalc_idx_stat: 25
+  sp_cancel_supplier_invoice: 5
+  sp_reserve_write_off: 3
+  sp_cancel_supplier_order: 4
+  sp_cancel_client_order: 5
+  sp_cancel_pay_to_supplier: 2
+  sp_supplier_order: 20
+  sp_cancel_write_off: 8
+  srv_make_invnt_saldo: 8
+
+
+Error Distribution:
+  deadlock: 1
+  unknown_error: 15
+
+
+Latency Distribution:
+  (no data)
+
+=== Load Test Report ===
+Timestamp: 2026-09-19T09:40:13+02:00
+Elapsed: 10.0009346s
+Interval: 646.8µs
+
+Operations:
+  Total: 308
+  Success: 286 (92.9%)
+  Errors: 22
+
+Performance:
+  Total TPS: 30.8
+  Interval TPS: 0.0
+  Average Latency: 283ms
+  Min Latency: 100ms
+  Max Latency: 500ms
+  P50 Latency: 100ms
+  P95 Latency: 250ms
+  P99 Latency: 500ms
+
+Concurrency:
+  Current Workers: 5
+  Max Workers: 5
+
+System:
+  Profile: oltp-emul
+  Scheduler: Phase: main (23.1%), Workers: 5, Elapsed: 9.6262032s
+  Cache: 
+
+Operation Distribution:
+  sp_cancel_write_off: 13
+  sp_pay_to_supplier: 23
+  sp_client_order: 9
+  sp_cancel_supplier_order: 4
+  sp_cancel_client_order: 14
+  sp_cancel_pay_to_supplier: 6
+  srv_make_invnt_saldo: 21
+  sp_cancel_pay_from_customer: 5
+  sp_reserve_write_off: 5
+  sp_cancel_adding_invoice: 2
+  srv_make_money_saldo: 15
+  sp_customer_reserve: 8
+  sp_cancel_customer_reserve: 13
+  sp_supplier_order: 30
+  sp_supplier_invoice: 32
+  sp_pay_from_customer: 25
+  srv_recalc_idx_stat: 51
+  sp_cancel_supplier_invoice: 6
+  sp_add_invoice_to_stock: 26
+
+
+Error Distribution:
+  unknown_error: 20
+  deadlock: 2
+
+
+Latency Distribution:
+  (no data)
+
+=== Load Test Report ===
+Timestamp: 2026-09-19T09:40:18+02:00
+Elapsed: 15.0011168s
+Interval: 1.0131ms
+
+Operations:
+  Total: 490
+  Success: 449 (91.6%)
+  Errors: 41
+
+Performance:
+  Total TPS: 32.7
+  Interval TPS: 179646.6
+  Average Latency: 283ms
+  Min Latency: 100ms
+  Max Latency: 500ms
+  P50 Latency: 100ms
+  P95 Latency: 250ms
+  P99 Latency: 500ms
+
+Concurrency:
+  Current Workers: 5
+  Max Workers: 5
+
+System:
+  Profile: oltp-emul
+  Scheduler: Phase: main (48.1%), Workers: 5, Elapsed: 14.6263992s
+  Cache: 
+
+Operation Distribution:
+  sp_cancel_adding_invoice: 5
+  srv_aggregate_perf_data: 1
+  sp_cancel_supplier_invoice: 10
+  sp_client_order: 17
+  sp_cancel_pay_from_customer: 8
+  sp_add_invoice_to_stock: 47
+  srv_make_money_saldo: 25
+  sp_pay_to_supplier: 39
+  sp_supplier_invoice: 47
+  sp_cancel_write_off: 17
+  srv_recalc_idx_stat: 73
+  sp_cancel_customer_reserve: 16
+  sp_supplier_order: 50
+  sp_pay_from_customer: 51
+  sp_reserve_write_off: 8
+  sp_cancel_supplier_order: 6
+  srv_make_invnt_saldo: 28
+  sp_customer_reserve: 13
+  sp_cancel_client_order: 23
+  sp_cancel_pay_to_supplier: 6
+
+
+Error Distribution:
+  unknown_error: 35
+  deadlock: 6
+
+
+Latency Distribution:
+  (no data)
+
+=== Load Test Report ===
+Timestamp: 2026-09-19T09:40:23+02:00
+Elapsed: 20.0008519s
+Interval: 0s
+
+Operations:
+  Total: 671
+  Success: 608 (90.6%)
+  Errors: 63
+
+Performance:
+  Total TPS: 33.5
+  Interval TPS: NaN
+  Average Latency: 283ms
+  Min Latency: 100ms
+  Max Latency: 500ms
+  P50 Latency: 100ms
+  P95 Latency: 250ms
+  P99 Latency: 500ms
+
+Concurrency:
+  Current Workers: 5
+  Max Workers: 5
+
+System:
+  Profile: oltp-emul
+  Scheduler: Phase: main (73.1%), Workers: 5, Elapsed: 19.6264883s
+  Cache: 
+
+Operation Distribution:
+  sp_cancel_supplier_order: 9
+  sp_cancel_customer_reserve: 19
+  sp_pay_from_customer: 70
+  sp_cancel_client_order: 31
+  sp_cancel_adding_invoice: 7
+  sp_cancel_pay_to_supplier: 9
+  srv_aggregate_perf_data: 2
+  sp_supplier_order: 68
+  sp_add_invoice_to_stock: 61
+  sp_pay_to_supplier: 61
+  srv_recalc_idx_stat: 98
+  sp_cancel_supplier_invoice: 17
+  sp_client_order: 22
+  sp_supplier_invoice: 69
+  sp_cancel_write_off: 20
+  srv_make_money_saldo: 36
+  srv_make_invnt_saldo: 34
+  sp_customer_reserve: 18
+  sp_cancel_pay_from_customer: 9
+  sp_reserve_write_off: 11
+
+
+Error Distribution:
+  unknown_error: 53
+  deadlock: 10
+
+
+Latency Distribution:
+  (no data)
+
+=== Load Test Report ===
+Timestamp: 2026-09-19T09:40:28+02:00
+Elapsed: 25.0007858s
+Interval: 533µs
+
+Operations:
+  Total: 852
+  Success: 774 (90.8%)
+  Errors: 78
+
+Performance:
+  Total TPS: 34.1
+  Interval TPS: 339587.2
+  Average Latency: 283ms
+  Min Latency: 100ms
+  Max Latency: 500ms
+  P50 Latency: 100ms
+  P95 Latency: 250ms
+  P99 Latency: 500ms
+
+Concurrency:
+  Current Workers: 5
+  Max Workers: 5
+
+System:
+  Profile: oltp-emul
+  Scheduler: Phase: main (98.1%), Workers: 5, Elapsed: 24.626239s
+  Cache: 
+
+Operation Distribution:
+  sp_supplier_order: 80
+  sp_cancel_supplier_invoice: 18
+  sp_pay_from_customer: 90
+  sp_cancel_customer_reserve: 21
+  sp_add_invoice_to_stock: 78
+  sp_cancel_client_order: 41
+  sp_cancel_adding_invoice: 9
+  sp_pay_to_supplier: 76
+  srv_make_invnt_saldo: 47
+  sp_customer_reserve: 22
+  srv_recalc_idx_stat: 124
+  sp_reserve_write_off: 12
+  sp_cancel_supplier_order: 10
+  srv_aggregate_perf_data: 3
+  sp_client_order: 38
+  sp_cancel_pay_from_customer: 13
+  sp_supplier_invoice: 87
+  sp_cancel_write_off: 25
+  sp_cancel_pay_to_supplier: 14
+  srv_make_money_saldo: 44
+
+
+Error Distribution:
+  unknown_error: 67
+  deadlock: 11
+
+
+Latency Distribution:
+  (no data)
+
+=== Load Test Report ===
+Timestamp: 2026-09-19T09:40:33+02:00
+Elapsed: 30.0006808s
+Interval: 0s
+
+Operations:
+  Total: 930
+  Success: 842 (90.5%)
+  Errors: 88
+
+Performance:
+  Total TPS: 31.0
+  Interval TPS: +Inf
+  Average Latency: 283ms
+  Min Latency: 100ms
+  Max Latency: 500ms
+  P50 Latency: 100ms
+  P95 Latency: 250ms
+  P99 Latency: 500ms
+
+Concurrency:
+  Current Workers: 0
+  Max Workers: 5
+
+System:
+  Profile: oltp-emul
+  Scheduler: Phase: cooldown (100.0%), Workers: 0, Elapsed: 28.1261879s
+  Cache: 
+
+Operation Distribution:
+  sp_cancel_client_order: 44
+  srv_aggregate_perf_data: 4
+  sp_supplier_invoice: 93
+  srv_make_money_saldo: 49
+  sp_pay_to_supplier: 79
+  sp_reserve_write_off: 13
+  sp_cancel_write_off: 27
+  sp_cancel_adding_invoice: 12
+  sp_cancel_pay_to_supplier: 15
+  srv_make_invnt_saldo: 49
+  sp_customer_reserve: 25
+  srv_recalc_idx_stat: 139
+  sp_cancel_customer_reserve: 22
+  sp_supplier_order: 91
+  sp_client_order: 43
+  sp_cancel_pay_from_customer: 13
+  sp_cancel_supplier_order: 10
+  sp_cancel_supplier_invoice: 20
+  sp_pay_from_customer: 98
+  sp_add_invoice_to_stock: 84
+
+
+Error Distribution:
+  unknown_error: 77
+  deadlock: 11
+
+
+Latency Distribution:
+  (no data)
+

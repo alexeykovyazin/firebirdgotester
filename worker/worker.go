@@ -303,6 +303,17 @@ func (w *Worker) executeOperation() error {
 		if isCancelErr(err) || w.ctx.Err() != nil {
 			return err
 		}
+		// oltp-emul: route the outcome into per-unit aggregation. The op
+		// closure always wraps failures in emul.UnitError with the outcome.
+		if w.config != nil && w.config.Profile == "oltp-emul" {
+			dur := time.Since(startTime)
+			var uo interface{ UnitOutcome() emul.Outcome }
+			if errors.As(err, &uo) {
+				w.metrics.RecordUnit(opName, dur, uo.UnitOutcome())
+			} else {
+				w.metrics.RecordUnit(opName, dur, emul.OutcomeFailure)
+			}
+		}
 		isExpected, classifiedErr := ops.ClassifyError(err)
 		w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
 		kind := "unexpected"
@@ -337,6 +348,9 @@ func (w *Worker) executeOperation() error {
 
 	// Record successful transaction
 	w.metrics.RecordTransactionNamed(true, time.Since(startTime), opName)
+	if w.config != nil && w.config.Profile == "oltp-emul" {
+		w.metrics.RecordUnit(opName, time.Since(startTime), emul.OutcomeOK)
+	}
 	if DebugEnabled.Load() {
 		fmt.Printf("[Worker-%d] Operation %s SUCCESS (%.2fms)\n", w.id, opName, float64(time.Since(startTime).Microseconds())/1000.0)
 	}
@@ -423,6 +437,9 @@ type MetricsCollector struct {
 
 	opMu     sync.Mutex
 	opCounts map[string]int64
+
+	// Per-unit oltp-emul aggregation (nil maps until RecordUnit is used).
+	unitAgg map[string]emul.OutcomeStats
 
 	errorStats *ops.ErrorStats
 	errorLog   *errlog.Logger
@@ -730,6 +747,53 @@ func (mc *MetricsCollector) GetOpCounts() map[string]int64 {
 		out[k] = v
 	}
 	return out
+}
+
+// RecordUnit records one oltp-emul business-unit execution with its outcome
+// and latency for the per-unit table. No-op for empty unit names.
+func (mc *MetricsCollector) RecordUnit(unit string, latency time.Duration, outcome emul.Outcome) {
+	if unit == "" {
+		return
+	}
+	ms := latency.Milliseconds()
+	mc.opMu.Lock()
+	defer mc.opMu.Unlock()
+	if mc.unitAgg == nil {
+		mc.unitAgg = make(map[string]emul.OutcomeStats)
+	}
+	agg := mc.unitAgg[unit]
+	switch outcome {
+	case emul.OutcomeOK:
+		agg.OK++
+	case emul.OutcomeConflict:
+		agg.Conflict++
+	case emul.OutcomeRejected:
+		agg.Rejected++
+	default:
+		agg.Failure++
+	}
+	agg.LatSumMs += ms
+	if ms > agg.MaxMs {
+		agg.MaxMs = ms
+	}
+	agg.N++
+	mc.unitAgg[unit] = agg
+}
+
+// GetUnitStats returns a copy of the per-unit oltp-emul aggregation.
+func (mc *MetricsCollector) GetUnitStats() map[string]emul.OutcomeStats {
+	mc.opMu.Lock()
+	defer mc.opMu.Unlock()
+	out := make(map[string]emul.OutcomeStats, len(mc.unitAgg))
+	for k, v := range mc.unitAgg {
+		out[k] = v
+	}
+	return out
+}
+
+// Counters returns the cumulative transaction totals (success, error).
+func (mc *MetricsCollector) Counters() (success, failed int64) {
+	return mc.txSuccess.Load(), mc.txError.Load()
 }
 
 // GetStartTime returns when metrics collection started.

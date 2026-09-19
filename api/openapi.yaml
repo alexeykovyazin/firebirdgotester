@@ -64,6 +64,48 @@ paths:
                   fleet:
                     $ref: "#/components/schemas/FleetSummary"
 
+  EmulState:
+    type: object
+    properties:
+      scorePerMin: { type: number }
+      okUnits: { type: integer }
+      totalUnits: { type: integer }
+      phase: { type: string }
+      invariant: { type: string }
+      invariantAt: { type: string }
+      memPeaks:
+        type: object
+        properties:
+          dbBytes: { type: integer }
+          attBytes: { type: integer }
+          trnBytes: { type: integer }
+          stmtBytes: { type: integer }
+      series:
+        type: array
+        items:
+          type: object
+          properties:
+            ts: { type: string }
+            scorePerMin: { type: number }
+            tps: { type: number }
+            dbBytes: { type: integer }
+            phase: { type: string }
+      perUnit:
+        type: array
+        items:
+          type: object
+          properties:
+            unit: { type: string }
+            mode: { type: string }
+            kind: { type: string }
+            ok: { type: integer }
+            conflict: { type: integer }
+            rejected: { type: integer }
+            failure: { type: integer }
+            avgMs: { type: integer }
+            maxMs: { type: integer }
+      workingMode: { type: string }
+
   /api/sessions/{id}:
     parameters:
       - $ref: "#/components/parameters/SessionId"
@@ -277,6 +319,110 @@ paths:
                   runs:
                     type: array
                     items: { $ref: "#/components/schemas/RunRecord" }
+
+  /api/sessions/{id}/emul/state:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Config]
+      summary: "oltp-emul: live run state (score, per-unit stats, memory peaks, invariants)"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Live state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmulState"
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: No live oltp-emul state (not running or wrong profile)
+
+  /api/emul/provision:
+    post:
+      tags: [Config]
+      summary: "oltp-emul: start an async provision job (create DB, run scripts, fill)"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dsn]
+              properties:
+                dsn:
+                  type: string
+                  description: "host[/port]:server-side-path of the database to create"
+                user: { type: string, default: SYSDBA }
+                pass: { type: string }
+                workingMode:
+                  type: string
+                  default: SMALL_01
+                  description: "DEBUG_01..04, DEBUG_1A, SMALL_01..03, MEDIUM_01..03, LARGE_01..03, HEAVY_01"
+                initDocs: { type: integer, default: 0 }
+                pageSize: { type: integer, default: 8192 }
+      responses:
+        "200":
+          description: Job started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobId]
+                properties:
+                  jobId: { type: string }
+        "409":
+          description: A provision job for this DSN is already running
+
+  /api/emul/provision/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/ReportFile"
+    get:
+      tags: [Config]
+      summary: "oltp-emul: provision job status"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Job status
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Config]
+      summary: "oltp-emul: cancel a provision job"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Job cancelled
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/emul/profiles:
+    get:
+      tags: [Config]
+      summary: "oltp-emul: workload profile names (working modes)"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session
+          in: query
+          schema: { type: string }
+          description: "Prefer the live list from this session's database"
+      responses:
+        "200":
+          description: Profile names
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { type: string }
+                  source: { type: string }
 
   /api/sessions/{id}/emul/units:
     parameters:
@@ -906,6 +1052,47 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    EmulState:
+      type: object
+      properties:
+        scorePerMin: { type: number }
+        okUnits: { type: integer }
+        totalUnits: { type: integer }
+        phase: { type: string }
+        invariant: { type: string }
+        invariantAt: { type: string }
+        memPeaks:
+          type: object
+          properties:
+            dbBytes: { type: integer }
+            attBytes: { type: integer }
+            trnBytes: { type: integer }
+            stmtBytes: { type: integer }
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              ts: { type: string }
+              scorePerMin: { type: number }
+              tps: { type: number }
+              dbBytes: { type: integer }
+              phase: { type: string }
+        perUnit:
+          type: array
+          items:
+            type: object
+            properties:
+              unit: { type: string }
+              mode: { type: string }
+              kind: { type: string }
+              ok: { type: integer }
+              conflict: { type: integer }
+              rejected: { type: integer }
+              failure: { type: integer }
+              avgMs: { type: integer }
+              maxMs: { type: integer }
+        workingMode: { type: string }
     Error:
       type: object
       required: [error]

@@ -1,0 +1,6 @@
+System Status:
+  Profile:             oltp-emul
+  Scheduler:           Phase: cooldown (100.0%), Workers: 0, Elapsed: 28.1261879s
+  Cache:               
+  Test Duration:       30.1379312s
+  Last Report:         0s ago

@@ -2,11 +2,14 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,7 +45,8 @@ type Manager struct {
 
 	reserved atomic.Int64 // sum of ConnMax for active reserved sessions
 
-	sessions map[string]*Session // keyed by AbsPath
+	sessions     map[string]*Session // keyed by AbsPath
+	emulSessions []config.EmulSessionRef
 }
 
 // Session is one database under management.
@@ -75,6 +79,12 @@ type Session struct {
 	runCfg        *config.Config
 	reportDir     string
 	lastReportDir string
+
+	emulState  *emul.EmulState // live oltp-emul state (nil for non-emul profiles)
+	emulUnits  []emul.Unit     // unit registry loaded at start (for the per-unit merge)
+	emulCancel context.CancelFunc
+	emulPool   *sql.DB             // dedicated sidecar pool
+	emulFrozen *emul.EmulStateJSON // final per-unit table captured at stop
 
 	// Retained after Completed
 	lastSnap Snapshot
@@ -165,6 +175,7 @@ func (m *Manager) ConnectionSettings() config.UISettings {
 		DiscoverMask:      m.discoverMask,
 		DiscoverRecursive: m.recursive,
 		MaxTotalConns:     m.maxTotal,
+		EmulSessions:      m.emulSessions,
 	}
 }
 
@@ -444,6 +455,82 @@ func (m *Manager) Get(id string) (Snapshot, error) {
 	return s.Snapshot(), nil
 }
 
+// RegisterDatabase adds (or refreshes) a session for an arbitrary database
+// path, bypassing the discover root. Used by the emul provision job so a
+// freshly provisioned database appears in the fleet without re-scanning.
+func (m *Manager) RegisterDatabase(absPath, user, pass string) (Snapshot, error) {
+	abs, err := filepath.Abs(absPath)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	info := discover.DatabaseInfo{
+		Name:    filepath.Base(abs),
+		RelPath: filepath.Base(abs),
+		AbsPath: abs,
+	}
+
+	m.mu.Lock()
+	if m.shared == nil {
+		m.mu.Unlock()
+		return Snapshot{}, fmt.Errorf("manager not configured")
+	}
+	host, port := m.shared.Host, m.shared.Port
+	if sess, ok := m.sessions[abs]; ok {
+		sess.mu.Lock()
+		sess.Missing = false
+		snap := sess.snapshotLocked()
+		sess.mu.Unlock()
+		m.mu.Unlock()
+		return snap, nil
+	}
+	sc := DefaultsFromCLI(m.shared, info, host, port)
+	sc.User = user
+	sc.Pass = pass
+	sess := &Session{ID: IDFromAbsPath(abs), Config: sc, Status: StatusIdle}
+	m.sessions[abs] = sess
+	m.applyEvenConnBudgetLocked()
+	// persist out-of-root registrations so they survive restarts;
+	// capture everything needed while the lock is held (ConnectionSettings
+	// and SettingsPath take m.mu themselves — calling them here deadlocks).
+	foundRef := false
+	for i, ref := range m.emulSessions {
+		if ref.AbsPath == abs {
+			m.emulSessions[i] = config.EmulSessionRef{AbsPath: abs, DSN: sc.DSN, User: user, Pass: pass}
+			foundRef = true
+			break
+		}
+	}
+	if !foundRef {
+		m.emulSessions = append(m.emulSessions, config.EmulSessionRef{AbsPath: abs, DSN: sc.DSN, User: user, Pass: pass})
+	}
+	st := config.UISettings{
+		Version:           config.UISettingsVersion,
+		Host:              m.host,
+		Port:              m.port,
+		User:              m.user,
+		Pass:              m.pass,
+		DiscoverDir:       m.discoverDir,
+		DiscoverMask:      m.discoverMask,
+		DiscoverRecursive: m.recursive,
+		MaxTotalConns:     m.maxTotal,
+		EmulSessions:      m.emulSessions,
+	}
+	path := m.settingsPath
+	m.mu.Unlock()
+	_ = m.persistSettings(path, st)
+	return sess.Snapshot(), nil
+}
+
+// RestoreEmulSessions re-registers previously provisioned out-of-root
+// databases. Called once at UI boot, after the initial discovery.
+func (m *Manager) RestoreEmulSessions(refs []config.EmulSessionRef) {
+	for _, ref := range refs {
+		if _, err := m.RegisterDatabase(ref.AbsPath, ref.User, ref.Pass); err != nil {
+			log.Printf("[emul] restore session %s: %v", ref.AbsPath, err)
+		}
+	}
+}
+
 // GetConnectionInfo returns the raw connection parameters of a session
 // (used by emul endpoints to inspect that database's business_ops registry).
 func (m *Manager) GetConnectionInfo(id string) (SessionConfig, error) {
@@ -570,6 +657,15 @@ func (m *Manager) Patch(id string, patch map[string]interface{}) (Snapshot, erro
 	if v, ok := asInt(patch["txTimeout"]); ok {
 		s.Config.TxTimeout = v
 	}
+	if v, ok := asInt(patch["emulInvariantEvery"]); ok {
+		s.Config.EmulInvariantEvery = v
+	}
+	if v, ok := asInt(patch["emulMonitorEvery"]); ok {
+		s.Config.EmulMonitorEvery = v
+	}
+	if v, ok := patch["emulWorkingMode"].(string); ok && v != "" {
+		s.Config.EmulWorkingMode = v
+	}
 	s.Status = StatusIdle
 	s.LastError = ""
 	s.mu.Unlock()
@@ -681,7 +777,7 @@ func (m *Manager) recordFinishEntry(s *Session, entry SessionRun) {
 }
 
 func runEntryFromSnap(snap Snapshot, status string) SessionRun {
-	return SessionRun{
+	entry := SessionRun{
 		SessionID: snap.ID,
 		RelPath:   snap.RelPath,
 		Status:    status,
@@ -691,6 +787,18 @@ func runEntryFromSnap(snap Snapshot, status string) SessionRun {
 		Success:   snap.Success,
 		Errors:    snap.Errors,
 	}
+	if snap.Emul != nil {
+		entry.Emul = &EmulRunStats{
+			ScorePerMin: snap.Emul.ScorePerMin,
+			OKUnits:     snap.Emul.OKUnits,
+			TotalUnits:  snap.Emul.TotalUnits,
+			WorkingMode: snap.Emul.WorkingMode,
+			MemPeaks:    snap.Emul.MemPeaks,
+			Invariant:   snap.Emul.Invariant,
+			PerUnit:     snap.Emul.PerUnit,
+		}
+	}
+	return entry
 }
 
 // runEntryLocked builds a history entry from live metrics; call before
@@ -833,6 +941,7 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 		if err != nil {
 			return fail(err)
 		}
+		s.emulUnits = emulUnits
 	} else {
 		if err := factory.ValidateSchemaGate(); err != nil {
 			return fail(err)
@@ -929,6 +1038,26 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 	s.sysMetrics = sysMetrics
 	s.reporter = reporter
 	s.errorLog = sqlErrLog
+	if s.emulUnits != nil {
+		// oltp-emul: launch the shared sidecars (memory monitor, invariant
+		// checks, score/series ticker) on their own pool, bound to a context
+		// cancelled when the run stops.
+		emulCtx, emulCancel := context.WithCancel(context.Background())
+		counts := func() (int64, int64, string) {
+			ok, failed := wMetrics.Counters()
+			return ok, ok + failed, sched.GetCurrentPhase().String()
+		}
+		s.emulState = emul.RunSidecars(emulCtx, emulSidecarPool(runCfg),
+			time.Duration(runCfg.EmulMonitorEvery)*time.Second,
+			time.Duration(runCfg.EmulInvariantEvery)*time.Second,
+			10*time.Second,
+			counts,
+			func(format string, args ...any) { logf(format, args...) })
+		s.emulState.SetWorkingMode(runCfg.EmulWorkingMode)
+		pool := emulSidecarPool(runCfg)
+		s.emulPool = pool
+		s.emulCancel = emulCancel
+	}
 	s.runCfg = runCfg
 	s.reportDir = reportDir
 	s.lastReportDir = reportDir
@@ -1003,7 +1132,7 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 	if s.Status == StatusStopping || s.Status == StatusIdle {
 		n := s.reserved
 		s.reserved = 0
-		entry := s.runEntryLocked("Idle")
+		entry := s.runEntryLocked("Cancelled")
 		s.Status = StatusIdle
 		s.cleanupLocked(false)
 		s.mu.Unlock()
@@ -1121,6 +1250,21 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	if sched != nil {
 		_ = sched.Stop()
 	}
+	if s.emulCancel != nil {
+		s.emulCancel() // stops monitor/invariant/series sidecars
+	}
+	if s.emulPool != nil {
+		_ = s.emulPool.Close()
+		s.emulPool = nil
+	}
+	// freeze the final per-unit table while the collector is still alive
+	// (Stop nils s.metrics further down).
+	s.mu.Lock()
+	if s.emulState != nil && s.metrics != nil {
+		frozen := s.emulState.JSON(s.metrics.GetUnitStats(), s.emulUnits)
+		s.emulFrozen = &frozen
+	}
+	s.mu.Unlock()
 	if reporter != nil {
 		if reportDir != "" {
 			_ = reporter.ReportAllToFile(filepath.Join(reportDir, "results"))
@@ -1134,12 +1278,15 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 		errorLog.Flush()
 		_ = errorLog.Close()
 	}
+	s.mu.Lock()
+	writeEmulReport(reportDir, s.emulState, s.emulUnits, s.Config)
+	s.mu.Unlock()
 
 	m.releaseBudget(reserved)
 
 	s.mu.Lock()
 	s.Status = StatusIdle
-	entry := s.runEntryLocked("Idle")
+	entry := s.runEntryLocked("Cancelled")
 	s.cleanupLocked(false)
 	snap := s.snapshotLocked()
 	s.mu.Unlock()
@@ -1660,7 +1807,7 @@ func (s *Session) snapshotLocked() Snapshot {
 		reportDir = s.lastReportDir
 	}
 
-	return Snapshot{
+	snap := Snapshot{
 		ID:               s.ID,
 		Name:             s.Config.Name,
 		RelPath:          s.Config.RelPath,
@@ -1698,4 +1845,65 @@ func (s *Session) snapshotLocked() Snapshot {
 		Missing:          s.Missing,
 		UpdatedAt:        nowStamp(),
 	}
+	if s.emulFrozen != nil {
+		snap.Emul = s.emulFrozen
+	} else if s.emulState != nil {
+		snap.Emul = new(emul.EmulStateJSON)
+		// s.metrics is nilled during stop; keep the frozen state usable.
+		var agg map[string]emul.OutcomeStats
+		if s.metrics != nil {
+			agg = s.metrics.GetUnitStats()
+		}
+		*snap.Emul = s.emulState.JSON(agg, s.emulUnits)
+	}
+	snap.EmulInvariantEvery = s.Config.EmulInvariantEvery
+	snap.EmulMonitorEvery = s.Config.EmulMonitorEvery
+	snap.EmulWorkingMode = s.Config.EmulWorkingMode
+	return snap
+}
+
+// emulSidecarPool opens a dedicated database pool for the emul sidecars
+// (the run pool is capped at one connection per factory and fully held by
+// workers).
+func emulSidecarPool(cfg *config.Config) *sql.DB {
+	pool, err := sql.Open("firebirdsql", cfg.ConnectionString())
+	if err != nil {
+		return nil
+	}
+	return pool
+}
+
+// logf is the session package's sidecar logger.
+func logf(format string, args ...any) {
+	log.Printf("[emul] "+format, args...)
+}
+
+// writeEmulReport freezes the final oltp-emul state into the run's report
+// directory (results_emul.txt), next to the standard results*.txt files.
+func writeEmulReport(reportDir string, state *emul.EmulState, units []emul.Unit, sc SessionConfig) {
+	if state == nil || reportDir == "" {
+		return
+	}
+	st := state.JSON(nil, units)
+	var b strings.Builder
+	fmt.Fprintf(&b, "=== OLTP-EMUL Final Report ===\n")
+	fmt.Fprintf(&b, "Database:            %s\n", sc.DSN)
+	fmt.Fprintf(&b, "Working mode:        %s\n", st.WorkingMode)
+	fmt.Fprintf(&b, "Performance score:   %.0f successful business actions per minute\n", st.ScorePerMin)
+	pct := 0.0
+	if st.TotalUnits > 0 {
+		pct = 100 * float64(st.OKUnits) / float64(st.TotalUnits)
+	}
+	fmt.Fprintf(&b, "Units OK:            %d/%d (%.1f%%)\n", st.OKUnits, st.TotalUnits, pct)
+	fmt.Fprintf(&b, "Memory peaks (MB):   db=%d att=%d trn=%d stmt=%d\n",
+		st.MemPeaks.DBBytes/(1<<20), st.MemPeaks.AttBytes/(1<<20),
+		st.MemPeaks.TrnBytes/(1<<20), st.MemPeaks.StmtBytes/(1<<20))
+	fmt.Fprintf(&b, "Invariants:          %s\n", st.Invariant)
+	b.WriteString("\nPer-unit breakdown:\n")
+	b.WriteString("  unit                             kind        ok   conflict  rejected  failure  avg ms\n")
+	for _, u := range st.PerUnit {
+		fmt.Fprintf(&b, "  %-32s %-11s %5d %9d %9d %8d %7d\n",
+			u.Unit, u.Kind, u.OK, u.Conflict, u.Rejected, u.Failure, u.AvgMs)
+	}
+	_ = os.WriteFile(filepath.Join(reportDir, "results_emul.txt"), []byte(b.String()), 0o644)
 }

@@ -95,25 +95,31 @@ func Provision(ctx context.Context, cfg Config, progress Progress) error {
 	if progress == nil {
 		progress = nopProgress
 	}
-	if err := createDatabase(ctx, cfg, progress); err != nil {
-		return fmt.Errorf("emul: create database: %w", err)
-	}
 
 	// charset NONE matches upstream isql sessions (the database is created
 	// CHARACTER SET NONE; e.g. adjust_DDL declares varchar(32765), which
 	// would exceed the statement limit under a UTF8 connection).
 	db, err := sql.Open("firebirdsql", cfg.DSN()+"?charset=NONE")
+	if err == nil {
+		if perr := db.PingContext(ctx); perr == nil && provisioned(ctx, db) {
+			// Idempotent path: the oltpemul schema is already there.
+			progress("schema already present, skipping create and scripts")
+			return nil
+		}
+		db.Close()
+	}
+
+	if err := createDatabase(ctx, cfg, progress); err != nil {
+		return fmt.Errorf("emul: create database: %w", err)
+	}
+
+	db, err = sql.Open("firebirdsql", cfg.DSN()+"?charset=NONE")
 	if err != nil {
 		return fmt.Errorf("emul: open: %w", err)
 	}
 	defer db.Close()
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("emul: connect: %w", err)
-	}
-
-	if provisioned(ctx, db) {
-		progress("schema already present, skipping scripts")
-		return nil
 	}
 
 	for _, name := range provisionScripts {
@@ -162,15 +168,26 @@ func activateTriggers(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// provisioned reports whether the oltpemul schema already exists.
+// provisioned reports whether the oltpemul schema is COMPLETE enough to
+// skip the build. A single marker table is not enough: an interrupted build
+// leaves BUSINESS_OPS behind while missing hundreds of procedures.
 func provisioned(ctx context.Context, db *sql.DB) bool {
-	var n int
+	var tables, procs int
 	if err := db.QueryRowContext(ctx,
 		`select count(*) from rdb$relations where rdb$relation_name = 'BUSINESS_OPS'`,
-	).Scan(&n); err != nil {
+	).Scan(&tables); err != nil {
 		return false
 	}
-	return n > 0
+	if tables == 0 {
+		return false
+	}
+	if err := db.QueryRowContext(ctx,
+		`select count(*) from rdb$procedures where rdb$procedure_name in
+		 ('SP_CLIENT_ORDER','SP_SUPPLIER_INVOICE','SRV_RANDOM_UNIT_CHOICE','SP_INIT_CTX','SP_ADD_PERF_LOG')`,
+	).Scan(&procs); err != nil {
+		return false
+	}
+	return procs == 5
 }
 
 // verifySchema checks post-provision object counts - a misparsed script that

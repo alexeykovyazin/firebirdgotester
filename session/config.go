@@ -8,6 +8,7 @@ import (
 
 	"fb-loadgen/config"
 	"fb-loadgen/discover"
+	"fb-loadgen/emul"
 )
 
 // Status represents session lifecycle state.
@@ -44,9 +45,14 @@ type SessionConfig struct {
 	SpikeCycles int `json:"spikeCycles"`
 	SpikeHold   int `json:"spikeHold"`
 
-	ThinkMs   int `json:"thinkMs"`
-	TxTimeout int `json:"txTimeout"`
+	ThinkMs   int  `json:"thinkMs"`
+	TxTimeout int  `json:"txTimeout"`
 	Debug     bool `json:"debug"`
+
+	// oltp-emul extras (used when Profile == "oltp-emul")
+	EmulInvariantEvery int    `json:"emulInvariantEvery"` // seconds between invariant checks
+	EmulMonitorEvery   int    `json:"emulMonitorEvery"`   // seconds between memory snapshots
+	EmulWorkingMode    string `json:"emulWorkingMode"`    // settings working-mode echo
 }
 
 // Defaults returns a SessionConfig seeded from shared CLI defaults.
@@ -89,7 +95,18 @@ func DefaultsFromCLI(cfg *config.Config, info discover.DatabaseInfo, host string
 		ThinkMs:     cfg.ThinkMs,
 		TxTimeout:   nonzero(cfg.TxTimeout, 10),
 		Debug:       cfg.Debug,
+
+		EmulInvariantEvery: nonzero(cfg.EmulInvariantEvery, 60),
+		EmulMonitorEvery:   nonzero(cfg.EmulMonitorEvery, 10),
+		EmulWorkingMode:    emulWorkingModeOr(cfg.EmulWorkingMode),
 	}
+}
+
+func emulWorkingModeOr(v string) string {
+	if v == "" {
+		return "SMALL_01"
+	}
+	return v
 }
 
 func nonzero(v, def int) int {
@@ -117,6 +134,9 @@ func (c *SessionConfig) Validate() error {
 	}
 	if c.ConnMax < c.ConnMin {
 		return fmt.Errorf("connMax must be >= connMin")
+	}
+	if c.EmulInvariantEvery < 0 || c.EmulMonitorEvery < 0 {
+		return fmt.Errorf("emul intervals must be >= 0")
 	}
 	if c.Warmup < 0 || c.Main < 0 || c.Cooldown < 0 {
 		return fmt.Errorf("timing values must be >= 0")
@@ -163,7 +183,12 @@ func (c *SessionConfig) ToRunConfigWithReportEvery(reportEvery int) *config.Conf
 		TxTimeout:   c.TxTimeout,
 		Debug:       c.Debug,
 		ReportEvery: reportEvery,
+
+		EmulInvariantEvery: c.EmulInvariantEvery,
+		EmulMonitorEvery:   c.EmulMonitorEvery,
+		EmulWorkingMode:    c.EmulWorkingMode,
 	}
+
 }
 
 // OpCount is a named operation counter for snapshots.
@@ -210,23 +235,31 @@ type Snapshot struct {
 	ReportDir        string    `json:"reportDir,omitempty"`
 	Missing          bool      `json:"missing"`
 	UpdatedAt        string    `json:"updatedAt"`
+
+	// Emul carries the live oltp-emul run state (nil for non-emul profiles).
+	Emul *emul.EmulStateJSON `json:"emul,omitempty"`
+
+	// oltp-emul session settings (echoed for the settings form)
+	EmulInvariantEvery int    `json:"emulInvariantEvery,omitempty"`
+	EmulMonitorEvery   int    `json:"emulMonitorEvery,omitempty"`
+	EmulWorkingMode    string `json:"emulWorkingMode,omitempty"`
 }
 
 // FleetSummary aggregates live metrics across sessions.
 type FleetSummary struct {
-	Running      int            `json:"running"`
-	Paused       int            `json:"paused"`
-	Idle         int            `json:"idle"`
-	Failed       int            `json:"failed"`
-	Completed    int            `json:"completed"`
-	Missing      int            `json:"missing"`
-	Databases    int            `json:"databases"`
-	PerDBMax     int            `json:"perDbMax"`
-	TotalConns   int            `json:"totalConns"`
-	TotalTPS     float64        `json:"totalTps"`
-	BudgetUsed   int            `json:"budgetUsed"`
-	BudgetLimit  int            `json:"budgetLimit"`
-	TopErrors    map[string]int `json:"topErrors,omitempty"`
+	Running     int            `json:"running"`
+	Paused      int            `json:"paused"`
+	Idle        int            `json:"idle"`
+	Failed      int            `json:"failed"`
+	Completed   int            `json:"completed"`
+	Missing     int            `json:"missing"`
+	Databases   int            `json:"databases"`
+	PerDBMax    int            `json:"perDbMax"`
+	TotalConns  int            `json:"totalConns"`
+	TotalTPS    float64        `json:"totalTps"`
+	BudgetUsed  int            `json:"budgetUsed"`
+	BudgetLimit int            `json:"budgetLimit"`
+	TopErrors   map[string]int `json:"topErrors,omitempty"`
 }
 
 // EvenPerDBMax returns floor(total/n), at least 1. If n < 1, returns total (or 1).

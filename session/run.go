@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"fb-loadgen/emul"
 )
 
 // RunOrigin says what triggered a run.
@@ -65,16 +67,28 @@ type TargetRef struct {
 
 // SessionRun is one session's entry inside a run record.
 type SessionRun struct {
-	SessionID string  `json:"id"`
-	RelPath   string  `json:"relPath"`
-	Status    string  `json:"status"` // terminal Status value, or Skipped/Cancelled
-	LastError string  `json:"lastError,omitempty"`
-	ReportDir string  `json:"reportDir,omitempty"`
-	TPS       float64 `json:"tps"`
-	Success   int64   `json:"success"`
-	Errors    int64   `json:"errors"`
-	Pending   bool    `json:"pending,omitempty"` // started, awaiting terminal transition
-	Reason    string  `json:"reason,omitempty"`  // why skipped/cancelled
+	SessionID string        `json:"id"`
+	RelPath   string        `json:"relPath"`
+	Status    string        `json:"status"` // terminal Status value, or Skipped/Cancelled
+	LastError string        `json:"lastError,omitempty"`
+	ReportDir string        `json:"reportDir,omitempty"`
+	TPS       float64       `json:"tps"`
+	Success   int64         `json:"success"`
+	Errors    int64         `json:"errors"`
+	Pending   bool          `json:"pending,omitempty"` // started, awaiting terminal transition
+	Reason    string        `json:"reason,omitempty"`  // why skipped/cancelled
+	Emul      *EmulRunStats `json:"emul,omitempty"`
+}
+
+// EmulRunStats is the oltp-emul result summary persisted per session run.
+type EmulRunStats struct {
+	ScorePerMin float64         `json:"scorePerMin"`
+	OKUnits     int64           `json:"okUnits"`
+	TotalUnits  int64           `json:"totalUnits"`
+	WorkingMode string          `json:"workingMode,omitempty"`
+	MemPeaks    emul.Sample     `json:"memPeaks"`
+	Invariant   string          `json:"invariant,omitempty"`
+	PerUnit     []emul.UnitStat `json:"perUnit,omitempty"`
 }
 
 // Run is one recorded execution: a schedule fire or a manual start.
@@ -356,6 +370,7 @@ func (h *RunHistory) UpdateSession(runID, sessionID string, up SessionRun) *Run 
 		e.Success = up.Success
 		e.Errors = up.Errors
 		e.Reason = up.Reason
+		e.Emul = up.Emul
 		break
 	}
 	return h.maybeFinishLocked(r)

@@ -12,6 +12,15 @@ const DefaultUISettingsFile = "fb-loadgen.ui.json"
 const UISettingsVersion = 2
 
 // SessionPrefs is persisted per-database run configuration keyed by AbsPath.
+// EmulSessionRef persists a session registered outside the discover root
+// (typically by an emul provision job) so it survives UI restarts.
+type EmulSessionRef struct {
+	AbsPath string `json:"absPath"`
+	DSN     string `json:"dsn"`
+	User    string `json:"user"`
+	Pass    string `json:"pass"`
+}
+
 type SessionPrefs struct {
 	Profile     string `json:"profile"`
 	ConnMin     int    `json:"connMin"`
@@ -27,16 +36,17 @@ type SessionPrefs struct {
 
 // UISettings is the persisted Firebird/UI connection configuration.
 type UISettings struct {
-	Version           int                      `json:"version"`
-	Host              string                   `json:"host"`
-	Port              int                      `json:"port"`
-	User              string                   `json:"user"`
-	Pass              string                   `json:"pass"`
-	DiscoverDir       string                   `json:"discoverDir"`
-	DiscoverMask      string                   `json:"discoverMask"`
-	DiscoverRecursive bool                     `json:"discoverRecursive"`
-	MaxTotalConns     int                      `json:"maxTotalConns"`
-	Sessions          map[string]SessionPrefs  `json:"sessions,omitempty"`
+	Version           int                     `json:"version"`
+	Host              string                  `json:"host"`
+	Port              int                     `json:"port"`
+	User              string                  `json:"user"`
+	Pass              string                  `json:"pass"`
+	DiscoverDir       string                  `json:"discoverDir"`
+	DiscoverMask      string                  `json:"discoverMask"`
+	DiscoverRecursive bool                    `json:"discoverRecursive"`
+	MaxTotalConns     int                     `json:"maxTotalConns"`
+	Sessions          map[string]SessionPrefs `json:"sessions,omitempty"`
+	EmulSessions      []EmulSessionRef        `json:"emulSessions,omitempty"`
 }
 
 // DefaultUISettings returns built-in defaults (port 3050).
