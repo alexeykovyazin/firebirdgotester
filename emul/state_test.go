@@ -33,7 +33,8 @@ func TestRunSidecarsStopsOnCancel(t *testing.T) {
 // (the series ticker alone runs).
 func TestRunSidecarsNilDbOnlyTicker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	counts := func() (int64, int64, string) { return 7, 9, "warmup" }
+	// phase "main" — only main-phase units are scored (upstream semantics)
+	counts := func() (int64, int64, string) { return 7, 9, "main" }
 	state := RunSidecars(ctx, nil, 0, 0, 20*time.Millisecond, counts, nil)
 	time.Sleep(70 * time.Millisecond)
 	cancel()
