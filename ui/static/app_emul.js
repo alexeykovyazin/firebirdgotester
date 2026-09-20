@@ -324,9 +324,11 @@ function emulRenderState(d, sess) {
     body.appendChild(tr);
   }
 
-  // final report panel: only meaningful once the session reached a terminal state
+  // final report panel: whenever a finished (or manually stopped) run has
+  // frozen emul data — the data is valid regardless of how the run ended
   const fin = document.getElementById("emulFinal");
-  if (sess && (sess.status === "Completed" || sess.status === "Failed") && sess.emul) {
+  const running = sess && (sess.status === "Running" || sess.status === "Starting" || sess.status === "Paused");
+  if (sess && sess.emul && !running) {
     const e = sess.emul;
     const okPct = e.totalUnits ? ((100 * e.okUnits) / e.totalUnits).toFixed(1) : "0";
     fin.innerHTML =
@@ -334,7 +336,7 @@ function emulRenderState(d, sess) {
       `peaks db=${Math.round(e.memPeaks.dbBytes / (1 << 20))}MB att=${Math.round(e.memPeaks.attBytes / (1 << 20))}MB · ` +
       `invariants ${e.invariant || "—"} · working mode ${e.workingMode || "?"}` +
       (sess.reportDir ? ` · reports: <a href="/api/sessions/${sess.id}/report">${sess.reportDir}</a>` : "");
-  } else if (sess && sess.status === "Running") {
+  } else if (running) {
     fin.textContent = "— run in progress —";
   }
 }

@@ -1051,6 +1051,9 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 		entry := runEntryFromSnap(snap, string(StatusCompleted))
 		reserved := s.reserved
 		s.reserved = 0
+		s.freezeEmulLocked()
+		frozen := s.emulFrozen
+		emulCfg := s.Config
 		if s.scheduler == sched {
 			s.mu.Unlock()
 			_ = sched.Stop()
@@ -1059,6 +1062,7 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 		s.Status = StatusCompleted
 		s.cleanupLocked(true)
 		s.mu.Unlock()
+		writeEmulReportFile(filepath.Dir(baseName), frozen, emulCfg)
 		m.releaseBudget(reserved)
 		m.recordFinishEntry(s, entry)
 		s.mu.Lock()
@@ -1171,10 +1175,9 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	// freeze the final per-unit table while the collector is still alive
 	// (cleanupLocked nils s.metrics further down and stops the sidecars).
 	s.mu.Lock()
-	if s.emulState != nil && s.metrics != nil {
-		frozen := s.emulState.JSON(s.metrics.GetUnitStats(), s.emulUnits)
-		s.emulFrozen = &frozen
-	}
+	s.freezeEmulLocked()
+	frozen := s.emulFrozen
+	emulCfg := s.Config
 	s.mu.Unlock()
 	if reporter != nil {
 		if reportDir != "" {
@@ -1192,9 +1195,10 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	// capture the report inputs under the lock; the file write itself runs
 	// unlocked (I/O under s.mu invites deadlocks)
 	s.mu.Lock()
-	emulState, emulUnits, emulCfg := s.emulState, s.emulUnits, s.Config
+	frozen = s.emulFrozen
+	emulCfg = s.Config
 	s.mu.Unlock()
-	writeEmulReportFile(reportDir, emulState, emulUnits, emulCfg)
+	writeEmulReportFile(reportDir, frozen, emulCfg)
 
 	m.releaseBudget(reserved)
 

@@ -57,6 +57,12 @@ type EmulState struct {
 	totalUnits  int64
 	phase       string
 
+	// main-phase accumulation: the published score counts only successful
+	// actions during the measurement phase (warmup grows the database,
+	// cooldown drains it — neither is scored), mirroring upstream oltp-emul.
+	mainSecs float64
+	mainOK   int64
+
 	invariant   string
 	invariantAt time.Time
 
@@ -107,6 +113,35 @@ func (s *EmulState) setCounts(ok, total int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.okUnits, s.totalUnits = ok, total
+}
+
+// accumulateMain adds one interval to the measurement-phase totals. Only
+// main-phase intervals are scored (matches upstream oltp-emul semantics).
+func (s *EmulState) accumulateMain(phase string, dOK int64, dt float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if phase != "main" || dt <= 0 {
+		return
+	}
+	s.mainSecs += dt
+	s.mainOK += dOK
+}
+
+// mainScorePerMin returns the measurement-phase score: successful units
+// per minute averaged over main-phase time. Zero during warmup.
+func (s *EmulState) mainScorePerMin() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mainScorePerMinLocked()
+}
+
+// mainScorePerMinLocked is the lock-free core; callers either hold s.mu or
+// are the ticker (single writer).
+func (s *EmulState) mainScorePerMinLocked() float64 {
+	if s.mainSecs <= 0 {
+		return 0
+	}
+	return float64(s.mainOK) / s.mainSecs * 60
 }
 
 // SetInvariant records the latest invariant check result.
@@ -220,6 +255,7 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 					if dt <= 0 {
 						dt = float64(seriesEvery) / float64(time.Second)
 					}
+					state.accumulateMain(phase, dOK, dt)
 					var dbBytes int64
 					state.mu.Lock()
 					if n := len(state.memSamples); n > 0 {
@@ -228,7 +264,7 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 					state.mu.Unlock()
 					state.observeSeries(SeriesPoint{
 						TS:          now,
-						ScorePerMin: float64(dOK) / dt * 60,
+						ScorePerMin: state.mainScorePerMin(),
 						TPS:         float64(dTotal) / dt,
 						DBBytes:     dbBytes,
 						Phase:       phase,
@@ -296,7 +332,7 @@ func (s *EmulState) JSON(perUnitAgg map[string]OutcomeStats, registry []Unit) Em
 	defer s.mu.Unlock()
 
 	out := EmulStateJSON{
-		ScorePerMin: s.scorePerMin,
+		ScorePerMin: s.mainScorePerMinLocked(),
 		OKUnits:     s.okUnits,
 		TotalUnits:  s.totalUnits,
 		Phase:       s.phase,
@@ -347,7 +383,7 @@ func (s *EmulState) JSON(perUnitAgg map[string]OutcomeStats, registry []Unit) Em
 func (s *EmulState) Final() (scorePerMin float64, ok, total int64, peaks Sample, invariant, workingMode string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.scorePerMin, s.okUnits, s.totalUnits, s.memPeaks, s.invariant, s.workingMode
+	return s.mainScorePerMinLocked(), s.okUnits, s.totalUnits, s.memPeaks, s.invariant, s.workingMode
 }
 
 // Wait blocks until all sidecar goroutines launched by RunSidecars have

@@ -47,19 +47,15 @@ func (m *Manager) RegisterDatabase(absPath, user, pass string) (Snapshot, error)
 	sc := DefaultsFromCLI(m.shared, info, host, port)
 	sc.User = user
 	sc.Pass = pass
-	// re-apply saved per-session preferences (profile, phases, ...) so a
-	// restored out-of-root session keeps its oltp-emul configuration
-	prefsProfile := ""
+	// re-apply saved per-session preferences (phases, connections, ...) but
+	// NOT the profile: an emul-registered database runs oltp-emul, period —
+	// the schema guard rejects anything else, and a stale write-heavy pref
+	// (saved before the database was provisioned) would brick every start
 	if len(saved.Sessions) > 0 {
 		if p, ok := saved.Sessions[abs]; ok {
+			p.Profile = "oltp-emul"
 			ApplyPrefs(&sc, p)
-			prefsProfile = p.Profile
 		}
-	}
-	// a database registered through the emul provision job is an oltpemul
-	// database by definition; default its profile accordingly
-	if prefsProfile == "" {
-		sc.Profile = "oltp-emul"
 	}
 	sess := &Session{ID: IDFromAbsPath(abs), Config: sc, Status: StatusIdle}
 	m.sessions[abs] = sess

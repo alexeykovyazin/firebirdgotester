@@ -24,6 +24,7 @@ import (
 // checks, score/series ticker) for a running oltp-emul session, on their own
 // dedicated pool bound to a context cancelled when the run stops.
 func launchEmulSidecars(s *Session, runCfg *config.Config, wMetrics *worker.MetricsCollector, sched phaseSource) {
+	s.emulFrozen = nil // a new run supersedes the previous run's frozen report
 	emulCtx, emulCancel := context.WithCancel(context.Background())
 	pool := emulSidecarPool(runCfg)
 	counts := func() (int64, int64, string) {
@@ -47,15 +48,29 @@ type phaseSource interface {
 	GetCurrentPhase() ramp.Phase
 }
 
-// writeEmulReportFile freezes the final oltp-emul state into the run's
-// report directory (results_emul.txt), next to the standard results*.txt
-// files. Callers capture the inputs under the session lock and invoke this
-// unlocked — file I/O under s.mu invites deadlocks.
-func writeEmulReportFile(reportDir string, state *emul.EmulState, units []emul.Unit, sc SessionConfig) {
-	if state == nil || reportDir == "" {
+// freezeEmulLocked captures the final per-unit table into s.emulFrozen while
+// the metrics collector is still alive; the first freeze wins (later calls
+// are no-ops), so a natural completion and a following Stop share one table.
+func (s *Session) freezeEmulLocked() {
+	if s.emulState == nil || s.emulFrozen != nil {
 		return
 	}
-	st := state.JSON(nil, units)
+	var agg map[string]emul.OutcomeStats
+	if s.metrics != nil {
+		agg = s.metrics.GetUnitStats()
+	}
+	st := s.emulState.JSON(agg, s.emulUnits)
+	s.emulFrozen = &st
+}
+
+// writeEmulReportFile writes the frozen final oltp-emul state into the run's
+// report directory (results_emul.txt), next to the standard results*.txt
+// files. Callers capture the frozen view under the session lock and invoke
+// this unlocked — file I/O under s.mu invites deadlocks.
+func writeEmulReportFile(reportDir string, st *emul.EmulStateJSON, sc SessionConfig) {
+	if st == nil || reportDir == "" {
+		return
+	}
 	pct := 0.0
 	if st.TotalUnits > 0 {
 		pct = 100 * float64(st.OKUnits) / float64(st.TotalUnits)

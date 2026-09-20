@@ -35,3 +35,4 @@ presentation/*.pdf
 
 # local credentials/notes - never commit
 LinuxTextRCM.txt
+ui.log
