@@ -715,3 +715,14 @@ firebirdtest.com) switch it off — `--extended-load=false` on the CLI or the
 "enabled" checkbox in the UI panel; `--tx-variants off` alone keeps the
 periodic sidecars off as well. See `EXTENDED_LOAD_PLAN.md` for the full
 design, the fb_repl_print log format spec (§7) and the verified-facts table.
+
+**Known interaction — retaining holds locks (verified live):** COMMIT/ROLLBACK
+RETAINING keeps the transaction's lock interest after the commit, so retained
+contexts hold row locks on the documents they touched. With the default
+completion weights (~15% retaining) the emul units see a wave of immediate
+update conflicts ("record from transaction ... is not visible / no wait") —
+this is the intended load character and exactly what the completion axis is
+meant to expose, but it depresses the emul score far more than the periodic
+sidecars do. Limbo and hard-drop completions kill sockets on purpose; workers
+rebuild their pools in place and continue (watch `[extended] limbo resolved`
+and `[] RESOLVED` records in the ops log).

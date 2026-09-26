@@ -254,10 +254,23 @@ func (e *ExtendedLoad) ApplyCLIDefaults() {
 	if e.BulkDml == (BulkDml{}) {
 		e.BulkDml = def.BulkDml
 	}
-	if e.TxVariants.Mode == "" && len(e.TxVariants.LockTimeoutChoicesSec) == 0 &&
-		e.TxVariants.Completion.Total() == 0 && e.TxVariants.RetainingChainMax == 0 &&
-		e.TxVariants.RareCompletionMinGapSec == 0 && e.TxVariants.TwoPhaseAuxDB == "" {
-		e.TxVariants = def.TxVariants
+	if e.TxVariants.Mode != "" {
+		// CLI flags set individual TxVariants leaves (--tx-variants, ...):
+		// fill the remaining leaves field-wise, or a single flag like
+		// --tx-variants would zero the completion weights and the picker
+		// would draw plain commits only.
+		if len(e.TxVariants.LockTimeoutChoicesSec) == 0 {
+			e.TxVariants.LockTimeoutChoicesSec = def.TxVariants.LockTimeoutChoicesSec
+		}
+		if e.TxVariants.Completion.Total() == 0 {
+			e.TxVariants.Completion = def.TxVariants.Completion
+		}
+		if e.TxVariants.RetainingChainMax == 0 {
+			e.TxVariants.RetainingChainMax = def.TxVariants.RetainingChainMax
+		}
+		if e.TxVariants.RareCompletionMinGapSec == 0 {
+			e.TxVariants.RareCompletionMinGapSec = def.TxVariants.RareCompletionMinGapSec
+		}
 	}
 	if e.PlusDDL.EverySec == 0 && e.PlusDDL.ColPrefix == "" && len(e.PlusDDL.WorkTables) == 0 &&
 		e.PlusDDL.TestInsertRows == 0 && e.PlusDDL.TestUpdateRows == 0 && e.PlusDDL.TestDeleteRows == 0 &&
