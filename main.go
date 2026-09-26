@@ -218,6 +218,37 @@ func normalizeUIAddr(addr string) string {
 // startEmulSidecars runs the shared emul.RunSidecars helper for CLI runs:
 // memory monitor, invariant checks, and the score/series ticker, all bound
 // to the run context. Returns the live state for the end-of-run summary.
+// printExtendedSummary writes the extended-load counters and the transaction
+// variant / completion-method tables to the console.
+func printExtendedSummary(wm *worker.MetricsCollector) {
+	if ext := emul.Extended().SnapshotJSON(); ext != nil {
+		fmt.Printf("[extended] heavy rounds=%d (fail: %d), bulk ins/upd/del=%d/%d/%d rows=%d (fail: %d), ddl cols +/~/-=%d/%d/%d tables=%d/%d, limbo resolved=%d\n",
+			ext.HeavyRounds, ext.HeavyFailures,
+			ext.BulkInserts, ext.BulkUpdates, ext.BulkDeletes, ext.BulkRows, ext.BulkFailures,
+			ext.ColumnsAdded, ext.ColumnsAltered, ext.ColumnsDropped,
+			ext.TablesCreated, ext.TablesDropped,
+			ext.LimboResolved)
+	}
+	for name, agg := range wm.GetVariantCounts() {
+		fmt.Printf("[variants] %-46s attempts=%d ok=%d\n", name, agg.Attempts, agg.OK)
+	}
+	for name, agg := range wm.GetCompletionCounts() {
+		fmt.Printf("[completions] %-42s attempts=%d ok=%d\n", name, agg.Attempts, agg.OK)
+	}
+}
+
+// nilPause is a pause gate that never pauses (CLI mode).
+type nilPause struct{}
+
+func (nilPause) WaitIfPaused(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return false
+	default:
+		return true
+	}
+}
+
 func startEmulSidecars(ctx context.Context, cfg *config.Config, sched *ramp.Scheduler, wm *worker.MetricsCollector, emulDB *sql.DB) *emul.EmulState {
 	counts := func() (int64, int64, string) {
 		ok, failed := wm.Counters()
@@ -230,6 +261,23 @@ func startEmulSidecars(ctx context.Context, cfg *config.Config, sched *ramp.Sche
 		counts,
 		func(format string, args ...any) { fmt.Printf(format+"\n", args...) })
 
+	// Extended load mix: limbo recovery, heavy SELECT and bulk DML sidecars.
+	// The aux schema bootstrap already ran before SchemaGuard (see above).
+	// The pause gate stays nil here (CLI has no pause).
+	if cfg.ExtendedLoad.Enabled {
+		el := cfg.ExtendedLoad
+		el.Normalize()
+		if el.TxVariants.Completion.Limbo > 0 {
+			emul.StartLimboRecovery(ctx, cfg, wm.OpsLog(), emul.Extended())
+		}
+		if el.HeavySelect.EverySec > 0 || el.BulkDml.EverySec > 0 {
+			emul.RunExtendedSidecars(ctx, emulDB, cfg, wm.OpsLog(), emul.Extended(), nilPause{})
+		}
+		if el.PlusDDL.Enabled {
+			emul.StartDDLSidecar(ctx, emulDB, cfg, wm.OpsLog(), emul.Extended(), nilPause{})
+		}
+	}
+
 	go func() {
 		<-ctx.Done()
 		score, ok, total, peaks, invariant, wm2 := state.Final()
@@ -237,6 +285,7 @@ func startEmulSidecars(ctx context.Context, cfg *config.Config, sched *ramp.Sche
 			score, ok, total, invariant, wm2)
 		fmt.Printf("[emul] memory peaks: db=%dMB att=%dMB trn=%dMB stmt=%dMB\n",
 			peaks.DBBytes/(1<<20), peaks.AttBytes/(1<<20), peaks.TrnBytes/(1<<20), peaks.StmtBytes/(1<<20))
+		printExtendedSummary(wm)
 	}()
 	return state
 }
@@ -258,6 +307,21 @@ func runCLI(cfg *config.Config) {
 				log.Fatalf("Failed to connect to oltpemul database: %v", err)
 			}
 			defer emulDB.Close()
+			// Extended load mix aux schema FIRST — before SchemaGuard opens
+			// retained transactions whose metadata interest would conflict
+			// with our DDL — and on a dedicated connection.
+			if cfg.ExtendedLoad.Enabled {
+				bootConn, berr := db.NewConnectionFactory(cfg).Open()
+				if berr == nil {
+					_, berr = emul.BootstrapExtendedSchema(context.Background(), bootConn, cfg)
+					_ = bootConn.Close()
+				}
+				if berr != nil {
+					log.Printf("extended load: aux schema bootstrap failed (heavy/bulk/two-phase stay off): %v", berr)
+					cfg.ExtendedLoad.HeavySelect.EverySec = 0
+					cfg.ExtendedLoad.BulkDml.EverySec = 0
+				}
+			}
 			if err := emul.SchemaGuard(ctx, emulDB); err != nil {
 				log.Fatalf("%v", err)
 			}

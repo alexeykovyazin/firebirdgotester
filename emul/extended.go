@@ -37,9 +37,35 @@ type ExtendedCounters struct {
 	AutonViolations atomic.Int64
 }
 
+// sequenceExists queries rdb$generators (creation is skipped when the object
+// is already there: a duplicate CREATE waits on metadata locks held by active
+// attachments of the running load, which would stall the bootstrap).
+func sequenceExists(ctx context.Context, db *sql.DB, name string) bool {
+	return objectExists(ctx, db, "rdb$generators", "rdb$generator_name", name)
+}
+
+func objectExists(ctx context.Context, db *sql.DB, table, column, name string) bool {
+	var n int
+	// system-table name columns are CHAR(31): TRIM before comparing, or the
+	// padded value never matches and the CREATE below re-runs needlessly
+	// (and self-conflicts with this connection's own retained autocommit tx)
+	err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM `+table+` WHERE UPPER(TRIM(`+column+`)) = UPPER(?)`, name).Scan(&n)
+	return err == nil && n > 0
+}
+
 // isAlreadyExists recognizes Firebird's "object already exists" errors.
 func isAlreadyExists(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already exists")
+}
+
+// isNotFound recognizes "object not found" style errors.
+func isNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "not found") || strings.Contains(m, "does not exist")
 }
 
 // auxObjectName guards the aux tables against concurrent bootstrap runs.
@@ -59,12 +85,26 @@ const (
 func BootstrapExtendedSchema(ctx context.Context, mainDB *sql.DB, cfg *config.Config) (auxDBPath string, err error) {
 	el := cfg.ExtendedLoad
 	el.Normalize()
+	// A lingering attachment from a previous killed run can hold metadata
+	// locks; bound the whole bootstrap so the run start fails fast instead
+	// of hanging (the extended sidecars then stay off).
+	bctx, bcancel := context.WithTimeout(ctx, 45*time.Second)
+	defer bcancel()
+	ctx = bctx
 
-	if _, err = mainDB.ExecContext(ctx, `CREATE SEQUENCE EL_BULK_SEQ`); err != nil && !isAlreadyExists(err) {
-		return "", fmt.Errorf("extended bootstrap (bulk seq): %w", err)
+	if !sequenceExists(ctx, mainDB, "EL_BULK_SEQ") {
+		if _, err = mainDB.ExecContext(ctx, `CREATE SEQUENCE EL_BULK_SEQ`); err != nil && !isAlreadyExists(err) {
+			return "", fmt.Errorf("extended bootstrap (bulk seq): %w", err)
+		}
 	}
-	if _, err = mainDB.ExecContext(ctx, `CREATE EXCEPTION EX_ELT_TEST 'plusddl test exception'`); err != nil && !isAlreadyExists(err) {
-		return "", fmt.Errorf("extended bootstrap (exception): %w", err)
+	if !objectExists(ctx, mainDB, "rdb$exceptions", "rdb$exception_name", "EX_ELT_TEST") {
+		if _, err = mainDB.ExecContext(ctx, `CREATE EXCEPTION EX_ELT_TEST 'plusddl test exception'`); err != nil && !isAlreadyExists(err) {
+			return "", fmt.Errorf("extended bootstrap (exception): %w", err)
+		}
+	}
+	// the autonomous SP depends on EL_AUTON_LOG: drop it before RECREATE
+	if _, err = mainDB.ExecContext(ctx, `DROP PROCEDURE ` + elAutonSP); err != nil && !isNotFound(err) {
+		return "", fmt.Errorf("extended bootstrap (drop sp): %w", err)
 	}
 
 	stmts := []string{
@@ -109,23 +149,27 @@ func auxDriverDSN(cfg *config.Config) string {
 	if dbPath == "" {
 		return ""
 	}
-	at := strings.LastIndex(cfg.DSN, "@")
-	if at < 0 {
+	addr := dsnAddr(cfg.DSN)
+	if addr == "" {
 		return ""
 	}
 	dir := dbPath[:strings.LastIndex(dbPath, "/")+1]
-	auxPath := dir + strings.ToLower(elAuxDBName)
-	return cfg.DSN[:at+1] + auxPath
+	// keep the leading "/" so the DSN shape matches the main database's
+	return cfg.User + ":" + cfg.Pass + "@" + addr + "/" + dir + strings.ToLower(elAuxDBName)
 }
 
 // createAuxDatabase creates the aux database through the driver's createdb
-// path and makes sure the 2PC log table exists (idempotent).
+// path and makes sure the 2PC log table exists (idempotent). Every step is
+// bounded: a metadata lock from a lingering attachment must fail fast, not
+// hang the run start.
 func createAuxDatabase(ctx context.Context, dsn string) error {
+	bctx, bcancel := context.WithTimeout(ctx, 15*time.Second)
+	defer bcancel()
 	db, err := sql.Open("firebirdsql_createdb", dsn)
 	if err != nil {
 		return err
 	}
-	_, execErr := db.ExecContext(ctx, "select * from rdb$database")
+	_, execErr := db.ExecContext(bctx, "select * from rdb$database")
 	db.Close()
 	if execErr != nil && !strings.Contains(execErr.Error(), "exists") {
 		return execErr
@@ -135,8 +179,8 @@ func createAuxDatabase(ctx context.Context, dsn string) error {
 		return err
 	}
 	defer db.Close()
-	qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	qctx, qcancel := context.WithTimeout(ctx, 10*time.Second)
+	defer qcancel()
 	if _, err = db.ExecContext(qctx, `RECREATE TABLE `+el2pcLog+` (STAMP TIMESTAMP, NOTE VARCHAR(60))`); err != nil {
 		return err
 	}
@@ -151,8 +195,10 @@ BEGIN
 	IN AUTONOMOUS TRANSACTION DO
 		INSERT INTO ` + elAutonTable + ` (ID, NOTE, STAMP) VALUES (NEXT VALUE FOR EL_AUTON_SEQ, :NOTE, CURRENT_TIMESTAMP);
 END`
-	if _, err := db.ExecContext(ctx, `CREATE SEQUENCE EL_AUTON_SEQ`); err != nil && !isAlreadyExists(err) {
-		return fmt.Errorf("extended bootstrap (sequence): %w", err)
+	if !sequenceExists(ctx, db, "EL_AUTON_SEQ") {
+		if _, err := db.ExecContext(ctx, `CREATE SEQUENCE EL_AUTON_SEQ`); err != nil && !isAlreadyExists(err) {
+			return fmt.Errorf("extended bootstrap (sequence): %w", err)
+		}
 	}
 	if _, err := db.ExecContext(ctx, q); err != nil {
 		return fmt.Errorf("extended bootstrap (autonomous sp): %w", err)
