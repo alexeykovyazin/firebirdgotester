@@ -194,7 +194,7 @@ function emulExtendedPayload() {
     txVariants: {
       mode: document.getElementById("extLdTxMode").value,
       lockTimeoutChoicesSec: [1, 3, 5, 10],
-      completion: { commit: 55, rollback: 15, commitRetaining: 10, rollbackRetaining: 5, twoPhase: 5, limbo: 2, connDrop: 2 },
+      completion: { commit: 60, rollback: 15, commitRetaining: 7, rollbackRetaining: 3, twoPhase: 5, limbo: 2, connDrop: 2 },
       rareCompletionMinGapSec: 10,
       retainingChainMax: 50,
       savepointProb: 0.15,

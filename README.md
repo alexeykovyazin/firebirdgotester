@@ -719,7 +719,8 @@ design, the fb_repl_print log format spec (§7) and the verified-facts table.
 **Known interaction — retaining holds locks (verified live):** COMMIT/ROLLBACK
 RETAINING keeps the transaction's lock interest after the commit, so retained
 contexts hold row locks on the documents they touched. With the default
-completion weights (~15% retaining) the emul units see a wave of immediate
+completion weights (10% retaining: 7% commit + 3% rollback retaining) the emul
+units see a wave of immediate
 update conflicts ("record from transaction ... is not visible / no wait") —
 this is the intended load character and exactly what the completion axis is
 meant to expose, but it depresses the emul score far more than the periodic

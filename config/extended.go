@@ -103,7 +103,7 @@ func DefaultExtendedLoad() ExtendedLoad {
 		TxVariants: TxVariants{
 			Mode:                    "emul-safe",
 			LockTimeoutChoicesSec:   []int{1, 3, 5, 10},
-			Completion:              CompletionWeights{Commit: 55, Rollback: 15, CommitRetaining: 10, RollbackRetaining: 5, TwoPhase: 5, Limbo: 2, ConnDrop: 2},
+			Completion:              CompletionWeights{Commit: 60, Rollback: 15, CommitRetaining: 7, RollbackRetaining: 3, TwoPhase: 5, Limbo: 2, ConnDrop: 2},
 			RareCompletionMinGapSec: 10,
 			RetainingChainMax:       50,
 			SavepointProb:           0.15,
