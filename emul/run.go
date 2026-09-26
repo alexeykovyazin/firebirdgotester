@@ -228,7 +228,8 @@ func classifyUnitError(err error) Outcome {
 	}
 	low := strings.ToLower(err.Error())
 	if strings.Contains(low, "deadlock") || strings.Contains(low, "update conflict") ||
-		strings.Contains(low, "lock conflict") || strings.Contains(low, "lock time-out") {
+		strings.Contains(low, "lock conflict") || strings.Contains(low, "lock time-out") ||
+		strings.Contains(low, "stuck in limbo") {
 		return OutcomeConflict
 	}
 	if strings.Contains(low, "ex_") {
