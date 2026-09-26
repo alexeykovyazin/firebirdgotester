@@ -40,6 +40,36 @@ func launchEmulSidecars(s *Session, runCfg *config.Config, wMetrics *worker.Metr
 	s.emulState.SetWorkingMode(runCfg.EmulWorkingMode)
 	s.emulCancel = emulCancel
 	s.emulPool = pool // emulStopLocked closes it
+
+	// Extended load mix (T9): the limbo recovery sidecar resolves limbo
+	// transactions left by the prepare-then-die completion variant. The aux
+	// schema bootstrap runs earlier, before the workers start (see
+	// startInternal), because the scenario picker reads its config once.
+	if runCfg.ExtendedLoad.Enabled && runCfg.ExtendedLoad.TxVariants.Completion.Limbo > 0 {
+		emul.StartLimboRecovery(emulCtx, runCfg, wMetrics.OpsLog(), emul.Extended())
+	}
+}
+
+// bootstrapExtended prepares the extended load mix before the workers start:
+// aux schema (EL_BULK_ITEMS, autonomous-tx assets, EL_2PC.FDB) and the
+// twoPhase enablement. Runs on a throwaway pool; the pool pinning one
+// connection per worker is irrelevant here.
+func bootstrapExtended(cfgCopy *config.Config) {
+	if !cfgCopy.ExtendedLoad.Enabled {
+		return
+	}
+	el := cfgCopy.ExtendedLoad
+	el.Normalize()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	pool := emulSidecarPool(cfgCopy)
+	defer pool.Close()
+	aux, berr := emul.BootstrapExtendedSchema(ctx, pool, cfgCopy)
+	if berr != nil {
+		logf("extended load: aux schema bootstrap failed (heavy/bulk/two-phase stay off): %v", berr)
+		return
+	}
+	cfgCopy.ExtendedLoad.TxVariants.TwoPhaseAuxDB = aux
 }
 
 // phaseSource is what the sidecars read the current ramp phase from
