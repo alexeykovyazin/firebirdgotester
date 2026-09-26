@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"fb-loadgen/opslog"
 )
 
 const defaultReportRetention = 10
@@ -108,4 +110,53 @@ func (m *Manager) ResolveReportFile(id, name string) (string, error) {
 		return "", err
 	}
 	return absFile, nil
+}
+
+// LogFileInfo describes one file of the ops.log chain.
+type LogFileInfo struct {
+	Name  string `json:"name"`
+	Size  int64  `json:"size"`
+	Mtime string `json:"mtime"`
+}
+
+// ListLogs returns the ops.log chain (archives newest-first, live last) for
+// the session's current or last report directory.
+func (m *Manager) ListLogs(id string) (dir string, files []LogFileInfo, err error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return "", nil, err
+	}
+	s.mu.Lock()
+	dir = s.reportDir
+	if dir == "" {
+		dir = s.lastReportDir
+	}
+	s.mu.Unlock()
+	if dir == "" {
+		return "", nil, fmt.Errorf("no logs for session")
+	}
+	for _, p := range opslog.ChainFiles(filepath.Join(dir, "ops.log"), 3) {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		files = append(files, LogFileInfo{
+			Name:  filepath.Base(p),
+			Size:  fi.Size(),
+			Mtime: fi.ModTime().Format(time.RFC3339),
+		})
+	}
+	if len(files) == 0 {
+		return dir, nil, fmt.Errorf("no ops log files")
+	}
+	return dir, files, nil
+}
+
+// ResolveLogFile resolves a name within the ops.log chain (jail: same report
+// dir, ops*.log names only).
+func (m *Manager) ResolveLogFile(id, name string) (string, error) {
+	if !strings.HasPrefix(name, "ops") || !strings.HasSuffix(name, ".log") {
+		return "", fmt.Errorf("invalid log filename")
+	}
+	return m.ResolveReportFile(id, name)
 }

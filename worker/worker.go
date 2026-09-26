@@ -15,6 +15,7 @@ import (
 	"fb-loadgen/emul"
 	"fb-loadgen/errlog"
 	"fb-loadgen/ops"
+	"fb-loadgen/opslog"
 	"fb-loadgen/profile"
 )
 
@@ -445,6 +446,7 @@ type MetricsCollector struct {
 
 	errorStats *ops.ErrorStats
 	errorLog   *errlog.Logger
+	opsLog     *opslog.Logger
 
 	mu              sync.RWMutex
 	startTime       time.Time
@@ -526,6 +528,20 @@ func (mc *MetricsCollector) LogSQLError(workerID int, op, kind string, err error
 		Kind:     kind,
 		Err:      err,
 	})
+}
+
+// SetOpsLog attaches the operations/transactions log for this session.
+func (mc *MetricsCollector) SetOpsLog(l *opslog.Logger) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	mc.opsLog = l
+}
+
+// OpsLog returns the attached operations log, if any.
+func (mc *MetricsCollector) OpsLog() *opslog.Logger {
+	mc.mu.RLock()
+	defer mc.mu.RUnlock()
+	return mc.opsLog
 }
 
 // SetConnectionCount sets the current connection count (absolute, not a delta).

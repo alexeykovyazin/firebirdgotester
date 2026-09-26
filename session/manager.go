@@ -19,6 +19,7 @@ import (
 	"fb-loadgen/errlog"
 	"fb-loadgen/metrics"
 	"fb-loadgen/ops"
+	"fb-loadgen/opslog"
 	"fb-loadgen/profile"
 	"fb-loadgen/ramp"
 	"fb-loadgen/worker"
@@ -73,6 +74,7 @@ type Session struct {
 	sysMetrics *metrics.MetricsCollector
 	reporter   *metrics.Reporter
 	errorLog   *errlog.Logger
+	opsLog     *opslog.Logger
 
 	runCfg        *config.Config
 	reportDir     string
@@ -907,6 +909,28 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 	}
 	wMetrics.SetErrorLogger(sqlErrLog)
 
+	// Extended load mix: operations/transactions log in fb_repl_print format
+	// next to sql_errors.log, with size rotation and restart rename.
+	var opsLogger *opslog.Logger
+	if cfgCopy.ExtendedLoad.OpsLog.Enabled {
+		el := cfgCopy.ExtendedLoad
+		el.Normalize()
+		opsLogger, logErr = opslog.Open(filepath.Join(reportDir, "ops.log"), opslog.Options{
+			Format:        opslog.Format(el.OpsLog.Format),
+			Level:         opslog.Level(el.OpsLog.Level),
+			MaxSizeMB:     el.OpsLog.MaxSizeMB,
+			KeepArchives:  el.OpsLog.KeepArchives,
+			RotateOnStart: el.OpsLog.RotateOnStart,
+			RunID:         runID,
+			DumpRecords:   el.OpsLog.DumpRecords,
+		})
+		if logErr != nil {
+			_ = sqlErrLog.Close()
+			return fail(fmt.Errorf("ops log: %w", logErr))
+		}
+		wMetrics.SetOpsLog(opsLogger)
+	}
+
 	sched := ramp.NewSchedulerWithPause(runCfg, factory, cache, prof, wMetrics, pause)
 
 	sysMetrics := metrics.NewMetricsCollector(sched, prof, cache, wMetrics)
@@ -953,6 +977,7 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 	s.sysMetrics = sysMetrics
 	s.reporter = reporter
 	s.errorLog = sqlErrLog
+	s.opsLog = opsLogger
 	if s.emulUnits != nil {
 		// oltp-emul: launch the shared sidecars (memory monitor, invariant
 		// checks, score/series ticker) on their own pool, bound to a context
@@ -1001,7 +1026,9 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 	reporter := s.reporter
 	sysMetrics := s.sysMetrics
 	errorLog := s.errorLog
+	opsLogger := s.opsLog
 	s.errorLog = nil
+	s.opsLog = nil
 	s.mu.Unlock()
 	if sched == nil {
 		return
@@ -1021,6 +1048,9 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 	if errorLog != nil {
 		errorLog.Flush()
 		_ = errorLog.Close()
+	}
+	if opsLogger != nil {
+		_ = opsLogger.Close() // runs the START/terminal pairing check
 	}
 
 	s.mu.Lock()
@@ -1163,10 +1193,12 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	reporter := s.reporter
 	sysMetrics := s.sysMetrics
 	errorLog := s.errorLog
+	opsLogger := s.opsLog
 	reportDir := s.reportDir
 	reserved := s.reserved
 	s.reserved = 0
 	s.errorLog = nil
+	s.opsLog = nil
 	s.mu.Unlock()
 
 	if sched != nil {
@@ -1191,6 +1223,9 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	if errorLog != nil {
 		errorLog.Flush()
 		_ = errorLog.Close()
+	}
+	if opsLogger != nil {
+		_ = opsLogger.Close()
 	}
 	// capture the report inputs under the lock; the file write itself runs
 	// unlocked (I/O under s.mu invites deadlocks)

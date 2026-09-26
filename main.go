@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"fb-loadgen/errlog"
 	"fb-loadgen/metrics"
 	"fb-loadgen/ops"
+	"fb-loadgen/opslog"
 	"fb-loadgen/profile"
 	"fb-loadgen/ramp"
 	"fb-loadgen/schedule"
@@ -301,6 +304,29 @@ func runCLI(cfg *config.Config) {
 		workerMetrics.SetErrorLogger(sqlErrLog)
 		defer sqlErrLog.Close()
 		fmt.Printf("SQL/command errors → %s\n", sqlErrLog.Path())
+	}
+
+	// Extended load mix: ops log beside the CSV (fb_repl_print format).
+	if cfg.ExtendedLoad.OpsLog.Enabled {
+		el := cfg.ExtendedLoad
+		el.Normalize()
+		opsPath := strings.TrimSuffix(cfg.CSV, filepath.Ext(cfg.CSV)) + "_ops.log"
+		opsLogger, opsErr := opslog.Open(opsPath, opslog.Options{
+			Format:        opslog.Format(el.OpsLog.Format),
+			Level:         opslog.Level(el.OpsLog.Level),
+			MaxSizeMB:     el.OpsLog.MaxSizeMB,
+			KeepArchives:  el.OpsLog.KeepArchives,
+			RotateOnStart: el.OpsLog.RotateOnStart,
+			RunID:         fmt.Sprintf("cli-%d", os.Getpid()),
+			DumpRecords:   el.OpsLog.DumpRecords,
+		})
+		if opsErr != nil {
+			log.Printf("Warning: could not open ops log %s: %v", opsPath, opsErr)
+		} else {
+			workerMetrics.SetOpsLog(opsLogger)
+			defer opsLogger.Close()
+			fmt.Printf("Operations log → %s\n", opsPath)
+		}
 	}
 
 	scheduler := ramp.NewScheduler(cfg, connFactory, cache, prof, workerMetrics)
