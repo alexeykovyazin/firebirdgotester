@@ -432,8 +432,10 @@ type MetricsCollector struct {
 	txError   atomic.Int64
 	connCount atomic.Int64
 
-	// Latency histogram buckets (in milliseconds)
-	latBuckets [9]atomic.Int64 // <5, <10, <25, <50, <100, <250, <500, <1000, >=1000
+	// Latency histogram buckets (in milliseconds). Buckets 0-7 are the legacy
+	// ranges kept for report comparability; 8-13 cover the heavy SELECT /
+	// bulk DML latencies (>=2 s range, F4).
+	latBuckets [14]atomic.Int64
 
 	opMu     sync.Mutex
 	opCounts map[string]int64
@@ -537,7 +539,20 @@ func (mc *MetricsCollector) RecordConnectionChange(n int64) {
 	mc.SetConnectionCount(n)
 }
 
-func getLatencyBucket(latMs int64) int {
+// LatencyBucketCount is the number of histogram buckets.
+const LatencyBucketCount = 14
+
+// LatencyBucketLabels are the display labels for buckets 0..13. Buckets 0-7
+// are the legacy ranges ("<5ms" .. "<1000ms"); 8-13 extend into the seconds
+// range for heavy SELECT / bulk DML operations. The legacy ">=1000ms" figure
+// of old reports is the sum of buckets 8..13.
+var LatencyBucketLabels = [LatencyBucketCount]string{
+	"<5ms", "<10ms", "<25ms", "<50ms", "<100ms", "<250ms", "<500ms", "<1000ms",
+	"<2000ms", "<5000ms", "<10000ms", "<30000ms", "<60000ms", ">=60000ms",
+}
+
+// GetLatencyBucketMs maps a latency in milliseconds onto its bucket index.
+func GetLatencyBucketMs(latMs int64) int {
 	switch {
 	case latMs < 5:
 		return 0
@@ -555,9 +570,32 @@ func getLatencyBucket(latMs int64) int {
 		return 6
 	case latMs < 1000:
 		return 7
-	default:
+	case latMs < 2000:
 		return 8
+	case latMs < 5000:
+		return 9
+	case latMs < 10000:
+		return 10
+	case latMs < 30000:
+		return 11
+	case latMs < 60000:
+		return 12
+	default:
+		return 13
 	}
+}
+
+func getLatencyBucket(latMs int64) int {
+	return GetLatencyBucketMs(latMs)
+}
+
+// GetLatencyBucketCounts returns a copy of the histogram.
+func (mc *MetricsCollector) GetLatencyBucketCounts() [LatencyBucketCount]int64 {
+	var out [LatencyBucketCount]int64
+	for i := range mc.latBuckets {
+		out[i] = mc.latBuckets[i].Load()
+	}
+	return out
 }
 
 // GetTotalTransactions returns the total number of transactions
@@ -607,7 +645,7 @@ func (mc *MetricsCollector) GetLatencyPercentiles() (p50, p95, p99 int64) {
 	}
 
 	cumulative := int64(0)
-	var bucketCounts [9]int64
+	var bucketCounts [LatencyBucketCount]int64
 	for i := range mc.latBuckets {
 		bucketCounts[i] = mc.latBuckets[i].Load()
 	}
@@ -669,9 +707,17 @@ func getBucketUpperBound(bucket int) int64 {
 	case 7:
 		return 1000
 	case 8:
-		return 1000
+		return 2000
+	case 9:
+		return 5000
+	case 10:
+		return 10000
+	case 11:
+		return 30000
+	case 12:
+		return 60000
 	default:
-		return 0
+		return 60000
 	}
 }
 
