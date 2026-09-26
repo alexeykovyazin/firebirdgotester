@@ -74,7 +74,7 @@ const (
 	elBulkTable  = "EL_BULK_ITEMS"
 	elAutonTable = "EL_AUTON_LOG"
 	elAutonSP    = "SP_ELT_AUTON_LOG"
-	elAuxDBName  = "EL_2PC_AUX.FDB" // renamed 2026-09-26: the old EL_2PC.FDB in runs/ got wedged by a killed run (server-held ghost)
+	elAuxDBName  = "EL_2PC_RUN.FDB" // renamed twice: EL_2PC.FDB and EL_2PC_AUX.FDB in runs/ are both wedged server-side by ghost attachments of killed runs (undeletable without admin)
 	el2pcLog     = "EL2PC_LOG"
 )
 
@@ -163,11 +163,29 @@ func auxDriverDSN(cfg *config.Config) string {
 	return cfg.User + ":" + cfg.Pass + "@" + addr + "/" + dir + strings.ToLower(elAuxDBName)
 }
 
-// createAuxDatabase creates the aux database through the driver's createdb
-// path and makes sure the 2PC log table exists (idempotent). Every step is
-// bounded: a metadata lock from a lingering attachment must fail fast, not
-// hang the run start.
+// createAuxDatabase makes sure the aux database and its 2PC log table exist
+// (idempotent; bootstrap runs at every start). The normal case is that the
+// file already exists, so open with the regular driver first — creating over
+// an existing file is an error ("object DATABASE is in use") that the
+// driver's createdb wrapper does not surface cleanly. The createdb path only
+// runs when the normal open fails. Every step is bounded: a metadata lock
+// from a lingering attachment must fail fast, not hang the run start.
 func createAuxDatabase(ctx context.Context, dsn string) error {
+	if db, err := sql.Open("firebirdsql", dsn); err == nil {
+		pctx, pcancel := context.WithTimeout(ctx, 10*time.Second)
+		_, probeErr := db.ExecContext(pctx, "select * from rdb$database")
+		pcancel()
+		if probeErr == nil {
+			// exists — ensure the table and we are done
+			qctx, qcancel := context.WithTimeout(ctx, 10*time.Second)
+			defer qcancel()
+			_, err = db.ExecContext(qctx, `RECREATE TABLE `+el2pcLog+` (STAMP TIMESTAMP, NOTE VARCHAR(60))`)
+			db.Close()
+			return err
+		}
+		db.Close()
+	}
+
 	bctx, bcancel := context.WithTimeout(ctx, 15*time.Second)
 	defer bcancel()
 	db, err := sql.Open("firebirdsql_createdb", dsn)
@@ -176,7 +194,11 @@ func createAuxDatabase(ctx context.Context, dsn string) error {
 	}
 	_, execErr := db.ExecContext(bctx, "select * from rdb$database")
 	db.Close()
-	if execErr != nil && !strings.Contains(execErr.Error(), "exists") {
+	// Creating over an existing file is fine (the table is ensured below):
+	// Firebird phrases that as either "file ... exists" or — on FB4 —
+	// "object DATABASE is in use"; both mean the aux DB is already there.
+	if execErr != nil && !strings.Contains(execErr.Error(), "exists") &&
+		!strings.Contains(execErr.Error(), "in use") {
 		return execErr
 	}
 	db, err = sql.Open("firebirdsql", dsn)
@@ -214,7 +236,7 @@ END`
 // auxDatabasePath returns the filesystem path of the aux database next to the
 // main database file.
 func auxDatabasePath(cfg *config.Config) string {
-	if p := cfg.ExtendedLoad.TxVariants.TwoPhaseAuxDB; p != "" && p != "<mainDbDir>/EL_2PC_AUX.FDB" {
+	if p := cfg.ExtendedLoad.TxVariants.TwoPhaseAuxDB; p != "" && p != "<mainDbDir>/EL_2PC_RUN.FDB" {
 		return p
 	}
 	dbFile := dsnDatabase(cfg.DSN)
