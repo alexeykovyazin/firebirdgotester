@@ -41,12 +41,17 @@ func launchEmulSidecars(s *Session, runCfg *config.Config, wMetrics *worker.Metr
 	s.emulCancel = emulCancel
 	s.emulPool = pool // emulStopLocked closes it
 
-	// Extended load mix (T9): the limbo recovery sidecar resolves limbo
-	// transactions left by the prepare-then-die completion variant. The aux
-	// schema bootstrap runs earlier, before the workers start (see
-	// startInternal), because the scenario picker reads its config once.
-	if runCfg.ExtendedLoad.Enabled && runCfg.ExtendedLoad.TxVariants.Completion.Limbo > 0 {
-		emul.StartLimboRecovery(emulCtx, runCfg, wMetrics.OpsLog(), emul.Extended())
+	// Extended load mix (T9/H3/H4): limbo recovery plus the periodic heavy
+	// SELECT and bulk DML sidecars. The aux schema bootstrap ran earlier,
+	// before the workers started (see startInternal), because the scenario
+	// picker reads its config once.
+	if runCfg.ExtendedLoad.Enabled {
+		if runCfg.ExtendedLoad.TxVariants.Completion.Limbo > 0 {
+			emul.StartLimboRecovery(emulCtx, runCfg, wMetrics.OpsLog(), emul.Extended())
+		}
+		if runCfg.ExtendedLoad.HeavySelect.EverySec > 0 || runCfg.ExtendedLoad.BulkDml.EverySec > 0 {
+			emul.RunExtendedSidecars(emulCtx, pool, runCfg, wMetrics.OpsLog(), emul.Extended(), s.pauseGate)
+		}
 	}
 }
 
@@ -93,11 +98,22 @@ func (s *Session) freezeEmulLocked() {
 	s.emulFrozen = &st
 }
 
+// metricsTablesLocked captures the transaction-variant and completion-method
+// aggregation for the final report. Caller holds s.mu (reads s.metrics).
+func (s *Session) metricsTablesLocked() (variants, completions map[string]worker.VariantAgg) {
+	if s.metrics == nil {
+		return nil, nil
+	}
+	return s.metrics.GetVariantCounts(), s.metrics.GetCompletionCounts()
+}
+
 // writeEmulReportFile writes the frozen final oltp-emul state into the run's
 // report directory (results_emul.txt), next to the standard results*.txt
 // files. Callers capture the frozen view under the session lock and invoke
 // this unlocked — file I/O under s.mu invites deadlocks.
-func writeEmulReportFile(reportDir string, st *emul.EmulStateJSON, sc SessionConfig) {
+// variantCounts/completionCounts feed the "Transaction variants" and
+// "Completion methods" tables (T6); both may be nil.
+func writeEmulReportFile(reportDir string, st *emul.EmulStateJSON, sc SessionConfig, variantCounts, completionCounts map[string]worker.VariantAgg) {
 	if st == nil || reportDir == "" {
 		return
 	}

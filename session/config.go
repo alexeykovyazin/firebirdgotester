@@ -252,6 +252,9 @@ type Snapshot struct {
 	// Emul carries the live oltp-emul run state (nil for non-emul profiles).
 	Emul *emul.EmulStateJSON `json:"emul,omitempty"`
 
+	// ExtendedLoad echoes the extended load mix configuration.
+	ExtendedLoad *config.ExtendedLoad `json:"extendedLoad,omitempty"`
+
 	// oltp-emul session settings (echoed for the settings form)
 	EmulInvariantEvery int    `json:"emulInvariantEvery,omitempty"`
 	EmulMonitorEvery   int    `json:"emulMonitorEvery,omitempty"`
