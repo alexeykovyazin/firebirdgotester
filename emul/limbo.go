@@ -77,18 +77,40 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 					default:
 						rerr = mm.TwoPhaseRecovery(dbPath, tid)
 					}
-					if rerr == nil {
-						if counters != nil {
-							counters.LimboResolved.Add(1)
-						}
-						if opsL != nil {
-							opsL.Resolved(string(m), tid, time.Since(start))
-						}
+					if rerr != nil {
+						continue
+					}
+					// Action-level failures are silent: the services API
+					// reports them only through output lines that
+					// resolveLimbo never reads. Until the server sweeps the
+					// dead prepare-then-die attachment, commit/rollback of
+					// its prepared transaction fails without any error on
+					// the wire (verified on FB4). Count a resolution only
+					// once the tid has actually left the limbo list; the
+					// next tick retries otherwise.
+					if still, verr := mm.GetLimboTransactions(dbPath); verr == nil && limboListHas(still, tid) {
+						continue
+					}
+					if counters != nil {
+						counters.LimboResolved.Add(1)
+					}
+					if opsL != nil {
+						opsL.Resolved(string(m), tid, time.Since(start))
 					}
 				}
 			}
 		}
 	}()
+}
+
+// limboListHas reports whether the limbo list still contains tid.
+func limboListHas(tids []int64, tid int64) bool {
+	for _, t := range tids {
+		if t == tid {
+			return true
+		}
+	}
+	return false
 }
 
 // dsnAddr extracts "host:port" from a DSN. Both shapes occur: the driver
