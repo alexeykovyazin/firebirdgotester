@@ -241,3 +241,17 @@ func TestRetainedFromAttribution(t *testing.T) {
 		t.Fatalf("plain completion must end the chain, got %d", sc3.RetainedFrom)
 	}
 }
+
+func TestAuxExternalDSN(t *testing.T) {
+	cases := map[string]string{
+		`SYSDBA:masterkey@localhost:3054/E:\data\runs\el_2pc.fdb`: `localhost/3054:E:\data\runs\el_2pc.fdb`,
+		`SYSDBA:masterkey@localhost:3054/el_2pc.fdb`:              `localhost/3054:el_2pc.fdb`,
+		`localhost/3054:E:\x\EL_2PC.FDB`:                          `localhost/3054:E:\x\EL_2PC.FDB`,
+		`E:\data\EL_2PC.FDB`:                                      `E:\data\EL_2PC.FDB`,
+	}
+	for in, want := range cases {
+		if got := auxExternalDSN(in); got != want {
+			t.Errorf("auxExternalDSN(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

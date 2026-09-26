@@ -407,12 +407,39 @@ func (s Scenario) Params() string {
 // runs as an engine-side two-phase commit (T4/F6a). The aux DB and its
 // EL2PC_LOG table are created by the extended-load bootstrap.
 func EnlistTwoPhase(ctx context.Context, tx *sql.Tx, auxDB, user, pass string, workerID int) error {
+	// EXECUTE STATEMENT is a PSQL statement: it cannot go over the wire as a
+	// bare DSQL statement, so the enlist runs inside an EXECUTE BLOCK. The
+	// remote statement text comes first, then ON EXTERNAL DATA SOURCE names
+	// the aux database; WITH COMMON TRANSACTION keeps the enlist in the
+	// caller's transaction, making the subsequent commit two-phase.
+	remote := fmt.Sprintf("INSERT INTO EL2PC_LOG (STAMP, NOTE) VALUES (CURRENT_TIMESTAMP, '%s')",
+		sqlQuote(fmt.Sprintf("worker-%d", workerID)))
 	q := fmt.Sprintf(
-		"EXECUTE STATEMENT ON EXTERNAL DATA SOURCE '%s' AS USER '%s' PASSWORD '%s' "+
-			"WITH COMMON TRANSACTION INSERT INTO EL2PC_LOG (STAMP, NOTE) VALUES (CURRENT_TIMESTAMP, '%s')",
-		sqlQuote(auxDB), sqlQuote(user), sqlQuote(pass), sqlQuote(fmt.Sprintf("worker-%d", workerID)))
+		"EXECUTE BLOCK AS BEGIN "+
+			"EXECUTE STATEMENT '%s' "+
+			"ON EXTERNAL DATA SOURCE '%s' AS USER '%s' PASSWORD '%s' "+
+			"WITH COMMON TRANSACTION; END",
+		strings.ReplaceAll(remote, "'", "''"), auxExternalDSN(auxDB), sqlQuote(user), sqlQuote(pass))
 	_, err := tx.ExecContext(ctx, q)
 	return err
+}
+
+// auxExternalDSN renders an aux database reference in the server-side
+// external data source form host[/port]:path. The bootstrap hands over the
+// driver form user:pass@host:port/path; refs already in server form (or bare
+// paths, which the server resolves against its own cwd) pass through.
+func auxExternalDSN(ref string) string {
+	if at := strings.LastIndex(ref, "@"); at >= 0 {
+		ref = ref[at+1:]
+		if slash := strings.Index(ref, "/"); slash >= 0 {
+			hostport := ref[:slash]
+			path := ref[slash+1:]
+			if colon := strings.LastIndex(hostport, ":"); colon >= 0 {
+				return hostport[:colon] + "/" + hostport[colon+1:] + ":" + path
+			}
+		}
+	}
+	return ref
 }
 
 func sqlQuote(s string) string {

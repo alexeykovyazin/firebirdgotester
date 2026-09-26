@@ -74,7 +74,7 @@ const (
 	elBulkTable  = "EL_BULK_ITEMS"
 	elAutonTable = "EL_AUTON_LOG"
 	elAutonSP    = "SP_ELT_AUTON_LOG"
-	elAuxDBName  = "EL_2PC.FDB"
+	elAuxDBName  = "EL_2PC_AUX.FDB" // renamed 2026-09-26: the old EL_2PC.FDB in runs/ got wedged by a killed run (server-held ghost)
 	el2pcLog     = "EL2PC_LOG"
 )
 
@@ -153,7 +153,12 @@ func auxDriverDSN(cfg *config.Config) string {
 	if addr == "" {
 		return ""
 	}
-	dir := dbPath[:strings.LastIndex(dbPath, "/")+1]
+	// the DSN path may use either separator: split on the last "/" or "\"
+	slash := strings.LastIndexAny(dbPath, "/\\")
+	dir := ""
+	if slash >= 0 {
+		dir = dbPath[:slash+1]
+	}
 	// keep the leading "/" so the DSN shape matches the main database's
 	return cfg.User + ":" + cfg.Pass + "@" + addr + "/" + dir + strings.ToLower(elAuxDBName)
 }
@@ -209,7 +214,7 @@ END`
 // auxDatabasePath returns the filesystem path of the aux database next to the
 // main database file.
 func auxDatabasePath(cfg *config.Config) string {
-	if p := cfg.ExtendedLoad.TxVariants.TwoPhaseAuxDB; p != "" && p != "<mainDbDir>/EL_2PC.FDB" {
+	if p := cfg.ExtendedLoad.TxVariants.TwoPhaseAuxDB; p != "" && p != "<mainDbDir>/EL_2PC_AUX.FDB" {
 		return p
 	}
 	dbFile := dsnDatabase(cfg.DSN)

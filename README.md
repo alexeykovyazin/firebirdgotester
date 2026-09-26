@@ -693,7 +693,7 @@ op mix:
   `full` | `off`): every operation draws isolation × read-only ×
   wait/nowait/lock-timeout and a completion method — commit, rollback,
   COMMIT/ROLLBACK RETAINING, engine-side 2PC (via `EXECUTE STATEMENT … WITH
-  COMMON TRANSACTION` against the aux database `EL_2PC.FDB`), limbo
+  COMMON TRANSACTION` against the aux database `EL_2PC_AUX.FDB`), limbo
   (prepare-then-die, resolved by the recovery sidecar) and a planned hard
   connection drop (the worker rebuilds its pool in place). `emul-safe`
   never draws infinite-wait transactions (oltp-emul units reject them).

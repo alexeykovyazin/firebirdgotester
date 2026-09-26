@@ -360,11 +360,14 @@ async function emulGate() {
 // ---------- live results ----------
 
 function emulRenderState(d, sess) {
+  // render 0 instead of NaN when the state object arrives empty (no live
+  // run yet, transient poll gap)
+  const n = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
   document.getElementById("emulLivePhase").textContent = d.phase || "";
-  document.getElementById("emulScore").textContent = Math.round(d.scorePerMin).toLocaleString();
-  document.getElementById("emulOk").textContent = d.okUnits;
-  document.getElementById("emulTotal").textContent = d.totalUnits;
-  document.getElementById("emulMemDb").textContent = Math.round(d.memPeaks.dbBytes / (1 << 20));
+  document.getElementById("emulScore").textContent = Math.round(n(d.scorePerMin)).toLocaleString();
+  document.getElementById("emulOk").textContent = n(d.okUnits);
+  document.getElementById("emulTotal").textContent = n(d.totalUnits);
+  document.getElementById("emulMemDb").textContent = Math.round(n(d.memPeaks && d.memPeaks.dbBytes) / (1 << 20));
   const inv = document.getElementById("emulInvState");
   inv.textContent = d.invariant || "—";
   inv.style.color = d.invariant === "ok" ? "green"
@@ -473,9 +476,43 @@ refresh = async function () {
   } catch { /* transient */ }
 };
 
+// ---------- time-limit dropdown (shared fb-time-limits-v2 with Sessions) ----------
+
+// emulFillTimeLimit populates the per-run time-limit select once: the markup
+// ships it empty; values are minutes (0 = No limit).
+function emulFillTimeLimit() {
+  const sel = document.getElementById("emulTimeLimit");
+  if (!sel || sel.options.length) return;
+  for (const [v, label] of [["0", "No limit"], ["1", "1 min"], ["5", "5 min"],
+      ["15", "15 min"], ["30", "30 min"], ["60", "60 min"],
+      ["120", "120 min"], ["600", "600 min"]]) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = label;
+    sel.appendChild(o);
+  }
+}
+
+function emulCurrentTimeLimit() {
+  const v = parseInt(document.getElementById("emulTimeLimit").value, 10);
+  return Number.isFinite(v) ? v : 15;
+}
+
+// emulInitTimeLimit fills the options and syncs the selection with the shared
+// per-session preference; the default (15 min) matches the Sessions rows.
+function emulInitTimeLimit() {
+  emulFillTimeLimit();
+  const id = emulSel();
+  const sel = document.getElementById("emulTimeLimit");
+  sel.value = String(id !== null && rowLimits[id] !== undefined ? rowLimits[id] : 15);
+}
+
 // ---------- event wiring ----------
 
-document.getElementById("emulDb").addEventListener("change", () => emulLoadSession().catch(() => {}));
+document.getElementById("emulDb").addEventListener("change", () => {
+  emulInitTimeLimit();
+  emulLoadSession().catch(() => {});
+});
 document.getElementById("btnEmulRefresh").addEventListener("click", async () => {
   await emulRefreshDbList().catch(() => {});
   await emulLoadProfiles().catch(() => {});
