@@ -12,4 +12,9 @@ require (
 	golang.org/x/text v0.22.0 // indirect
 )
 
-replace github.com/nakagami/firebirdsql => github.com/IBSurgeon/firebirdsql-go v0.0.0-20260828141318-badf2230e80d
+// Local development checkout of the IBSurgeon fork with the extended-load
+// TPB/completion-intent work (branches extended-load-intents):
+//   replace github.com/nakagami/firebirdsql => ../firebirdsql
+// When the fork branch is pushed, bump the pin below to the new pseudo-version
+// and delete the local replace.
+replace github.com/nakagami/firebirdsql => ../firebirdsql

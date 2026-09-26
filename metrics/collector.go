@@ -44,7 +44,7 @@ type MetricsCollector struct {
 	errorMutex  sync.RWMutex
 
 	// Latency tracking
-	latencyBuckets [9]int64 // <5, <10, <25, <50, <100, <250, <500, <1000, >=1000 ms
+	latencyBuckets [14]int64 // worker.LatencyBucketLabels ranges (legacy 0-7, extended 8-13)
 	latencyMutex   sync.RWMutex
 
 	// Operation tracking
@@ -211,27 +211,7 @@ func (mc *MetricsCollector) RecordError(err error, opName string) {
 
 // getLatencyBucket determines which latency bucket to use
 func (mc *MetricsCollector) getLatencyBucket(latency time.Duration) int {
-	latMs := int64(latency.Milliseconds())
-	switch {
-	case latMs < 5:
-		return 0
-	case latMs < 10:
-		return 1
-	case latMs < 25:
-		return 2
-	case latMs < 50:
-		return 3
-	case latMs < 100:
-		return 4
-	case latMs < 250:
-		return 5
-	case latMs < 500:
-		return 6
-	case latMs < 1000:
-		return 7
-	default:
-		return 8
-	}
+	return worker.GetLatencyBucketMs(int64(latency.Milliseconds()))
 }
 
 // GetReport generates a comprehensive metrics report
@@ -466,7 +446,7 @@ type Report struct {
 	ProfileName       string
 	OperationCounts   map[string]int64
 	ErrorCounts       map[string]int64
-	LatencyBuckets    [9]int64
+	LatencyBuckets    [14]int64
 }
 
 // GetSummary returns a summary string of the report
@@ -574,7 +554,7 @@ func (r *Report) formatErrorCounts() string {
 
 // formatLatencyBuckets formats the latency buckets for display
 func (r *Report) formatLatencyBuckets() string {
-	buckets := []string{"<5ms", "<10ms", "<25ms", "<50ms", "<100ms", "<250ms", "<500ms", "<1000ms", ">=1000ms"}
+	buckets := worker.LatencyBucketLabels[:]
 	total := int64(0)
 	for _, count := range r.LatencyBuckets {
 		total += count

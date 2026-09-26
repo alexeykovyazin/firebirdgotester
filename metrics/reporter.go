@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"fb-loadgen/worker"
 )
 
 // Reporter handles output formatting and reporting
@@ -201,7 +203,7 @@ Test Duration: %v
 func (r *Reporter) ReportLatencyHistogram() string {
 	report := r.metricsCollector.GetReport()
 
-	buckets := []string{"<5ms", "<10ms", "<25ms", "<50ms", "<100ms", "<250ms", "<500ms", "<1000ms", ">=1000ms"}
+	buckets := worker.LatencyBucketLabels[:]
 	total := int64(0)
 	for _, count := range report.LatencyBuckets {
 		total += count
