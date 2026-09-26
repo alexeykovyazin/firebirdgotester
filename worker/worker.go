@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -720,6 +721,9 @@ func (mc *MetricsCollector) RecordVariant(sc ops.Scenario, ok bool) {
 
 // RecordCompletion counts one transaction under its completion method.
 func (mc *MetricsCollector) RecordCompletion(c ops.Completion, ok bool) {
+	if os.Getenv("FB_PICKER_DEBUG") != "" {
+		fmt.Printf("[record] completion=%s ok=%v\n", c, ok)
+	}
 	mc.variantMu.Lock()
 	defer mc.variantMu.Unlock()
 	agg := mc.completionCounts[string(c)]

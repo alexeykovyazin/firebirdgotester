@@ -90,28 +90,36 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 	}()
 }
 
-// dsnAddr extracts "host:port" from a driver DSN user:pass@host:port/path.
+// dsnAddr extracts "host:port" from a DSN. Both shapes occur: the driver
+// format "user:pass@host:port/path" (session mode) and the CLI format
+// "host[/port]:path" (runCLI).
 func dsnAddr(dsn string) string {
-	at := strings.LastIndex(dsn, "@")
-	if at < 0 {
-		return ""
+	if at := strings.LastIndex(dsn, "@"); at >= 0 {
+		rest := dsn[at+1:]
+		if slash := strings.Index(rest, "/"); slash >= 0 {
+			return rest[:slash]
+		}
+		return rest
 	}
-	rest := dsn[at+1:]
-	if slash := strings.Index(rest, "/"); slash >= 0 {
-		return rest[:slash]
+	// CLI format: host[/port]:path
+	head := dsn
+	if colon := strings.Index(head, ":"); colon >= 0 {
+		head = head[:colon]
 	}
-	return rest
+	return strings.Replace(head, "/", ":", 1)
 }
 
-// dsnDatabase extracts the database path from a driver DSN.
+// dsnDatabase extracts the database path from a DSN (driver or CLI format).
 func dsnDatabase(dsn string) string {
-	at := strings.LastIndex(dsn, "@")
-	if at < 0 {
+	if at := strings.LastIndex(dsn, "@"); at >= 0 {
+		rest := dsn[at+1:]
+		if slash := strings.Index(rest, "/"); slash >= 0 {
+			return rest[slash+1:]
+		}
 		return ""
 	}
-	rest := dsn[at+1:]
-	if slash := strings.Index(rest, "/"); slash >= 0 {
-		return rest[slash+1:]
+	if colon := strings.Index(dsn, ":"); colon >= 0 {
+		return dsn[colon+1:]
 	}
 	return ""
 }

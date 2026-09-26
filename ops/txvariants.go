@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -43,9 +44,12 @@ const (
 )
 
 // Scenario is a drawn transaction configuration. Level is the full driver
-// encoding (base isolation, lock timeout or completion intent).
+// encoding (base isolation, lock timeout or completion intent); plainLevel is
+// the same TPB without completion-intent bits (the fork's reuse validation
+// compares TPBs, which do not carry intents).
 type Scenario struct {
 	Level          int
+	plainLevel     int
 	ReadOnly       bool
 	Completion     Completion
 	LockTimeoutSec int    // 0 = none
@@ -68,7 +72,7 @@ type Picker struct {
 	mu              sync.Mutex
 	retained        bool
 	retainedFrom    int64
-	retainedLevel   int
+	retainedPlain   int // TPB level of the retained context WITHOUT intent bits
 	retainedRO      bool
 	retainedISOName string
 	retainChain     int
@@ -85,6 +89,10 @@ func NewPicker(cfg config.ExtendedLoad, workerID int, seed int64) *Picker {
 	}
 	p.cfg.LockTimeoutChoicesSec = append([]int(nil), cfg.TxVariants.LockTimeoutChoicesSec...)
 	p.rng = rand.New(rand.NewSource(seed))
+	if os.Getenv("FB_PICKER_DEBUG") != "" {
+		fmt.Printf("[picker] worker=%d mode=%s weights=%+v total=%d\n",
+			workerID, p.mode, p.cfg.Completion, p.cfg.Completion.Total())
+	}
 	return p
 }
 
@@ -152,10 +160,13 @@ func (p *Picker) pickLocked(kind OpKind) (Scenario, bool) {
 	full := p.mode == "full"
 
 	// A live retained context pins the next transaction on this connection
-	// (R5): same TPB, freshly drawn completion.
+	// (R5): same TPB (the plain, intent-free level), freshly drawn completion
+	// encoded on top. A plain-commit continuation ends the chain (the fork's
+	// reuse hands back the live wire tx and its plain Commit finishes it).
 	if p.retained {
 		sc := Scenario{
-			Level:         p.retainedLevel,
+			Level:         p.retainedPlain,
+			plainLevel:    p.retainedPlain,
 			ReadOnly:      p.retainedRO,
 			IsolationName: p.retainedISOName,
 			RetainedFrom:  p.retainedFrom,
@@ -167,13 +178,27 @@ func (p *Picker) pickLocked(kind OpKind) (Scenario, bool) {
 
 	families := isoFamilies(full)
 	fam := families[p.rng.Intn(len(families))]
-	wait := p.waitChoices(full)[p.rng.Intn(len(p.waitChoices(full)))]
+	completion := p.drawCompletionLocked(full)
+	waits := p.waitChoices(full)
+	// Intent encodings cannot carry the lock-timeout value: in emul-safe mode
+	// an intent must not land on a lock-timeout TPB (dropping the timeout
+	// would leave infinite WAIT, which emul units reject — V3).
+	if !full && isIntentCompletion(completion) {
+		nowait := make([]waitChoice, 0, len(waits))
+		for _, wc := range waits {
+			if wc.nowait {
+				nowait = append(nowait, wc)
+			}
+		}
+		waits = nowait
+	}
+	wait := waits[p.rng.Intn(len(waits))]
 	// read-only access composes with any family in BeginTx
 	ro := kind == KindRead && p.rng.Intn(2) == 0
 
 	sc := Scenario{
 		ReadOnly:   ro,
-		Completion: p.drawCompletionLocked(full),
+		Completion: completion,
 	}
 	switch {
 	case wait.lockTimeout > 0:
@@ -215,7 +240,10 @@ func (s *Scenario) applyCompletion() {
 	}
 }
 
-// baseIso extracts the base isolation component of a (possibly encoded) level.
+// baseIso maps a (possibly encoded) level onto the internal isolation
+// constant that preserves its wait semantics: the intent encodings ride on
+// internal constants, and bare IsoRC means WAIT — an emul-unit rejection
+// (V3) unless the wait mode is carried over explicitly.
 func baseIso(level int) int {
 	for _, base := range []int{
 		firebirdsql.LevelCommitRetainingBase, firebirdsql.LevelRollbackRetainingBase,
@@ -226,7 +254,26 @@ func baseIso(level int) int {
 		}
 	}
 	if level > firebirdsql.LevelLockTimeoutBase && level <= firebirdsql.LevelLockTimeoutBase+firebirdsql.MaxLockTimeoutEnc {
+		// lock-timeout encodings are RC/wait+timeout; the timeout value
+		// cannot travel in the intent, so the base falls back to RC WAIT —
+		// emul-safe mode therefore never combines intents with lock timeouts
 		return firebirdsql.IsoRC
+	}
+	switch level {
+	case firebirdsql.LevelReadCommittedRecVersion:
+		return firebirdsql.IsoRC
+	case firebirdsql.LevelReadCommittedNoWait:
+		return firebirdsql.IsoRCNoWait
+	case firebirdsql.LevelReadCommittedLegacy:
+		return firebirdsql.IsoRCLegacy
+	case firebirdsql.LevelReadCommittedLegacyNoWait:
+		return firebirdsql.IsoRCLegacyNoWait
+	case firebirdsql.LevelSnapshot:
+		return firebirdsql.IsoSnapshot
+	case firebirdsql.LevelSnapshotNoWait:
+		return firebirdsql.IsoSnapshotNoWait
+	case firebirdsql.LevelConsistency:
+		return firebirdsql.IsoConsistency
 	}
 	return firebirdsql.IsoRC
 }
@@ -261,6 +308,9 @@ func (p *Picker) drawCompletionLocked(full bool) Completion {
 			c = CompletionLimbo
 		default:
 			c = CompletionConnDrop
+		}
+		if os.Getenv("FB_PICKER_DEBUG") != "" {
+			fmt.Printf("[draw] worker=%d n=%d total=%d c=%s\n", p.workerID, n, total, c)
 		}
 		switch c {
 		case CompletionLimbo, CompletionConnDrop:
@@ -298,7 +348,7 @@ func (p *Picker) NoteResult(sc Scenario, retained bool, opsTxn int64) {
 		}
 		p.retained = true
 		p.retainedFrom = opsTxn
-		p.retainedLevel = sc.Level
+		p.retainedPlain = sc.plainLevel
 		p.retainedRO = sc.ReadOnly
 		p.retainedISOName = sc.IsolationName
 		return
@@ -339,4 +389,14 @@ func EnlistTwoPhase(ctx context.Context, tx *sql.Tx, auxDB, user, pass string, w
 
 func sqlQuote(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
+}
+
+// isIntentCompletion reports whether the completion rewrites the begin-time
+// level (retaining / limbo / hard drop).
+func isIntentCompletion(c Completion) bool {
+	switch c {
+	case CompletionCommitRetaining, CompletionRollbackRetaining, CompletionLimbo, CompletionConnDrop:
+		return true
+	}
+	return false
 }
