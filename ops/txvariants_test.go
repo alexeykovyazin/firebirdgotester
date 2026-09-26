@@ -169,6 +169,7 @@ func TestTwoPhaseRequiresAuxDB(t *testing.T) {
 }
 
 func TestRareCompletionsRateLimited(t *testing.T) {
+	RareGateReset()
 	cfg := testCfg("emul-safe")
 	cfg.TxVariants.RareCompletionMinGapSec = 3600 // effectively never again
 	p := NewPicker(cfg, 5, 31)
@@ -181,6 +182,30 @@ func TestRareCompletionsRateLimited(t *testing.T) {
 	}
 	if rare > 1 {
 		t.Errorf("rare completions not rate limited: %d in one window", rare)
+	}
+}
+
+// The rare gate must bound limbo/connDrop completions across the whole pool:
+// a per-picker gate multiplied by 20 workers produced a stuck-limbo failure
+// burst every few seconds on FB4.
+func TestRareGateIsRunGlobal(t *testing.T) {
+	RareGateReset()
+	cfg := testCfg("emul-safe")
+	cfg.TxVariants.RareCompletionMinGapSec = 3600 // effectively never again
+	cfg.TxVariants.Completion = config.CompletionWeights{Limbo: 1}
+	p1 := NewPicker(cfg, 1, 11)
+	p2 := NewPicker(cfg, 2, 22)
+	rare := 0
+	for i := 0; i < 100; i++ {
+		if sc, _ := p1.Pick(KindWrite); sc.Completion == CompletionLimbo {
+			rare++
+		}
+		if sc, _ := p2.Pick(KindWrite); sc.Completion == CompletionLimbo {
+			rare++
+		}
+	}
+	if rare > 1 {
+		t.Errorf("rare gate not run-global: %d rare completions in one window", rare)
 	}
 }
 

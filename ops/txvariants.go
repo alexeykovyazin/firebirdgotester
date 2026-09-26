@@ -76,8 +76,34 @@ type Picker struct {
 	retainedRO      bool
 	retainedISOName string
 	retainChain     int
+}
 
-	lastRare time.Time // rate limiter for limbo/connDrop
+// Run-global rare gate: RareCompletionMinGapSec bounds limbo/connDrop
+// completions across ALL workers, not per picker — a per-picker gate
+// multiplied by the pool size (20 workers ≈ 2 rare completions/s), and each
+// unprepared-then-abandoned 2PC transaction blocks every emul unit that
+// reads its rows until the recovery sidecar resolves it.
+var (
+	rareGateMu   sync.Mutex
+	rareGateLast time.Time
+)
+
+// claimRareGate atomically checks the run-global rare window and claims it.
+func claimRareGate(gapSec int) bool {
+	rareGateMu.Lock()
+	defer rareGateMu.Unlock()
+	if time.Since(rareGateLast) < time.Duration(gapSec)*time.Second {
+		return false
+	}
+	rareGateLast = time.Now()
+	return true
+}
+
+// RareGateReset clears the run-global rare gate (tests).
+func RareGateReset() {
+	rareGateMu.Lock()
+	rareGateLast = time.Time{}
+	rareGateMu.Unlock()
 }
 
 // NewPicker creates a per-worker scenario picker.
@@ -286,8 +312,7 @@ func (p *Picker) drawCompletionLocked(full bool) Completion {
 	if total <= 0 {
 		return CompletionCommit
 	}
-	rareGap := time.Duration(p.cfg.RareCompletionMinGapSec) * time.Second
-	rareAllowed := time.Since(p.lastRare) >= rareGap
+	rareGap := p.cfg.RareCompletionMinGapSec
 	twoPhaseAllowed := p.cfg.TwoPhaseAuxDB != ""
 
 	for attempts := 0; attempts < 8; attempts++ {
@@ -314,10 +339,13 @@ func (p *Picker) drawCompletionLocked(full bool) Completion {
 		}
 		switch c {
 		case CompletionLimbo, CompletionConnDrop:
-			if !rareAllowed {
+			// Claim the run-global rare window atomically; a draw without a
+			// claimable window falls through to plain commit (the loop
+			// re-rolls, so an all-rare weight config cannot spin forever —
+			// bounded by attempts).
+			if !claimRareGate(rareGap) {
 				continue
 			}
-			p.lastRare = time.Now()
 			return c
 		case CompletionTwoPhase:
 			if !twoPhaseAllowed {
