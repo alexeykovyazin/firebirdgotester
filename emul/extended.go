@@ -63,6 +63,9 @@ func BootstrapExtendedSchema(ctx context.Context, mainDB *sql.DB, cfg *config.Co
 	if _, err = mainDB.ExecContext(ctx, `CREATE SEQUENCE EL_BULK_SEQ`); err != nil && !isAlreadyExists(err) {
 		return "", fmt.Errorf("extended bootstrap (bulk seq): %w", err)
 	}
+	if _, err = mainDB.ExecContext(ctx, `CREATE EXCEPTION EX_ELT_TEST 'plusddl test exception'`); err != nil && !isAlreadyExists(err) {
+		return "", fmt.Errorf("extended bootstrap (exception): %w", err)
+	}
 
 	stmts := []string{
 		`RECREATE TABLE ` + elBulkTable + ` (

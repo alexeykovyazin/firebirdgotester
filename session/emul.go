@@ -52,6 +52,9 @@ func launchEmulSidecars(s *Session, runCfg *config.Config, wMetrics *worker.Metr
 		if runCfg.ExtendedLoad.HeavySelect.EverySec > 0 || runCfg.ExtendedLoad.BulkDml.EverySec > 0 {
 			emul.RunExtendedSidecars(emulCtx, pool, runCfg, wMetrics.OpsLog(), emul.Extended(), s.pauseGate)
 		}
+		if runCfg.ExtendedLoad.PlusDDL.Enabled {
+			emul.StartDDLSidecar(emulCtx, pool, runCfg, wMetrics.OpsLog(), emul.Extended(), s.pauseGate)
+		}
 	}
 }
 
