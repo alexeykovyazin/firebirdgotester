@@ -263,14 +263,17 @@ func (w *Worker) run() {
 					return
 				}
 				// No usable handle: Stop closed it, the pool is gone, or a
-				// planned limbo/conn-drop completion just killed the socket.
-				// Planned drops rebuild the pool in place; a real dead
-				// connection exits the worker (ramp does not reap — V17).
+				// limbo/conn-drop completion just killed the socket. Rebuild
+				// the pool in place for planned drops AND unplanned stale
+				// connections alike (server-side sweep, TCP reset): the ramp
+				// scheduler never respawns exited workers (V17), so an exit
+				// permanently shrinks the load — on FB4 the pool decayed to a
+				// quarter over ten minutes. Exit only when the database is
+				// really unreachable (rebuild fails).
 				if isDeadConnErr(err) {
-					if w.takePlannedDrop() {
-						if rerr := w.rebuildConn(); rerr == nil {
-							continue
-						}
+					_ = w.takePlannedDrop()
+					if rerr := w.rebuildConn(); rerr == nil {
+						continue
 					}
 					return
 				}
