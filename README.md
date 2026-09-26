@@ -716,14 +716,29 @@ firebirdtest.com) switch it off — `--extended-load=false` on the CLI or the
 periodic sidecars off as well. See `EXTENDED_LOAD_PLAN.md` for the full
 design, the fb_repl_print log format spec (§7) and the verified-facts table.
 
-**Known interaction — retaining holds locks (verified live):** COMMIT/ROLLBACK
-RETAINING keeps the transaction's lock interest after the commit, so retained
-contexts hold row locks on the documents they touched. With the default
-completion weights (10% retaining: 7% commit + 3% rollback retaining) the emul
-units see a wave of immediate
-update conflicts ("record from transaction ... is not visible / no wait") —
-this is the intended load character and exactly what the completion axis is
-meant to expose, but it depresses the emul score far more than the periodic
-sidecars do. Limbo and hard-drop completions kill sockets on purpose; workers
-rebuild their pools in place and continue (watch `[extended] limbo resolved`
-and `[] RESOLVED` records in the ops log).
+**Known interactions (all verified live on FB4/FB5):**
+
+- **Retaining holds locks.** COMMIT/ROLLBACK RETAINING keeps the transaction's
+  lock interest after the commit, so retained contexts hold row locks on the
+  documents they touched. With the default completion weights (10% retaining:
+  7% commit + 3% rollback retaining) the emul units see a wave of immediate
+  update conflicts ("record from transaction ... is not visible / no wait") —
+  this is the intended load character and exactly what the completion axis is
+  meant to expose, but it depresses the emul score far more than the periodic
+  sidecars do. Classic preset (`--extended-load=false`) for comparable scores.
+- **Limbo windows block readers.** A limbo completion prepares a 2PC
+  transaction and kills the socket; until the server sweeps the dead
+  attachment, that transaction cannot be resolved by gfix either, and every
+  unit reading its rows fails with "record from transaction ... is stuck in
+  limbo". These errors are classified as conflicts (expected), the recovery
+  sidecar polls every 2s and verifies each resolution against a fresh limbo
+  list — a plain `isc_spb_rpr_commit/rollback_trans_64` action reports its
+  own failure only through service output lines that the driver does not
+  parse, so unverifiable resolutions are retried, not counted.
+- **The rare-completion gate is run-global.** `RareCompletionMinGapSec`
+  bounds limbo/connDrop completions across the whole worker pool (a
+  per-worker gate multiplied the rate by the pool size and produced a stuck
+  limbo window every few seconds).
+- Limbo and hard-drop completions kill sockets on purpose; workers rebuild
+  their pools in place and continue (watch `[extended] limbo resolved` and
+  `[] RESOLVED` records in the ops log).
