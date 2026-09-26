@@ -676,3 +676,42 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE). The vendored oltp-em
 - [Technical_task.md](Technical_task.md) — schema constraint map, profile design, ramp model, error strategy
 - [EMPLOYEE_metadata.sql](EMPLOYEE_metadata.sql) — tables, procedures, and constraints
 - [example_usage.sh](example_usage.sh) — printable CLI cookbook
+
+## Extended load mix (−plusddl)
+
+The `extendedLoad` section (config file `fb-loadgen.ui.json`, session panel
+"Extended load", CLI flags) changes the load character on top of the regular
+op mix:
+
+- **Heavy JOIN SELECT** every `heavySelect.everySec` seconds (default 5 s):
+  a 3–4 table scan over `DOC_LIST ⋈ AGENTS ⋈ DOC_DATA ⋈ WARES` with a random
+  id-range filter, aggregate and sorted cut.
+- **Bulk DML** every `bulkDml.everySec` seconds (default 30 s): 100–1000 rows
+  inserted / updated / deleted per round on the dedicated `EL_BULK_ITEMS`
+  table (business tables and the score stay untouched).
+- **Randomized transaction scenarios** (`txVariants.mode` = `emul-safe` |
+  `full` | `off`): every operation draws isolation × read-only ×
+  wait/nowait/lock-timeout and a completion method — commit, rollback,
+  COMMIT/ROLLBACK RETAINING, engine-side 2PC (via `EXECUTE STATEMENT … WITH
+  COMMON TRANSACTION` against the aux database `EL_2PC.FDB`), limbo
+  (prepare-then-die, resolved by the recovery sidecar) and a planned hard
+  connection drop (the worker rebuilds its pool in place). `emul-safe`
+  never draws infinite-wait transactions (oltp-emul units reject them).
+- **Operations log** (`opsLog`): every transaction — number, parameters,
+  completion method, change volume, start time — in the output format of the
+  Firebird replication-journal printer (`fb_repl_print`), `tsv` available as
+  a machine option. 50 MB size rotation, ≤3 archives, rename on restart,
+  START/terminal pairing check at close. Exposed via
+  `GET /api/sessions/{id}/logs[/{file}]`.
+- **`-plusddl`** (`plusDDL.enabled`): ALTER TABLE ADD/ALTER/DROP of own
+  `TST_` columns on working tables every `ddl-every` seconds, alternating
+  CREATE TABLE (2–5 random columns, all six triggers BI/AI/BU/AU/BD/AD,
+  grouped test DML 100/50/30) / DROP TABLE rounds, and deliberately rolled
+  back DDL verified against `rdb$relation_fields`.
+
+**Comparable scores:** the extended mix is on by default and changes the
+oltp-emul score by construction. For comparable score runs (e.g.
+firebirdtest.com) switch it off — `--extended-load=false` on the CLI or the
+"enabled" checkbox in the UI panel; `--tx-variants off` alone keeps the
+periodic sidecars off as well. See `EXTENDED_LOAD_PLAN.md` for the full
+design, the fb_repl_print log format spec (§7) and the verified-facts table.

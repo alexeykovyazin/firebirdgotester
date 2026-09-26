@@ -48,6 +48,11 @@ func StartDDLSidecar(ctx context.Context, pool *sql.DB, cfg *config.Config, opsL
 	s.discover(ctx, pool)
 
 	go func() {
+		// first round immediately, then every EverySec
+		if !pause.WaitIfPaused(ctx.Done()) {
+			return
+		}
+		s.round(ctx, pool, opsL, counters)
 		ticker := time.NewTicker(time.Duration(s.cfg.EverySec) * time.Second)
 		defer ticker.Stop()
 		for {

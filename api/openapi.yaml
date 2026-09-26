@@ -540,6 +540,63 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/sessions/{id}/logs:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Config]
+      summary: List the operations log chain (extended load mix)
+      description: >
+        Returns the ops.log chain written by the extended load mix in
+        fb_repl_print format (archives newest-first, live file last).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Directory and log file entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dir, files]
+                properties:
+                  dir: { type: string }
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, size, mtime]
+                      properties:
+                        name: { type: string }
+                        size: { type: integer }
+                        mtime: { type: string }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/sessions/{id}/logs/{file}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - name: file
+        in: path
+        required: true
+        schema: { type: string, pattern: "^ops.*\.log$" }
+        description: Log file name as returned by GET /api/sessions/{id}/logs
+    get:
+      tags: [Config]
+      summary: Download one operations log file
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Plain-text log content (text/plain attachment)
+          content:
+            text/plain:
+              schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/sessions/start-all:
     post:
       tags: [Fleet]

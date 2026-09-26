@@ -9,7 +9,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
-	"strings"
 	"time"
 
 	"fb-loadgen/config"
@@ -29,25 +28,29 @@ func heavyJoinScan(ctx context.Context, tx *sql.Tx, maxID int64, rng *rand.Rand,
 	if maxID < 2 {
 		maxID = 2
 	}
-	lo := rng.Int63n(maxID/2 + 1)
-	hi := lo + maxID/4 + 1
-	q := `SELECT COUNT(*), COALESCE(SUM(dd.qty), 0), COALESCE(SUM(dd.cost_retail), 0)
+	// narrow random window: heavy per round, bounded so a round finishes
+	// well within the sidecar interval
+	lo := rng.Int63n(maxID + 1)
+	hi := lo + maxID/50 + 50
+	q := `SELECT COUNT(*), CAST(COALESCE(SUM(dd.qty), 0) AS BIGINT),
+	CAST(COALESCE(SUM(dd.cost_retail), 0) AS BIGINT)
 FROM doc_list d
 JOIN agents a ON a.id = d.agent_id
 JOIN doc_data dd ON dd.doc_id = d.id
 JOIN wares w ON w.id = dd.ware_id
-WHERE d.id BETWEEN ? AND ? AND dd.id BETWEEN ? AND ?`
+WHERE d.id BETWEEN ? AND ?`
 	if minJoins > 3 {
 		// deeper variant: join the ware group dimension back onto wares
-		q = `SELECT COUNT(*), COALESCE(SUM(dd.qty), 0), COALESCE(SUM(dd.cost_retail), 0)
+		q = `SELECT COUNT(*), CAST(COALESCE(SUM(dd.qty), 0) AS BIGINT),
+	CAST(COALESCE(SUM(dd.cost_retail), 0) AS BIGINT)
 FROM doc_list d
 JOIN agents a ON a.id = d.agent_id
 JOIN doc_data dd ON dd.doc_id = d.id
 JOIN wares w ON w.id = dd.ware_id
 JOIN wares wg ON wg.id = w.group_id
-WHERE d.id BETWEEN ? AND ? AND dd.id BETWEEN ? AND ?`
+WHERE d.id BETWEEN ? AND ?`
 	}
-	args := []any{lo, hi, lo * 4, hi * 4}
+	args := []any{lo, hi}
 	var cnt, sumQty, sumCost int64
 	err := tx.QueryRowContext(ctx, q, args...).Scan(&cnt, &sumQty, &sumCost)
 	return cnt, err
@@ -96,129 +99,169 @@ func bulkRound(ctx context.Context, tx *sql.Tx, rng *rand.Rand, cfg config.BulkD
 	}
 }
 
+// bulkInsertValues inserts `batch` rows with one EXECUTE BLOCK loop (Firebird
+// has no multi-row VALUES INSERT). Arguments are integers generated locally.
 func bulkInsertValues(ctx context.Context, tx *sql.Tx, roundID, batch int64) (sql.Result, error) {
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO EL_BULK_ITEMS (ID, ROUND_ID, PAYLOAD, VAL, CREATED_AT) VALUES ")
-	for i := int64(0); i < batch; i++ {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		fmt.Fprintf(&sb, "(NEXT VALUE FOR EL_BULK_SEQ, %d, 'payload', 1.5, CURRENT_TIMESTAMP)", roundID)
-	}
-	return tx.ExecContext(ctx, sb.String())
+	q := fmt.Sprintf(`EXECUTE BLOCK AS DECLARE VARIABLE I INTEGER; BEGIN
+	 I = 0;
+	 WHILE (I < %d) DO BEGIN
+	   I = I + 1;
+	   INSERT INTO EL_BULK_ITEMS (ID, ROUND_ID, PAYLOAD, VAL, CREATED_AT)
+	   VALUES (NEXT VALUE FOR EL_BULK_SEQ, %d, 'payload', 1.5, CURRENT_TIMESTAMP);
+	 END
+	 END`, batch, roundID)
+	return tx.ExecContext(ctx, q)
 }
 
-// RunExtendedSidecars launches the heavy SELECT and bulk DML tickers. Both
-// honor the pause gate, skip a tick when the previous round is still running
-// and log every round to the ops log with its scenario and duration.
+// RunExtendedSidecars launches the heavy SELECT and bulk DML tickers. Each
+// sidecar pins its own connection out of the pool for its whole lifetime:
+// rounds are long-running, and sharing the (often single-connection) sidecar
+// pool would starve the bulk sidecar behind an in-flight heavy scan. The
+// connection grab is asynchronous and bounded — a saturated pool disables the
+// sidecar instead of blocking the run start. Both sidecars honor the pause
+// gate and log every round to the ops log.
 func RunExtendedSidecars(ctx context.Context, pool *sql.DB, cfg *config.Config, opsL *opslog.Logger, counters *ExtendedCounters, pause PauseWaiter) {
 	el := cfg.ExtendedLoad
 	el.Normalize()
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	// heavy + bulk each pin one connection; factories cap pools at 1, which
+	// would starve the second grab
+	pool.SetMaxOpenConns(4)
+	pool.SetMaxIdleConns(4)
 
-	var maxDocID int64
-	_ = pool.QueryRowContext(ctx, `SELECT COALESCE(MAX(ID), 0) FROM DOC_LIST`).Scan(&maxDocID)
-
-	if el.HeavySelect.EverySec > 0 {
-		interval := time.Duration(el.HeavySelect.EverySec) * time.Second
+	grab := func(run func(conn *sql.Conn)) {
 		go func() {
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if !pause.WaitIfPaused(ctx.Done()) {
-						return
-					}
-					start := time.Now()
-					txn := int64(0)
-					if opsL != nil {
-						txn = opsL.NextTx()
-						opsL.TxStartRound(txn, "heavy-select", "RW/sidecar")
-					}
-					tx, err := pool.BeginTx(ctx, nil)
-					if err != nil {
-						if counters != nil {
-							counters.HeavyFailures.Add(1)
-						}
-						continue
-					}
-					cnt, qerr := heavyJoinScan(ctx, tx, maxDocID, rng, el.HeavySelect.MinJoins)
-					if qerr == nil {
-						if terr := tx.Commit(); terr == nil {
-							if counters != nil {
-								counters.HeavyRounds.Add(1)
-							}
-							if opsL != nil {
-								opsL.TableOp(txn, "SELECT", "DOC_LIST/DOC_DATA/AGENTS/WARES", cnt, time.Since(start), false)
-								opsL.RoundCommit(txn, 0, 0, 0, time.Since(start), false)
-							}
-							continue
-						}
-					}
-					_ = tx.Rollback()
-					if counters != nil {
-						counters.HeavyFailures.Add(1)
-					}
-					if opsL != nil {
-						opsL.RoundRollback(txn, "failed", 0, 0, 0, time.Since(start), true)
-					}
-				}
+			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
+			defer ccancel()
+			conn, err := pool.Conn(cctx)
+			if err != nil {
+				return
 			}
+			defer func() { _ = conn.Close() }()
+			run(conn)
 		}()
 	}
 
+	if el.HeavySelect.EverySec > 0 {
+		grab(func(conn *sql.Conn) { runHeavySidecar(ctx, conn, el.HeavySelect, opsL, counters, pause) })
+	}
 	if el.BulkDml.EverySec > 0 {
-		interval := time.Duration(el.BulkDml.EverySec) * time.Second
-		go func() {
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if !pause.WaitIfPaused(ctx.Done()) {
-						return
-					}
-					start := time.Now()
-					txn := int64(0)
-					if opsL != nil {
-						txn = opsL.NextTx()
-						opsL.TxStartRound(txn, "bulk-dml", "RW/sidecar")
-					}
-					tx, err := pool.BeginTx(ctx, nil)
-					if err != nil {
-						if counters != nil {
-							counters.BulkFailures.Add(1)
-						}
-						continue
-					}
-					rows, kind, berr := bulkRound(ctx, tx, rng, el.BulkDml, time.Now().Unix()%1000000)
-					if berr == nil {
-						if terr := tx.Commit(); terr == nil {
-							if counters != nil {
-								countBulk(counters, kind, rows)
-							}
-							if opsL != nil {
-								opsL.TableOp(txn, bulkVerb(kind), "EL_BULK_ITEMS", rows, time.Since(start), false)
-								opsL.RoundCommit(txn, rows, 0, 0, time.Since(start), false)
-							}
-							continue
-						}
-					}
-					_ = tx.Rollback()
+		grab(func(conn *sql.Conn) { runBulkSidecar(ctx, conn, el.BulkDml, opsL, counters, pause) })
+	}
+}
+
+// runHeavySidecar ticks the heavy multi-JOIN SELECT round.
+func runHeavySidecar(ctx context.Context, conn *sql.Conn, hs config.HeavySelect, opsL *opslog.Logger, counters *ExtendedCounters, pause PauseWaiter) {
+	interval := time.Duration(hs.EverySec) * time.Second
+	if interval <= 0 {
+		return
+	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var maxDocID int64
+	_ = conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(ID), 0) FROM DOC_LIST`).Scan(&maxDocID)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if !pause.WaitIfPaused(ctx.Done()) {
+				return
+			}
+			roundCtx, roundCancel := context.WithTimeout(ctx, interval*3)
+			start := time.Now()
+			txn := int64(0)
+			if opsL != nil {
+				txn = opsL.NextTx()
+				opsL.TxStartRound(txn, "heavy-select", "RW/sidecar")
+			}
+			tx, err := conn.BeginTx(roundCtx, nil)
+			if err != nil {
+				roundCancel()
+				if counters != nil {
+					counters.HeavyFailures.Add(1)
+				}
+				continue
+			}
+			cnt, qerr := heavyJoinScan(roundCtx, tx, maxDocID, rng, hs.MinJoins)
+			if qerr == nil {
+				if terr := tx.Commit(); terr == nil {
 					if counters != nil {
-						counters.BulkFailures.Add(1)
+						counters.HeavyRounds.Add(1)
 					}
 					if opsL != nil {
-						opsL.RoundRollback(txn, "failed", 0, 0, 0, time.Since(start), true)
+						opsL.TableOp(txn, "SELECT", "DOC_LIST/DOC_DATA/AGENTS/WARES", cnt, time.Since(start), false)
+						opsL.RoundCommit(txn, 0, 0, 0, time.Since(start), false)
 					}
+					roundCancel()
+					continue
 				}
 			}
-		}()
+			_ = tx.Rollback()
+			if counters != nil {
+				counters.HeavyFailures.Add(1)
+			}
+			if opsL != nil {
+				opsL.RoundRollback(txn, "failed", 0, 0, 0, time.Since(start), true)
+			}
+			roundCancel()
+		}
+	}
+}
+
+// runBulkSidecar ticks the bulk INSERT/UPDATE/DELETE round.
+func runBulkSidecar(ctx context.Context, conn *sql.Conn, bd config.BulkDml, opsL *opslog.Logger, counters *ExtendedCounters, pause PauseWaiter) {
+	interval := time.Duration(bd.EverySec) * time.Second
+	if interval <= 0 {
+		return
+	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if !pause.WaitIfPaused(ctx.Done()) {
+				return
+			}
+			start := time.Now()
+			txn := int64(0)
+			if opsL != nil {
+				txn = opsL.NextTx()
+				opsL.TxStartRound(txn, "bulk-dml", "RW/sidecar")
+			}
+			tx, err := conn.BeginTx(ctx, nil)
+			if err != nil {
+				if counters != nil {
+					counters.BulkFailures.Add(1)
+				}
+				continue
+			}
+			rows, kind, berr := bulkRound(ctx, tx, rng, bd, time.Now().Unix()%1000000)
+			if berr == nil {
+				if terr := tx.Commit(); terr == nil {
+					if counters != nil {
+						countBulk(counters, kind, rows)
+					}
+					if opsL != nil {
+						opsL.TableOp(txn, bulkVerb(kind), "EL_BULK_ITEMS", rows, time.Since(start), false)
+						opsL.RoundCommit(txn, rows, 0, 0, time.Since(start), false)
+					}
+					continue
+				}
+			}
+			_ = tx.Rollback()
+			if counters != nil {
+				counters.BulkFailures.Add(1)
+			}
+			if opsL != nil {
+				opsL.RoundRollback(txn, "failed", 0, 0, 0, time.Since(start), true)
+			}
+		}
 	}
 }
 

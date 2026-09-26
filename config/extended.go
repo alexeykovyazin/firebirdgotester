@@ -243,3 +243,25 @@ func (e ExtendedLoad) Validate() error {
 func (c CompletionWeights) Total() int {
 	return c.Commit + c.Rollback + c.CommitRetaining + c.RollbackRetaining + c.TwoPhase + c.Limbo + c.ConnDrop
 }
+
+// ApplyCLIDefaults fills the nested sections that individual flags cannot
+// express (CLI flags set leaves; a zero section gets the full default).
+func (e *ExtendedLoad) ApplyCLIDefaults() {
+	def := DefaultExtendedLoad()
+	if e.HeavySelect == (HeavySelect{}) {
+		e.HeavySelect = def.HeavySelect
+	}
+	if e.BulkDml == (BulkDml{}) {
+		e.BulkDml = def.BulkDml
+	}
+	if e.TxVariants.Mode == "" && len(e.TxVariants.LockTimeoutChoicesSec) == 0 &&
+		e.TxVariants.Completion.Total() == 0 && e.TxVariants.RetainingChainMax == 0 &&
+		e.TxVariants.RareCompletionMinGapSec == 0 && e.TxVariants.TwoPhaseAuxDB == "" {
+		e.TxVariants = def.TxVariants
+	}
+	if e.PlusDDL.EverySec == 0 && e.PlusDDL.ColPrefix == "" && len(e.PlusDDL.WorkTables) == 0 &&
+		e.PlusDDL.TestInsertRows == 0 && e.PlusDDL.TestUpdateRows == 0 && e.PlusDDL.TestDeleteRows == 0 &&
+		!e.PlusDDL.Enabled {
+		e.PlusDDL = def.PlusDDL
+	}
+}
