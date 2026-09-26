@@ -37,6 +37,11 @@ type ExtendedCounters struct {
 	AutonViolations atomic.Int64
 }
 
+// isAlreadyExists recognizes Firebird's "object already exists" errors.
+func isAlreadyExists(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already exists")
+}
+
 // auxObjectName guards the aux tables against concurrent bootstrap runs.
 // EL2PC_LOG lives in the aux database, the rest in the main database.
 const (
@@ -54,6 +59,10 @@ const (
 func BootstrapExtendedSchema(ctx context.Context, mainDB *sql.DB, cfg *config.Config) (auxDBPath string, err error) {
 	el := cfg.ExtendedLoad
 	el.Normalize()
+
+	if _, err = mainDB.ExecContext(ctx, `CREATE SEQUENCE EL_BULK_SEQ`); err != nil && !isAlreadyExists(err) {
+		return "", fmt.Errorf("extended bootstrap (bulk seq): %w", err)
+	}
 
 	stmts := []string{
 		`RECREATE TABLE ` + elBulkTable + ` (
@@ -139,7 +148,7 @@ BEGIN
 	IN AUTONOMOUS TRANSACTION DO
 		INSERT INTO ` + elAutonTable + ` (ID, NOTE, STAMP) VALUES (NEXT VALUE FOR EL_AUTON_SEQ, :NOTE, CURRENT_TIMESTAMP);
 END`
-	if _, err := db.ExecContext(ctx, `CREATE SEQUENCE EL_AUTON_SEQ`); err != nil && !strings.Contains(err.Error(), "already exists") {
+	if _, err := db.ExecContext(ctx, `CREATE SEQUENCE EL_AUTON_SEQ`); err != nil && !isAlreadyExists(err) {
 		return fmt.Errorf("extended bootstrap (sequence): %w", err)
 	}
 	if _, err := db.ExecContext(ctx, q); err != nil {
@@ -180,4 +189,31 @@ var defaultCounters ExtendedCounters
 // Extended returns the package-level extended counters singleton.
 func Extended() *ExtendedCounters {
 	return &defaultCounters
+}
+
+// SnapshotJSON renders the current extended counters for the emul state API
+// and the final report (nil = nothing happened, section omitted).
+func (c *ExtendedCounters) SnapshotJSON() *ExtendedJSON {
+	if c == nil {
+		return nil
+	}
+	if c.HeavyRounds.Load()+c.BulkInserts.Load()+c.BulkUpdates.Load()+c.BulkDeletes.Load()+
+		c.ColumnsAdded.Load()+c.LimboResolved.Load() == 0 {
+		return nil
+	}
+	return &ExtendedJSON{
+		HeavyRounds:    c.HeavyRounds.Load(),
+		HeavyFailures:  c.HeavyFailures.Load(),
+		BulkInserts:    c.BulkInserts.Load(),
+		BulkUpdates:    c.BulkUpdates.Load(),
+		BulkDeletes:    c.BulkDeletes.Load(),
+		BulkFailures:   c.BulkFailures.Load(),
+		BulkRows:       c.BulkRows.Load(),
+		ColumnsAdded:   c.ColumnsAdded.Load(),
+		ColumnsAltered: c.ColumnsAltered.Load(),
+		ColumnsDropped: c.ColumnsDropped.Load(),
+		TablesCreated:  c.TablesCreated.Load(),
+		TablesDropped:  c.TablesDropped.Load(),
+		LimboResolved:  c.LimboResolved.Load(),
+	}
 }

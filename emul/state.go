@@ -310,17 +310,35 @@ func containsAny(s string, subs ...string) bool {
 // EmulStateJSON is the JSON projection carried in the session Snapshot and
 // served by the state endpoint.
 type EmulStateJSON struct {
-	ScorePerMin float64       `json:"scorePerMin"`
-	OKUnits     int64         `json:"okUnits"`
-	TotalUnits  int64         `json:"totalUnits"`
-	Phase       string        `json:"phase"`
-	Invariant   string        `json:"invariant"`
-	InvariantAt time.Time     `json:"invariantAt"`
-	MemPeaks    Sample        `json:"memPeaks"`
-	Series      []SeriesPoint `json:"series"`
-	PerUnit     []UnitStat    `json:"perUnit"`
-	WorkingMode string        `json:"workingMode,omitempty"`
-	StartedAt   time.Time     `json:"startedAt"`
+	ScorePerMin float64        `json:"scorePerMin"`
+	OKUnits     int64          `json:"okUnits"`
+	TotalUnits  int64          `json:"totalUnits"`
+	Phase       string         `json:"phase"`
+	Invariant   string         `json:"invariant"`
+	InvariantAt time.Time      `json:"invariantAt"`
+	MemPeaks    Sample         `json:"memPeaks"`
+	Series      []SeriesPoint  `json:"series"`
+	PerUnit     []UnitStat     `json:"perUnit"`
+	WorkingMode string         `json:"workingMode,omitempty"`
+	StartedAt   time.Time      `json:"startedAt"`
+	Extended    *ExtendedJSON  `json:"extended,omitempty"`
+}
+
+// ExtendedJSON is the extended-load sidecar activity snapshot (H5).
+type ExtendedJSON struct {
+	HeavyRounds    int64 `json:"heavyRounds"`
+	HeavyFailures  int64 `json:"heavyFailures"`
+	BulkInserts    int64 `json:"bulkInserts"`
+	BulkUpdates    int64 `json:"bulkUpdates"`
+	BulkDeletes    int64 `json:"bulkDeletes"`
+	BulkFailures   int64 `json:"bulkFailures"`
+	BulkRows       int64 `json:"bulkRows"`
+	ColumnsAdded   int64 `json:"columnsAdded"`
+	ColumnsAltered int64 `json:"columnsAltered"`
+	ColumnsDropped int64 `json:"columnsDropped"`
+	TablesCreated  int64 `json:"tablesCreated"`
+	TablesDropped  int64 `json:"tablesDropped"`
+	LimboResolved  int64 `json:"limboResolved"`
 }
 
 // JSON renders a capped, thread-safe copy of the state. perUnitAgg comes
@@ -341,6 +359,7 @@ func (s *EmulState) JSON(perUnitAgg map[string]OutcomeStats, registry []Unit) Em
 		MemPeaks:    s.memPeaks,
 		WorkingMode: s.workingMode,
 		StartedAt:   s.startedAt,
+		Extended:    Extended().SnapshotJSON(),
 	}
 	out.Series = make([]SeriesPoint, len(s.series))
 	copy(out.Series, s.series)

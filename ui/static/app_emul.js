@@ -141,6 +141,7 @@ async function emulLoadSession() {
     document.getElementById("emulThink").value = s.thinkMs;
     document.getElementById("emulInvEvery").value = s.emulInvariantEvery || 60;
     document.getElementById("emulMonEvery").value = s.emulMonitorEvery || 10;
+    emulLoadExtended(s);
     // time limit: shared preference with the Sessions-tab row dropdown
     document.getElementById("emulTimeLimit").value =
       String(rowLimits[id] !== undefined ? rowLimits[id] : 15);
@@ -148,6 +149,68 @@ async function emulLoadSession() {
   } catch {
     /* session may be transiently unavailable */
   }
+}
+
+// emulLoadExtended populates the Extended load panel from the session echo.
+function emulLoadExtended(s) {
+  const el = (s && s.extendedLoad) || {};
+  document.getElementById("extLdEnabled").checked = el.enabled !== false;
+  const hv = el.heavySelect || {};
+  document.getElementById("extLdHeavyEvery").value = hv.everySec !== undefined ? hv.everySec : 5;
+  const bd = el.bulkDml || {};
+  document.getElementById("extLdBulkEvery").value = bd.everySec !== undefined ? bd.everySec : 30;
+  document.getElementById("extLdBulkMin").value = bd.minRows || 100;
+  document.getElementById("extLdBulkMax").value = bd.maxRows || 1000;
+  const tv = el.txVariants || {};
+  document.getElementById("extLdTxMode").value = tv.mode || "emul-safe";
+  const ol = el.opsLog || {};
+  document.getElementById("extLdOpsLevel").value = ol.level || "all";
+  document.getElementById("extLdOpsFormat").value = ol.format || "repl-print";
+  const pd = el.plusDDL || {};
+  document.getElementById("extLdPlusDDL").checked = !!pd.enabled;
+  document.getElementById("extLdDDLEvery").value = pd.everySec || 60;
+}
+
+// emulExtendedPayload reads the Extended load panel into a patch object.
+function emulExtendedPayload() {
+  const minRows = Number(document.getElementById("extLdBulkMin").value) || 100;
+  const maxRows = Number(document.getElementById("extLdBulkMax").value) || 1000;
+  return {
+    enabled: document.getElementById("extLdEnabled").checked,
+    heavySelect: { everySec: Number(document.getElementById("extLdHeavyEvery").value) || 0, minJoins: 3 },
+    bulkDml: {
+      everySec: Number(document.getElementById("extLdBulkEvery").value) || 0,
+      minRows: minRows,
+      maxRows: Math.max(minRows, maxRows),
+    },
+    opsLog: {
+      enabled: true,
+      level: document.getElementById("extLdOpsLevel").value,
+      format: document.getElementById("extLdOpsFormat").value,
+      maxSizeMB: 50,
+      keepArchives: 3,
+      rotateOnStart: true,
+    },
+    txVariants: {
+      mode: document.getElementById("extLdTxMode").value,
+      lockTimeoutChoicesSec: [1, 3, 5, 10],
+      completion: { commit: 55, rollback: 15, commitRetaining: 10, rollbackRetaining: 5, twoPhase: 5, limbo: 2, connDrop: 2 },
+      rareCompletionMinGapSec: 10,
+      retainingChainMax: 50,
+      savepointProb: 0.15,
+      autonomousCallProb: 0.10,
+      ddlRollbackFrac: 0.20,
+    },
+    plusDDL: {
+      enabled: document.getElementById("extLdPlusDDL").checked,
+      everySec: Number(document.getElementById("extLdDDLEvery").value) || 60,
+      colPrefix: "TST_",
+      testInsertRows: 100,
+      testUpdateRows: 50,
+      testDeleteRows: 30,
+      workTables: ["WARES", "AGENTS", "DOC_STATES"],
+    },
+  };
 }
 
 async function emulLoadUnits() {
@@ -200,6 +263,7 @@ async function emulApplySettings() {
       thinkMs: Number(document.getElementById("emulThink").value) || 50,
       emulInvariantEvery: Number(document.getElementById("emulInvEvery").value) || 60,
       emulMonitorEvery: Number(document.getElementById("emulMonEvery").value) || 10,
+      extendedLoad: emulExtendedPayload(),
     });
     document.getElementById("emulConnMax").value = s.connMax + " (budget)";
     emulSetStatus("Settings applied", "ok");

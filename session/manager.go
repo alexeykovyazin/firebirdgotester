@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -583,6 +584,18 @@ func (m *Manager) Patch(id string, patch map[string]interface{}) (Snapshot, erro
 	if v, ok := patch["emulWorkingMode"].(string); ok && v != "" {
 		s.Config.EmulWorkingMode = v
 	}
+	if raw, ok := patch["extendedLoad"]; ok {
+		data, jerr := json.Marshal(raw)
+		if jerr != nil {
+			return Snapshot{}, fmt.Errorf("extendedLoad: %w", jerr)
+		}
+		var el config.ExtendedLoad
+		if err := json.Unmarshal(data, &el); err != nil {
+			return Snapshot{}, fmt.Errorf("extendedLoad: %w", err)
+		}
+		el.Normalize()
+		s.Config.ExtendedLoad = el
+	}
 	s.Status = StatusIdle
 	s.LastError = ""
 	s.mu.Unlock()
@@ -1094,9 +1107,10 @@ func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseN
 			s.mu.Lock()
 		}
 		s.Status = StatusCompleted
+		variants, completions := s.metricsTablesLocked()
 		s.cleanupLocked(true)
 		s.mu.Unlock()
-		writeEmulReportFile(filepath.Dir(baseName), frozen, emulCfg)
+		writeEmulReportFile(filepath.Dir(baseName), frozen, emulCfg, variants, completions)
 		m.releaseBudget(reserved)
 		m.recordFinishEntry(s, entry)
 		s.mu.Lock()
@@ -1233,11 +1247,13 @@ func (m *Manager) Stop(id string) (Snapshot, error) {
 	}
 	// capture the report inputs under the lock; the file write itself runs
 	// unlocked (I/O under s.mu invites deadlocks)
+	variants, completions := map[string]worker.VariantAgg{}, map[string]worker.VariantAgg{}
 	s.mu.Lock()
 	frozen = s.emulFrozen
 	emulCfg = s.Config
+	variants, completions = s.metricsTablesLocked()
 	s.mu.Unlock()
-	writeEmulReportFile(reportDir, frozen, emulCfg)
+	writeEmulReportFile(reportDir, frozen, emulCfg, variants, completions)
 
 	m.releaseBudget(reserved)
 
@@ -1764,6 +1780,7 @@ func (s *Session) snapshotLocked() Snapshot {
 		reportDir = s.lastReportDir
 	}
 
+	elCfg := s.Config.ExtendedLoad
 	snap := Snapshot{
 		ID:               s.ID,
 		Name:             s.Config.Name,
@@ -1772,6 +1789,7 @@ func (s *Session) snapshotLocked() Snapshot {
 		DSN:              s.Config.DSN,
 		Status:           s.Status,
 		Profile:          s.Config.Profile,
+		ExtendedLoad:     &elCfg,
 		ConnMin:          s.Config.ConnMin,
 		ConnMax:          s.Config.ConnMax,
 		Warmup:           s.Config.Warmup,

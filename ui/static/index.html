@@ -528,6 +528,39 @@
       </div>
 
       <div class="panel">
+        <h3>Extended load</h3>
+        <div class="fields">
+          <label><input type="checkbox" id="extLdEnabled" checked /> enabled (off = classic score run)</label>
+          <label>Heavy SELECT every s <input type="number" id="extLdHeavyEvery" value="5" min="0" /></label>
+          <label>Bulk DML every s <input type="number" id="extLdBulkEvery" value="30" min="0" /></label>
+          <label>Bulk min rows <input type="number" id="extLdBulkMin" value="100" min="1" /></label>
+          <label>Bulk max rows <input type="number" id="extLdBulkMax" value="1000" min="1" /></label>
+          <label>Tx variants
+            <select id="extLdTxMode">
+              <option value="emul-safe" selected>emul-safe</option>
+              <option value="off">off</option>
+              <option value="full">full</option>
+            </select>
+          </label>
+          <label>Ops log level
+            <select id="extLdOpsLevel">
+              <option value="all" selected>all</option>
+              <option value="periodic">periodic</option>
+              <option value="errors">errors</option>
+            </select>
+          </label>
+          <label>Ops log format
+            <select id="extLdOpsFormat">
+              <option value="repl-print" selected>repl-print</option>
+              <option value="tsv">tsv</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="extLdPlusDDL" /> -plusddl (DDL churn)</label>
+          <label>DDL every s <input type="number" id="extLdDDLEvery" value="60" min="1" /></label>
+        </div>
+      </div>
+
+      <div class="panel">
         <h3>Unit mix (weights)</h3>
         <div class="emul-table-wrap">
           <table>
