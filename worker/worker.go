@@ -61,6 +61,14 @@ type Worker struct {
 	closed  bool
 	running bool
 
+	// Extended load mix: per-worker scenario picker and the planned-drop flag.
+	// A limbo/conn-drop completion kills the socket on purpose; the next dead-
+	// conn error must rebuild the pool in place instead of exiting the worker
+	// (ramp never reaps exited workers — V17).
+	picker      *ops.Picker
+	plannedDrop bool
+	kind        ops.OpKind
+
 	wg sync.WaitGroup
 }
 
@@ -75,7 +83,7 @@ func NewWorkerWithPause(id int, ctx context.Context, connFactory Connector, cach
 
 	DebugEnabled.Store(config.Debug)
 
-	return &Worker{
+	w := &Worker{
 		id:            id,
 		ctx:           workerCtx,
 		cancel:        cancel,
@@ -89,6 +97,29 @@ func NewWorkerWithPause(id int, ctx context.Context, connFactory Connector, cach
 		txTimeout:     config.GetTxTimeout(),
 		stopTimeout:   defaultStopTimeout,
 		running:       false,
+		kind:          opKindFor(config),
+	}
+	if config != nil && config.ExtendedLoad.Enabled && config.ExtendedLoad.TxVariants.Mode != "off" {
+		w.picker = ops.NewPicker(config.ExtendedLoad, id, time.Now().UnixNano()+int64(id))
+	}
+	return w
+}
+
+// opKindFor decides the access-mode constraint: oltp-emul units are
+// execute-procedure calls (write-only); the read-heavy profile consists of
+// SELECT operations (read-only variants allowed); everything else draws
+// write transactions.
+func opKindFor(cfg *config.Config) ops.OpKind {
+	if cfg == nil {
+		return ops.KindWrite
+	}
+	switch cfg.Profile {
+	case "oltp-emul":
+		return ops.KindWrite
+	case "read-heavy":
+		return ops.KindRead
+	default:
+		return ops.KindWrite
 	}
 }
 
@@ -230,9 +261,16 @@ func (w *Worker) run() {
 				if isCancelErr(err) || w.ctx.Err() != nil {
 					return
 				}
-				// No usable handle: Stop closed it, or the pool is gone.
-				// Exit rather than spin on a dead connection.
+				// No usable handle: Stop closed it, the pool is gone, or a
+				// planned limbo/conn-drop completion just killed the socket.
+				// Planned drops rebuild the pool in place; a real dead
+				// connection exits the worker (ramp does not reap — V17).
 				if isDeadConnErr(err) {
+					if w.takePlannedDrop() {
+						if rerr := w.rebuildConn(); rerr == nil {
+							continue
+						}
+					}
 					return
 				}
 				w.metrics.RecordError(err)
@@ -264,16 +302,44 @@ func (w *Worker) executeOperation() error {
 		return fmt.Errorf("worker %d: %w", w.id, ErrNoConnection)
 	}
 
+	// Get next operation from profile BEFORE the transaction begins (T2):
+	// selection is pure, and the scenario depends on the operation kind.
+	op, opName := w.profile.NextOpWithName()
+	if op == nil {
+		err := fmt.Errorf("worker %d got nil operation from profile", w.id)
+		w.metrics.LogSQLError(w.id, "NextOp", "command", err)
+		return err
+	}
+
+	// Draw the transaction scenario (extended load mix). enabled=false
+	// reproduces the historical behavior: fixed TxOptions for oltp-emul,
+	// driver default otherwise.
+	var txOpts *sql.TxOptions
+	var sc ops.Scenario
+	scenarioActive := false
+	if w.picker != nil {
+		if drawn, ok := w.picker.Pick(w.kind); ok {
+			sc = drawn
+			txOpts = &sql.TxOptions{Isolation: sql.IsolationLevel(sc.Level), ReadOnly: sc.ReadOnly}
+			scenarioActive = true
+		}
+	}
+	if txOpts == nil && w.config != nil && w.config.Profile == "oltp-emul" {
+		// oltp-emul units require NOWAIT transactions (SP_CHECK_NOWAIT_OR_TIMEOUT
+		// rejects WAIT); other profiles keep the driver default.
+		txOpts = emul.TxOptions()
+	}
+
+	opsTxn := int64(0)
+	if l := w.metrics.OpsLog(); l != nil && scenarioActive {
+		opsTxn = l.NextTx()
+		l.TxStart(opsTxn, fmt.Sprintf("worker-%d", w.id), sc.Params())
+	}
+
 	// Begin transaction with timeout
 	ctx, cancel := context.WithTimeout(w.ctx, w.txTimeout)
 	defer cancel()
 
-	// oltp-emul units require NOWAIT transactions (SP_CHECK_NOWAIT_OR_TIMEOUT
-	// rejects WAIT); other profiles keep the driver default.
-	var txOpts *sql.TxOptions
-	if w.config != nil && w.config.Profile == "oltp-emul" {
-		txOpts = emul.TxOptions()
-	}
 	tx, err := conn.BeginTx(ctx, txOpts)
 	if err != nil {
 		if isCancelErr(err) || w.ctx.Err() != nil || isDeadConnErr(err) {
@@ -285,18 +351,20 @@ func (w *Worker) executeOperation() error {
 		w.metrics.LogSQLError(w.id, "BeginTx", "begin", err)
 		return fmt.Errorf("worker %d failed to begin transaction: %w", w.id, err)
 	}
-	defer tx.Rollback()
-
-	// Get next operation from profile
-	op, opName := w.profile.NextOpWithName()
-	if op == nil {
-		err := fmt.Errorf("worker %d got nil operation from profile", w.id)
-		w.metrics.LogSQLError(w.id, "NextOp", "command", err)
-		return err
-	}
+	// The completion methods below own the transaction end; the fallback
+	// rollback only fires on the early-error paths.
+	completed := false
+	defer func() {
+		if !completed {
+			_ = tx.Rollback()
+		}
+	}()
 
 	if DebugEnabled.Load() {
 		fmt.Printf("[Worker-%d] Executing operation %s...\n", w.id, opName)
+	}
+	if l := w.metrics.OpsLog(); l != nil && scenarioActive {
+		l.Stmt(opsTxn, opName, 0, 0, false)
 	}
 
 	// Execute the operation
@@ -317,6 +385,13 @@ func (w *Worker) executeOperation() error {
 		}
 		isExpected, classifiedErr := ops.ClassifyError(err)
 		w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
+		if scenarioActive {
+			w.metrics.RecordVariant(sc, false)
+			w.picker.NoteResult(sc, false, opsTxn)
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Rollback(opsTxn, "stmt_failed", 0, 0, 0, time.Since(startTime), true)
+			}
+		}
 		kind := "unexpected"
 		if isExpected {
 			kind = "expected"
@@ -334,28 +409,178 @@ func (w *Worker) executeOperation() error {
 		return fmt.Errorf("worker %d unexpected error: %w", w.id, classifiedErr)
 	}
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		if isCancelErr(err) || w.ctx.Err() != nil {
-			return err
+	// Completion axis (T4): commit / rollback / retaining / 2PC / limbo / drop.
+	completed = true
+	txErr := w.completeTransaction(ctx, tx, sc, scenarioActive, opsTxn)
+	if txErr != nil {
+		if isCancelErr(txErr) || w.ctx.Err() != nil {
+			return txErr
+		}
+		// Planned limbo / hard-drop completions fail on purpose (the socket
+		// is dead afterwards); they are not operation failures.
+		if scenarioActive && isPlannedDropErr(txErr) {
+			w.metrics.RecordTransactionNamed(true, time.Since(startTime), opName)
+			w.metrics.RecordVariant(sc, true)
+			w.metrics.RecordCompletion(sc.Completion, true)
+			if w.config != nil && w.config.Profile == "oltp-emul" {
+				w.metrics.RecordUnit(opName, time.Since(startTime), emul.OutcomeOK)
+			}
+			w.picker.NoteResult(sc, false, opsTxn)
+			return nil
 		}
 		w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
-		w.metrics.LogSQLError(w.id, opName, "commit", err)
-		if DebugEnabled.Load() {
-			fmt.Printf("[Worker-%d] Operation %s FAILED to commit: %v\n", w.id, opName, err)
+		w.metrics.RecordCompletion(sc.Completion, false)
+		if scenarioActive {
+			w.metrics.RecordVariant(sc, false)
+			w.picker.NoteResult(sc, false, opsTxn)
 		}
-		return fmt.Errorf("worker %d failed to commit transaction: %w", w.id, err)
+		w.metrics.LogSQLError(w.id, opName, "commit", txErr)
+		if DebugEnabled.Load() {
+			fmt.Printf("[Worker-%d] Operation %s FAILED to complete (%s): %v\n", w.id, opName, sc.Completion, txErr)
+		}
+		return fmt.Errorf("worker %d failed to complete transaction: %w", w.id, txErr)
 	}
 
 	// Record successful transaction
 	w.metrics.RecordTransactionNamed(true, time.Since(startTime), opName)
+	if scenarioActive {
+		w.metrics.RecordVariant(sc, true)
+		w.metrics.RecordCompletion(sc.Completion, true)
+		retained := sc.Completion == ops.CompletionCommitRetaining || sc.Completion == ops.CompletionRollbackRetaining
+		w.picker.NoteResult(sc, retained, opsTxn)
+	}
 	if w.config != nil && w.config.Profile == "oltp-emul" {
+		// Score pipeline untouched (T6): a unit whose statements ran without
+		// error counts OK regardless of the completion variant — the
+		// completion axis is part of the load character, not a failure.
 		w.metrics.RecordUnit(opName, time.Since(startTime), emul.OutcomeOK)
 	}
 	if DebugEnabled.Load() {
 		fmt.Printf("[Worker-%d] Operation %s SUCCESS (%.2fms)\n", w.id, opName, float64(time.Since(startTime).Microseconds())/1000.0)
 	}
 	return nil
+}
+
+// completeTransaction ends the transaction according to the scenario. For
+// twoPhase it enlists the aux database first (engine-side 2PC); limbo and
+// connDrop dispatch through the fork's begin-time intents.
+func (w *Worker) completeTransaction(ctx context.Context, tx *sql.Tx, sc ops.Scenario, scenarioActive bool, opsTxn int64) error {
+	dur := func() time.Duration { return 0 }
+	_ = dur
+	switch sc.Completion {
+	case ops.CompletionRollback:
+		if scenarioActive {
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Rollback(opsTxn, "", 0, 0, 0, 0, false)
+			}
+		}
+		return tx.Rollback()
+	case ops.CompletionConnDrop:
+		// 8000+iso intent: the driver closes the socket without rollback and
+		// returns ErrBadConn; this worker rebuilds its pool in place (V17).
+		err := tx.Rollback()
+		if isPlannedDropErr(err) {
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Dropped(opsTxn)
+			}
+			w.setPlannedDrop()
+		}
+		return err
+	case ops.CompletionLimbo:
+		// 7000+iso intent: Commit dispatches op_prepare then drops the socket;
+		// the transaction stays in limbo until the recovery sidecar resolves it.
+		err := tx.Commit()
+		if isPlannedDropErr(err) {
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Prepare(opsTxn, 0, false)
+			}
+			w.setPlannedDrop()
+		}
+		return err
+	case ops.CompletionTwoPhase:
+		// Enlist the aux DB inside this transaction; the commit then runs as
+		// an engine-side two-phase commit (F6a).
+		if aux := w.config.ExtendedLoad.TxVariants.TwoPhaseAuxDB; aux != "" {
+			if err := ops.EnlistTwoPhase(ctx, tx, aux, w.config.User, w.config.Pass, w.id); err != nil {
+				return fmt.Errorf("2pc enlist: %w", err)
+			}
+		}
+		err := tx.Commit()
+		if err == nil {
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Prepare(opsTxn, 0, false)
+				l.Commit(opsTxn, 0, 0, 0, 0, false)
+			}
+		}
+		return err
+	default: // commit, commitRetaining, rollbackRetaining
+		err := tx.Commit()
+		if err != nil {
+			return err
+		}
+		if scenarioActive {
+			if l := w.metrics.OpsLog(); l != nil {
+				switch sc.Completion {
+				case ops.CompletionCommitRetaining:
+					l.CommitRetaining(opsTxn, 0, 0, 0, 0, false)
+				default:
+					l.Commit(opsTxn, 0, 0, 0, 0, false)
+				}
+			}
+		}
+		return nil
+	}
+}
+
+// setPlannedDrop marks the connection as deliberately killed: the next
+// dead-conn error triggers an in-place pool rebuild instead of worker exit.
+func (w *Worker) setPlannedDrop() {
+	w.mu.Lock()
+	w.plannedDrop = true
+	w.mu.Unlock()
+}
+
+// takePlannedDrop atomically consumes the planned-drop flag.
+func (w *Worker) takePlannedDrop() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	pd := w.plannedDrop
+	w.plannedDrop = false
+	return pd
+}
+
+// rebuildConn replaces a dead pool in place via the stored connFactory.
+// Exit+respawn is not an option: the ramp scheduler never reaps exited
+// workers, so the load would silently shrink (V17).
+func (w *Worker) rebuildConn() error {
+	w.mu.Lock()
+	old := w.dbConn
+	w.mu.Unlock()
+
+	fresh, err := w.connFactory.Open()
+	if err != nil || fresh == nil {
+		return fmt.Errorf("worker %d pool rebuild failed: %w", w.id, err)
+	}
+
+	w.mu.Lock()
+	w.dbConn = fresh
+	w.mu.Unlock()
+
+	if old != nil {
+		go func() { _ = w.connFactory.Close(old) }()
+	}
+	return nil
+}
+
+// isPlannedDropErr recognizes the fork's planned limbo / hard-drop errors
+// (wrapped driver.ErrBadConn with the "planned" marker).
+func isPlannedDropErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "planned") &&
+		(strings.Contains(s, "bad connection") || strings.Contains(s, "limbo"))
 }
 
 // isCancelErr reports shutdown/cancel noise that should not be logged as SQL failures.
@@ -427,11 +652,22 @@ func (w *Worker) GetProfileName() string {
 	return w.profile.Name()
 }
 
+// VariantAgg aggregates scenario draws for the report tables (T6).
+type VariantAgg struct {
+	Attempts int64
+	OK       int64
+	LatSumMs int64
+}
+
 // MetricsCollector collects metrics from all workers in a session.
 type MetricsCollector struct {
 	txSuccess atomic.Int64
 	txError   atomic.Int64
 	connCount atomic.Int64
+
+	variantMu        sync.Mutex
+	variantCounts    map[string]*VariantAgg
+	completionCounts map[string]*VariantAgg
 
 	// Latency histogram buckets (in milliseconds). Buckets 0-7 are the legacy
 	// ranges kept for report comparability; 8-13 cover the heavy SELECT /
@@ -458,11 +694,65 @@ type MetricsCollector struct {
 func NewMetricsCollector() *MetricsCollector {
 	now := time.Now()
 	return &MetricsCollector{
-		opCounts:       make(map[string]int64),
-		errorStats:     ops.NewErrorStats(),
-		startTime:      now,
-		lastReportTime: now,
+		opCounts:         make(map[string]int64),
+		errorStats:       ops.NewErrorStats(),
+		startTime:        now,
+		lastReportTime:   now,
+		variantCounts:    make(map[string]*VariantAgg),
+		completionCounts: make(map[string]*VariantAgg),
 	}
+}
+
+// RecordVariant counts one transaction under its scenario name.
+func (mc *MetricsCollector) RecordVariant(sc ops.Scenario, ok bool) {
+	mc.variantMu.Lock()
+	defer mc.variantMu.Unlock()
+	agg := mc.variantCounts[sc.IsolationName]
+	if agg == nil {
+		agg = &VariantAgg{}
+		mc.variantCounts[sc.IsolationName] = agg
+	}
+	agg.Attempts++
+	if ok {
+		agg.OK++
+	}
+}
+
+// RecordCompletion counts one transaction under its completion method.
+func (mc *MetricsCollector) RecordCompletion(c ops.Completion, ok bool) {
+	mc.variantMu.Lock()
+	defer mc.variantMu.Unlock()
+	agg := mc.completionCounts[string(c)]
+	if agg == nil {
+		agg = &VariantAgg{}
+		mc.completionCounts[string(c)] = agg
+	}
+	agg.Attempts++
+	if ok {
+		agg.OK++
+	}
+}
+
+// GetVariantCounts returns a copy of the scenario aggregation.
+func (mc *MetricsCollector) GetVariantCounts() map[string]VariantAgg {
+	mc.variantMu.Lock()
+	defer mc.variantMu.Unlock()
+	out := make(map[string]VariantAgg, len(mc.variantCounts))
+	for k, v := range mc.variantCounts {
+		out[k] = *v
+	}
+	return out
+}
+
+// GetCompletionCounts returns a copy of the completion-method aggregation.
+func (mc *MetricsCollector) GetCompletionCounts() map[string]VariantAgg {
+	mc.variantMu.Lock()
+	defer mc.variantMu.Unlock()
+	out := make(map[string]VariantAgg, len(mc.completionCounts))
+	for k, v := range mc.completionCounts {
+		out[k] = *v
+	}
+	return out
 }
 
 // RecordTransaction records the result of a transaction

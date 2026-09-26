@@ -931,6 +931,10 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 		wMetrics.SetOpsLog(opsLogger)
 	}
 
+	// Extended load mix (H1): aux schema + twoPhase enablement must exist
+	// before the workers start drawing scenarios.
+	bootstrapExtended(runCfg)
+
 	sched := ramp.NewSchedulerWithPause(runCfg, factory, cache, prof, wMetrics, pause)
 
 	sysMetrics := metrics.NewMetricsCollector(sched, prof, cache, wMetrics)
