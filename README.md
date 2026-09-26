@@ -732,9 +732,10 @@ design, the fb_repl_print log format spec (§7) and the verified-facts table.
   unit reading its rows fails with "record from transaction ... is stuck in
   limbo". These errors are classified as conflicts (expected), the recovery
   sidecar polls every 2s and verifies each resolution against a fresh limbo
-  list — a plain `isc_spb_rpr_commit/rollback_trans_64` action reports its
-  own failure only through service output lines that the driver does not
-  parse, so unverifiable resolutions are retried, not counted.
+  list — the fork's repair actions surface not-in-limbo / ill-defined-state
+  reports as Go errors (the Services API delivers them through the action's
+  own output, not the protocol status), so unverifiable resolutions are
+  retried, not counted.
 - **The rare-completion gate is run-global.** `RareCompletionMinGapSec`
   bounds limbo/connDrop completions across the whole worker pool (a
   per-worker gate multiplied the rate by the pool size and produced a stuck
@@ -742,3 +743,17 @@ design, the fb_repl_print log format spec (§7) and the verified-facts table.
 - Limbo and hard-drop completions kill sockets on purpose; workers rebuild
   their pools in place and continue (watch `[extended] limbo resolved` and
   `[] RESOLVED` records in the ops log).
+- **Savepoints and autonomous SP run inside the emul transactions** (T5
+  axes, extended load): with `savepointProb` (default 0.15) the unit is
+  wrapped in `SAVEPOINT EL_SP`, then half of those resolve with
+  `ROLLBACK TO` (the unit's writes are undone, the transaction continues to
+  the completion axis) and half with `RELEASE`; with `autonomousCallProb`
+  (default 0.10) the worker calls `SP_ELT_AUTON_LOG`, whose
+  `IN AUTONOMOUS TRANSACTION` insert into `EL_AUTON_LOG` survives even a
+  final ROLLBACK. Both are logged as statements in the ops log; both are
+  skipped for read-only scenario variants.
+- **Worker-removal stop timeouts are self-recovering.** During ramp
+  down-scaling a worker sitting in a long lock-timeout wait may not answer
+  `Stop` within its 5s budget ("Failed to remove worker N: stop timed out");
+  the removal proceeds on the next tick, no unit or invariant state is
+  affected.

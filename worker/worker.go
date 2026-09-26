@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -371,6 +372,35 @@ func (w *Worker) executeOperation() error {
 		l.Stmt(opsTxn, opName, 0, 0, false)
 	}
 
+	// T5 axes (extended load only): a savepoint wrapped around the unit and
+	// an autonomous-SP call inside the live transaction. Both draw per unit
+	// execution and only for writable transactions — read-only scenarios
+	// cannot run the SP's insert, and savepoints have nothing to track there.
+	// The autonomous insert is independent of the outer transaction and the
+	// savepoint: its row survives even a final ROLLBACK, which is the point.
+	savepointRoll := -1.0
+	if w.config != nil && w.config.ExtendedLoad.Enabled && scenarioActive && !sc.ReadOnly {
+		tv := w.config.ExtendedLoad.TxVariants
+		if tv.SavepointProb > 0 && rand.Float64() < tv.SavepointProb {
+			if _, err := tx.ExecContext(ctx, "SAVEPOINT EL_SP"); err != nil {
+				return w.t5StatementFailed(opName, startTime, "SAVEPOINT", err)
+			}
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Stmt(opsTxn, "SAVEPOINT EL_SP", 0, 0, false)
+			}
+			savepointRoll = rand.Float64()
+		}
+		if tv.AutonomousCallProb > 0 && rand.Float64() < tv.AutonomousCallProb {
+			if _, err := tx.ExecContext(ctx,
+				"EXECUTE PROCEDURE SP_ELT_AUTON_LOG (?)", fmt.Sprintf("w%d %s", w.id, opName)); err != nil {
+				return w.t5StatementFailed(opName, startTime, "SP_ELT_AUTON_LOG", err)
+			}
+			if l := w.metrics.OpsLog(); l != nil {
+				l.Stmt(opsTxn, "SP_ELT_AUTON_LOG", 0, 0, false)
+			}
+		}
+	}
+
 	// Execute the operation
 	if err := op(ctx, tx, w.cache); err != nil {
 		if isCancelErr(err) || w.ctx.Err() != nil {
@@ -411,6 +441,22 @@ func (w *Worker) executeOperation() error {
 			fmt.Printf("[Worker-%d] Operation %s FAILED (unexpected): %v\n", w.id, opName, err)
 		}
 		return fmt.Errorf("worker %d unexpected error: %w", w.id, classifiedErr)
+	}
+
+	// Resolve the T5 savepoint drawn before the unit: half the draws undo the
+	// unit's writes (ROLLBACK TO — the transaction continues without them and
+	// still reaches the completion axis), the rest release the savepoint.
+	if savepointRoll >= 0 {
+		stmt := "RELEASE SAVEPOINT EL_SP"
+		if savepointRoll < 0.5 {
+			stmt = "ROLLBACK TO SAVEPOINT EL_SP"
+		}
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return w.t5StatementFailed(opName, startTime, stmt, err)
+		}
+		if l := w.metrics.OpsLog(); l != nil {
+			l.Stmt(opsTxn, stmt, 0, 0, false)
+		}
 	}
 
 	// Completion axis (T4): commit / rollback / retaining / 2PC / limbo / drop.
@@ -463,6 +509,19 @@ func (w *Worker) executeOperation() error {
 		fmt.Printf("[Worker-%d] Operation %s SUCCESS (%.2fms)\n", w.id, opName, float64(time.Since(startTime).Microseconds())/1000.0)
 	}
 	return nil
+}
+
+// t5StatementFailed finishes the unit when a T5 statement (savepoint or
+// autonomous SP) fails inside the live transaction: it records the unit as
+// failed for oltp-emul, logs the failure and returns a wrapped error. The
+// deferred rollback in executeOperation tears the transaction down.
+func (w *Worker) t5StatementFailed(opName string, startTime time.Time, stmt string, err error) error {
+	if w.config != nil && w.config.Profile == "oltp-emul" {
+		w.metrics.RecordUnit(opName, time.Since(startTime), emul.OutcomeFailure)
+	}
+	w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
+	w.metrics.LogSQLError(w.id, stmt, "unexpected", err)
+	return fmt.Errorf("worker %d %s: %w", w.id, stmt, err)
 }
 
 // completeTransaction ends the transaction according to the scenario. For

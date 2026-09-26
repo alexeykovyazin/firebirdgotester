@@ -155,6 +155,14 @@ func (mc *MetricsCollector) updateFromWorkerMetrics() {
 		}
 		mc.errorMutex.Unlock()
 	}
+
+	// Pull the latency histogram the workers record (RecordTransactionNamed
+	// — both EMPLOYEE-profile ops and emul units). Without this the report's
+	// Latency Distribution section stays empty.
+	buckets := mc.workerMetrics.GetLatencyBucketCounts()
+	mc.latencyMutex.Lock()
+	mc.latencyBuckets = buckets
+	mc.latencyMutex.Unlock()
 }
 
 // updateFromScheduler updates metrics from the scheduler
