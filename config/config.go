@@ -110,7 +110,7 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.ExtendedLoad.BulkDml.MaxRows, "bulk-max", 1000, "Extended load: bulk round max rows")
 	flag.StringVar(&cfg.ExtendedLoad.OpsLog.Level, "ops-log-level", "all", "Extended load: ops log level (all|periodic|errors)")
 	flag.StringVar(&cfg.ExtendedLoad.TxVariants.Mode, "tx-variants", "emul-safe", "Extended load: transaction variant mode (off|emul-safe|full)")
-	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.Enabled, "plusddl", false, "Extended load: enable the DDL churn sidecar (ALTER TABLE/CREATE TABLE rounds)")
+	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.Enabled, "plusddl", false, "Extended load: enable the DDL churn sidecar (ALTER TABLE/CREATE TABLE rounds); implies --extended-load")
 	flag.IntVar(&cfg.EmulInvariantEvery, "emul-invariant-every", 60, "oltp-emul: seconds between stock/money invariant self-checks (0 = off)")
 	flag.IntVar(&cfg.EmulMonitorEvery, "emul-monitor-every", 10, "oltp-emul: seconds between mon$ memory snapshots (0 = off)")
 
@@ -142,6 +142,9 @@ func ParseFlags() (*Config, error) {
 	flag.Parse()
 
 	cfg.normalizeConnAliases()
+	if cfg.ExtendedLoad.PlusDDL.Enabled {
+		cfg.ExtendedLoad.Enabled = true
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
