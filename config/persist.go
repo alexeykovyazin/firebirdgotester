@@ -22,16 +22,17 @@ type EmulSessionRef struct {
 }
 
 type SessionPrefs struct {
-	Profile     string `json:"profile"`
-	ConnMin     int    `json:"connMin"`
-	ConnMax     int    `json:"connMax"`
-	Warmup      int    `json:"warmup"`
-	Main        int    `json:"main"`
-	Cooldown    int    `json:"cooldown"`
-	SpikeCycles int    `json:"spikeCycles"`
-	SpikeHold   int    `json:"spikeHold"`
-	ThinkMs     int    `json:"thinkMs"`
-	TxTimeout   int    `json:"txTimeout"`
+	Profile      string       `json:"profile"`
+	ExtendedLoad ExtendedLoad `json:"extendedLoad,omitempty"`
+	ConnMin      int          `json:"connMin"`
+	ConnMax      int          `json:"connMax"`
+	Warmup       int          `json:"warmup"`
+	Main         int          `json:"main"`
+	Cooldown     int          `json:"cooldown"`
+	SpikeCycles  int          `json:"spikeCycles"`
+	SpikeHold    int          `json:"spikeHold"`
+	ThinkMs      int          `json:"thinkMs"`
+	TxTimeout    int          `json:"txTimeout"`
 }
 
 // UISettings is the persisted Firebird/UI connection configuration.

@@ -103,6 +103,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.auth(s.handleRemove))
 	s.mux.HandleFunc("GET /api/sessions/{id}/report", s.authRead(s.handleReportList))
 	s.mux.HandleFunc("GET /api/sessions/{id}/report/{file}", s.authRead(s.handleReportDownload))
+	s.mux.HandleFunc("GET /api/sessions/{id}/logs", s.authRead(s.handleLogsList))
+	s.mux.HandleFunc("GET /api/sessions/{id}/logs/{file}", s.authRead(s.handleLogDownload))
 	s.mux.HandleFunc("GET /api/sessions/{id}/emul/units", s.authRead(s.handleEmulUnits))
 	s.mux.HandleFunc("PUT /api/sessions/{id}/emul/weights", s.auth(s.handleEmulWeights))
 	s.mux.HandleFunc("GET /api/sessions/{id}/emul/state", s.authRead(s.handleEmulState))
@@ -479,6 +481,37 @@ func (s *Server) handleReportList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReportDownload(w http.ResponseWriter, r *http.Request) {
 	path, err := s.manager.ResolveReportFile(r.PathValue("id"), r.PathValue("file"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename="+filepath.Base(path))
+	_, _ = io.Copy(w, f)
+}
+
+// handleLogsList lists the ops.log chain (extended load mix operations log).
+func (s *Server) handleLogsList(w http.ResponseWriter, r *http.Request) {
+	dir, files, err := s.manager.ListLogs(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"dir":   dir,
+		"files": files,
+	})
+}
+
+// handleLogDownload serves one file of the ops.log chain.
+func (s *Server) handleLogDownload(w http.ResponseWriter, r *http.Request) {
+	path, err := s.manager.ResolveLogFile(r.PathValue("id"), r.PathValue("file"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

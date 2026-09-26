@@ -49,6 +49,9 @@ type SessionConfig struct {
 	TxTimeout int  `json:"txTimeout"`
 	Debug     bool `json:"debug"`
 
+	// Extended load mix configuration
+	ExtendedLoad config.ExtendedLoad `json:"extendedLoad,omitempty"`
+
 	// oltp-emul extras (used when Profile == "oltp-emul")
 	EmulInvariantEvery int    `json:"emulInvariantEvery"` // seconds between invariant checks
 	EmulMonitorEvery   int    `json:"emulMonitorEvery"`   // seconds between memory snapshots
@@ -77,6 +80,9 @@ func DefaultsFromCLI(cfg *config.Config, info discover.DatabaseInfo, host string
 		profile = "write-heavy"
 	}
 
+	el := cfg.ExtendedLoad
+	el.Normalize()
+
 	return SessionConfig{
 		Name:        info.Name,
 		RelPath:     info.RelPath,
@@ -99,6 +105,8 @@ func DefaultsFromCLI(cfg *config.Config, info discover.DatabaseInfo, host string
 		EmulInvariantEvery: nonzero(cfg.EmulInvariantEvery, 60),
 		EmulMonitorEvery:   nonzero(cfg.EmulMonitorEvery, 10),
 		EmulWorkingMode:    emulWorkingModeOr(cfg.EmulWorkingMode),
+
+		ExtendedLoad: el,
 	}
 }
 
@@ -124,6 +132,9 @@ func IDFromAbsPath(absPath string) string {
 
 // Validate checks session config fields.
 func (c *SessionConfig) Validate() error {
+	if err := c.ExtendedLoad.Validate(); err != nil {
+		return err
+	}
 	switch c.Profile {
 	case "write-heavy", "read-heavy", "spike", "oltp-emul":
 	default:
@@ -187,6 +198,8 @@ func (c *SessionConfig) ToRunConfigWithReportEvery(reportEvery int) *config.Conf
 		EmulInvariantEvery: c.EmulInvariantEvery,
 		EmulMonitorEvery:   c.EmulMonitorEvery,
 		EmulWorkingMode:    c.EmulWorkingMode,
+
+		ExtendedLoad: c.ExtendedLoad,
 	}
 
 }
@@ -284,16 +297,17 @@ func nowStamp() string {
 // PrefsFromConfig extracts persistable prefs from a session config.
 func PrefsFromConfig(c SessionConfig) config.SessionPrefs {
 	return config.SessionPrefs{
-		Profile:     c.Profile,
-		ConnMin:     c.ConnMin,
-		ConnMax:     c.ConnMax,
-		Warmup:      c.Warmup,
-		Main:        c.Main,
-		Cooldown:    c.Cooldown,
-		SpikeCycles: c.SpikeCycles,
-		SpikeHold:   c.SpikeHold,
-		ThinkMs:     c.ThinkMs,
-		TxTimeout:   c.TxTimeout,
+		Profile:      c.Profile,
+		ExtendedLoad: c.ExtendedLoad,
+		ConnMin:      c.ConnMin,
+		ConnMax:      c.ConnMax,
+		Warmup:       c.Warmup,
+		Main:         c.Main,
+		Cooldown:     c.Cooldown,
+		SpikeCycles:  c.SpikeCycles,
+		SpikeHold:    c.SpikeHold,
+		ThinkMs:      c.ThinkMs,
+		TxTimeout:    c.TxTimeout,
 	}
 }
 
@@ -301,6 +315,10 @@ func PrefsFromConfig(c SessionConfig) config.SessionPrefs {
 func ApplyPrefs(c *SessionConfig, p config.SessionPrefs) {
 	if p.Profile != "" {
 		c.Profile = p.Profile
+	}
+	if p.ExtendedLoad.OpsLog.MaxSizeMB > 0 || p.ExtendedLoad.TxVariants.Mode != "" {
+		// a persisted extendedLoad section replaces the CLI default wholesale
+		c.ExtendedLoad = p.ExtendedLoad
 	}
 	if p.ConnMin > 0 {
 		c.ConnMin = p.ConnMin

@@ -39,6 +39,9 @@ type Config struct {
 	SpikeCycles int
 	SpikeHold   int
 
+	// Extended load mix (heavy SELECT / bulk DML / ops log / tx variants / -plusddl)
+	ExtendedLoad ExtendedLoad
+
 	// oltp-emul profile extras
 	EmulInvariantEvery int    // seconds between invariant self-checks (0 = off)
 	EmulMonitorEvery   int    // seconds between mon$ memory snapshots (0 = off)
@@ -100,6 +103,14 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.SpikeHold, "spike-hold", 10, "Seconds to sustain peak before dropping")
 
 	flag.StringVar(&cfg.EmulAllowDir, "emul-allow-dir", "", "oltp-emul: restrict provisioning to this root (empty = unrestricted)")
+	flag.BoolVar(&cfg.ExtendedLoad.Enabled, "extended-load", true, "Extended load mix (heavy SELECT, bulk DML, tx variants); false = classic comparable score run")
+	flag.IntVar(&cfg.ExtendedLoad.HeavySelect.EverySec, "heavy-every", 5, "Extended load: seconds between heavy multi-JOIN SELECT rounds (0 = off)")
+	flag.IntVar(&cfg.ExtendedLoad.BulkDml.EverySec, "bulk-every", 30, "Extended load: seconds between bulk DML rounds (0 = off)")
+	flag.IntVar(&cfg.ExtendedLoad.BulkDml.MinRows, "bulk-min", 100, "Extended load: bulk round min rows")
+	flag.IntVar(&cfg.ExtendedLoad.BulkDml.MaxRows, "bulk-max", 1000, "Extended load: bulk round max rows")
+	flag.StringVar(&cfg.ExtendedLoad.OpsLog.Level, "ops-log-level", "all", "Extended load: ops log level (all|periodic|errors)")
+	flag.StringVar(&cfg.ExtendedLoad.TxVariants.Mode, "tx-variants", "emul-safe", "Extended load: transaction variant mode (off|emul-safe|full)")
+	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.Enabled, "plusddl", false, "Extended load: enable the DDL churn sidecar (ALTER TABLE/CREATE TABLE rounds)")
 	flag.IntVar(&cfg.EmulInvariantEvery, "emul-invariant-every", 60, "oltp-emul: seconds between stock/money invariant self-checks (0 = off)")
 	flag.IntVar(&cfg.EmulMonitorEvery, "emul-monitor-every", 10, "oltp-emul: seconds between mon$ memory snapshots (0 = off)")
 
