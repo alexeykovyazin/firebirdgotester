@@ -8,6 +8,7 @@
 # Runtime / local settings (may contain credentials)
 fb-loadgen.ui.json
 reports/
+runs/
 results.csv
 results.csv_*.txt
 results_emul_smoke*
