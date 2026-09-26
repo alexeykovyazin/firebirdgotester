@@ -34,10 +34,11 @@ const (
 func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Logger, counters *ExtendedCounters) {
 	el := cfg.ExtendedLoad
 	el.Normalize()
-	gap := time.Duration(el.TxVariants.RareCompletionMinGapSec) * time.Second
-	if gap <= 0 {
-		gap = 10 * time.Second
-	}
+	// Poll fast and independent of the picker's rare-completion gap: every
+	// second a prepared 2PC transaction stays unresolved, emul units hitting
+	// its rows fail with "record ... is stuck in limbo", so resolution
+	// latency, not the draw rate, is what bounds the damage.
+	const gap = 2 * time.Second
 	addr := dsnAddr(cfg.DSN)
 	if addr == "" || cfg.User == "" {
 		return
