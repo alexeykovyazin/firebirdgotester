@@ -757,3 +757,12 @@ design, the fb_repl_print log format spec (§7) and the verified-facts table.
   `Stop` within its 5s budget ("Failed to remove worker N: stop timed out");
   the removal proceeds on the next tick, no unit or invariant state is
   affected.
+- **FB5/HQBird servers with mismatched LightWeight Monitoring shared memory
+  reset attachments periodically** ("LWMonMemory: inconsistent shared memory
+  type/version" spam in firebird.log — mixed HQBird instance versions share
+  the monitor region). The client sees "connection was forcibly closed by
+  the remote host"; fb-loadgen treats it like any dead connection: the
+  worker rebuilds its pool in place and continues. Verified over a 2h run
+  under the full extended mix: ~500 such resets, run completed at
+  score 214 ops/min with invariants OK — the remedy belongs to the server
+  installation (align HQBird instance versions), not the load generator.
