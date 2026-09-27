@@ -19,6 +19,22 @@ limbocrash -host localhost:3095 -db C:\repro\R.FDB -password masterkey -mode die
 
 `-mode drop` (close without prepare) and `-mode commit` are the controls.
 
+Python version (`limbocrash.py`, needs `pip install firebird-driver` and fbclient):
+a child process connects, inserts, prepares and ends with `os._exit()`; the
+parent keeps a watch connection open, so a crash is seen even when a service
+manager restarts the server at once.
+
+```
+set ISC_PASSWORD=masterkey
+python limbocrash.py --dsn localhost/3095:C:\repro\R.FDB --init
+python limbocrash.py --dsn localhost/3095:C:\repro\R.FDB --mode die --loops 3
+```
+
+Checked 2026-09-27 against HQbird 5.0.5.1881 (Super, Windows) with the
+Firebird 3.0 fbclient: commit 3/3 and drop 3/3 alive, die 3/3 CRASHED (the
+service manager logged three unexpected ends). In Classic the watch connection
+has its own process and survives; there check `firebird.log`.
+
 ## Result
 
 | Build | Mode | OS | Result (3 tries each) |
