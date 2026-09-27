@@ -468,6 +468,92 @@ function codeBox(s, lines, x, y, w, h) {
   chips.forEach((c, i) => chip(s, c, 0.55 + i * 3.12, 6.25, 2.95, { bold: true }));
 }
 
+// ---------- 14e. extended load mix ----------
+{
+  const s = baseSlide({ title: "Extended load mix — stress beyond the business process",
+    kicker: "Periodic sidecars on top of the regular op mix: heavy reads, mass DML, a replication-style operations log and live DDL churn — each switchable, none touching the score tables.",
+    notes: "All sidecars are part of the extendedLoad config section (CLI flags, UI panel, API). Heavy SELECT and bulk DML run on dedicated objects (EL_BULK_ITEMS); the ops log mirrors the Firebird replication journal printer format with size rotation and a start/terminal pairing check; -plusddl churns its own TST_ columns and verifies rolled-back DDL against rdb$relation_fields." });
+  const blocks = [
+    ["Heavy JOIN SELECT", "every 5 s: a 3–4 table scan over the business tables with a random id-range filter, aggregation and a sorted cut — cache pressure a plain OLTP mix never builds."],
+    ["Bulk DML", "every 30 s: 100–1000 rows inserted, updated and deleted on a dedicated aux table — long transactions and garbage without touching business data."],
+    ["Operations log", "every transaction — number, parameters, completion, change volume — in the fb_repl_print output format; 50 MB rotation, downloadable via the log API."],
+    ["−plusddl (DDL churn)", "ALTER/CREATE/DROP rounds with deliberately rolled-back DDL, verified against the catalog — metadata cache churn under load."],
+  ];
+  blocks.forEach(([name, cap], i) => {
+    const x = 0.55 + (i % 2) * 4.7, y = 1.5 + Math.floor(i / 2) * 2.55;
+    panel(s, x, y, 4.5, 2.35);
+    s.addText(name, { x: x + 0.2, y: y + 0.14, w: 4.1, h: 0.4, fontSize: 14, bold: true, color: ACCENT, fontFace: "Segoe UI" });
+    s.addText(cap, { x: x + 0.2, y: y + 0.6, w: 4.1, h: 1.6, fontSize: 10.5, color: TEXT, fontFace: "Segoe UI" });
+  });
+  codeBox(s, [
+    "# everything on by default;",
+    "# classic comparable score run:",
+    "fb-loadgen --extended-load=false",
+    "",
+    "# pick the mix:",
+    "--heavy-every 5  --bulk-every 30",
+    "--ops-log --ops-log-level all",
+    "--plusddl --ddl-every 60",
+    "--tx-variants emul-safe",
+  ], 10.0, 1.5, 2.8, 4.35);
+  chip(s, "one umbrella switch: the mix changes the score by construction — classic preset for comparable benchmark runs", 0.55, 6.45, 12.25);
+}
+
+// ---------- 14f. transaction variants ----------
+{
+  const s = baseSlide({ title: "Transaction variants — every operation draws its transaction",
+    kicker: "At begin time each transaction draws isolation × read-only × wait resolution and a completion method — the database lives through everything a real application would do.",
+    notes: "The completion axis: commit, rollback, commit/rollback retaining (chain length capped), engine-side two-phase commit via EXECUTE STATEMENT ... WITH COMMON TRANSACTION against an aux database, limbo (prepare-then-die, resolved by the recovery sidecar through the Services API) and a planned hard connection drop after which the worker rebuilds its pool in place. emul-safe mode never draws infinite-wait transactions. limbo and conn-drop are rate-limited run-wide. --no-limbo runs the same mix with limbo generation switched off entirely." });
+  const completions = [
+    ["commit / rollback", "the everyday completions, weighted by config"],
+    ["COMMIT/ROLLBACK RETAINING", "keeps lock interest after the commit — the retained context holds row locks until the chain ends (capped)"],
+    ["engine-side 2PC", "aux database enlisted via EXECUTE STATEMENT … WITH COMMON TRANSACTION; the commit runs as a real two-phase commit"],
+    ["limbo (prepare-then-die)", "prepare, then the socket dies — a recovery sidecar polls the limbo list every 2 s and resolves commit / rollback / 2PC-recovery via the Services API"],
+    ["planned connection drop", "the socket is killed on purpose; the worker rebuilds its pool in place and continues"],
+    ["--no-limbo", "the same mix with limbo generation switched off — for targets that must stay free of prepared transactions (flag, API parameter, UI checkbox)"],
+  ];
+  completions.forEach(([name, cap], i) => {
+    const x = 0.55 + (i % 3) * 4.28, y = 1.5 + Math.floor(i / 3) * 2.45;
+    panel(s, x, y, 4.05, 2.25);
+    s.addText(name, { x: x + 0.2, y: y + 0.14, w: 3.65, h: 0.55, fontSize: 12.5, bold: true, color: i === 5 ? OK : ACCENT, fontFace: "Segoe UI" });
+    s.addText(cap, { x: x + 0.2, y: y + 0.72, w: 3.65, h: 1.45, fontSize: 10, color: TEXT, fontFace: "Segoe UI" });
+  });
+  chip(s, "isolation families × read-only × wait / nowait / lock-timeout draw on top of the completion axis — emul-safe keeps every draw legal for the emul units", 0.55, 6.45, 12.25);
+}
+
+// ---------- 14g. field diagnostics ----------
+{
+  const s = baseSlide({ title: "Field diagnostics — probe and reproduce what support asks for",
+    kicker: "Two investigation toolkits ship with the generator: an HQbird LightWeight Monitoring probe and a minimal Firebird limbo-crash reproducer.",
+    notes: "lwmprobe: attach-only cycles (no tables, no data) reproduce the HQbird LightWeight Monitoring shared-memory version conflict between mixed builds on one host; a built-in firebird.log watcher turns the result into a go/no-go signal. A pure-Python twin ships in scripts/. limbocrash: a prepared transaction whose connection dies crashes Firebird 4.0.7 / 5.0.x with replication enabled (0xC0000005, every tested build and server mode); the repo carries the minimal reproducer, a build matrix and the investigation plan. Until the engine bug is fixed, --no-limbo keeps replicated targets safe." });
+  const cards = [
+    ["LWM probe — fb-loadgen lwmprobe", [
+      "fb-loadgen lwmprobe --dsn \"host/3055:db\" \\",
+      "  --action select --c 2 --rate 5 --d 60s \\",
+      "  --fblog C:\\HQbird\\Firebird50\\firebird.log",
+      "",
+      "# actions: attach | select | mon | monmem | drop",
+      "# --idle N persistent conns, --hold-dsn pins one more",
+    ], "Reproduces the LightWeight Monitoring shared-memory version clash when several HQbird builds share one host: one fresh attachment per cycle, zero data operations, log watcher counts new LWMon lines — a go/no-go check for a machine."],
+    ["Limbo crash reproducer — cmd/limbocrash", [
+      "limbocrash -init -host localhost:3095 -db R.FDB",
+      "limbocrash -host localhost:3095 -db R.FDB \\",
+      "  -mode die -loops 3",
+      "",
+      "# die = prepare, then close the socket;",
+      "# drop / commit are the controls",
+    ], "A prepared transaction whose connection dies crashes Firebird 4.0.7 / 5.0.x (0xC0000005) when replication is on — verified across vanilla and HQbird builds, Super/Classic/SuperClassic, Linux and Windows. Minimal script, build matrix and dump analysis in the repo."],
+  ];
+  cards.forEach(([name, lines, cap], i) => {
+    const x = 0.55 + i * 6.45;
+    panel(s, x, 1.5, 6.25, 4.75);
+    s.addText(name, { x: x + 0.2, y: 1.66, w: 5.85, h: 0.4, fontSize: 13.5, bold: true, color: ACCENT, fontFace: "Segoe UI" });
+    codeBox(s, lines, x + 0.2, 2.15, 5.85, 1.9);
+    s.addText(cap, { x: x + 0.2, y: 4.2, w: 5.85, h: 1.9, fontSize: 10.5, color: TEXT, fontFace: "Segoe UI" });
+  });
+  chip(s, "both are read-only for your data — use them to qualify a server before a load campaign; --no-limbo keeps replicated targets safe meanwhile", 0.55, 6.45, 12.25);
+}
+
 // ---------- 15. scenarios ----------
 {
   const s = baseSlide({ title: "Typical scenarios",
@@ -504,9 +590,11 @@ function codeBox(s, lines, x, y, w, h) {
     "API hardening: auth, CORS, headless mode\n",
     "OpenAPI 3.1 spec for the whole API\n",
     "oltp-emul business-process mode + OLTPEMUL dashboard\n",
+    "Extended load mix: tx variants, operations log,\nheavy/bulk sidecars, -plusddl, --no-limbo\n",
+    "Field diagnostics: LWM probe + limbo-crash reproducer\n",
     "CI (vet + race + 3 OS) and multi-platform releases\n",
     "IBSurgeon driver fork under the hood",
-  ].join(""), { x: 0.8, y: 2.2, w: 5.5, h: 3.6, fontSize: 13.5, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.4 });
+  ].join(""), { x: 0.8, y: 2.2, w: 5.5, h: 3.6, fontSize: 12, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.3 });
   panel(s, 6.8, 1.5, 6.0, 4.7);
   s.addText("Next", { x: 7.05, y: 1.7, w: 5.5, h: 0.4, fontSize: 15, bold: true, color: ACCENT, fontFace: "Segoe UI" });
   s.addText([
@@ -531,17 +619,20 @@ function codeBox(s, lines, x, y, w, h) {
     "fb-loadgen --profile write-heavy --dsn \"host/3050:path\\db.fdb\"",
     "fb-loadgen --ui [--api-only] [--ui-token T] [--ui-addr 127.0.0.1:9000]",
     "",
+    "# extended load",
+    "fb-loadgen --no-limbo        # same mix, no limbo generation",
+    "PATCH /api/sessions/{id}  {\"extendedLoad\":{\"txVariants\":{\"noLimbo\":true}}}",
+    "fb-loadgen lwmprobe --action select --fblog <firebird.log>",
+    "",
     "# control",
     "GET  /api/sessions            GET  /api/fleet",
     "POST /api/sessions/{id}/start      {\"timeLimitMin\": 15, \"wait\": false}",
     "POST /api/sessions/{id}/stop | pause | resume | validate",
-    "POST /api/sessions/start-all | stop-all | pause-all",
     "",
     "# schedule + history",
     "GET|POST /api/schedules       PATCH|DELETE /api/schedules/{id}",
     "POST /api/schedules/{id}/trigger",
     "GET  /api/runs | /api/runs/{id} | POST /api/runs/{id}/cancel",
-    "GET  /api/sessions/{id}/runs | /report | /report/{file}",
     "GET  /api/health | /api/version | /metrics",
   ], 0.55, 1.45, 12.25, 5.4);
 }

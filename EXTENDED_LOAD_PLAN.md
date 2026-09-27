@@ -98,6 +98,9 @@ New section, following V7/V8 patterns. Defaults exactly as specified in the task
                    "completion": { "commit": 55, "rollback": 15, "commitRetaining": 10,
                                    "rollbackRetaining": 5, "twoPhase": 5,
                                    "limbo": 2, "connDrop": 2 },
+                   "noLimbo": false,                 // switch limbo generation off outright:
+                                                     // weight forced to 0, recovery sidecar never
+                                                     // starts (CLI --no-limbo; Normalize enforces)
                    "rareCompletionMinGapSec": 10,
                    "retainingChainMax": 50,          // force plain commit after N retains
                    "twoPhaseAuxDB": "<mainDbDir>/EL_2PC.FDB",
@@ -113,7 +116,7 @@ Plumbing per new field: `SessionConfig` (`session/config.go:52-56` + `Validate` 
 `ToRunConfigWithReportEvery` (`:164-192`) → `config.Config` (`config/config.go:43-46`) →
 `PATCH /api/sessions/{id}` (`session/manager.go:575-583`) → UI session panel (`ui/static/app_emul.js`).
 CLI flags mirror the fields: `--plus-ddl`, `--heavy-every`, `--bulk-every`, `--bulk-min/--bulk-max`,
-`--ops-log-level`, `--tx-variants`, `--extended-load=false`.
+`--ops-log-level`, `--tx-variants`, `--no-limbo`, `--extended-load=false`.
 
 ## 2. Phases
 

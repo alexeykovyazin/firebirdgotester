@@ -204,11 +204,14 @@ Fast-cancels the run: workers finish their current transaction, connections clos
   "connMin": 2,
   "warmup": 30, "main": 120, "cooldown": 20,
   "thinkMs": 50, "txTimeout": 10,
-  "spikeCycles": 3, "spikeHold": 10
+  "spikeCycles": 3, "spikeHold": 10,
+  "extendedLoad": { "txVariants": { "noLimbo": true } }
 }
 ```
 
 All fields optional; `warmup/main/cooldown` define the *shape ratios* used when a time limit scales the run.
+
+`extendedLoad` replaces the stored extended-load section wholesale, but missing leaves fall back to defaults — the shortcut above keeps the default completion mix and only switches limbo generation off: no prepare-then-die completions, no limbo recovery sidecar (same as `--no-limbo` on the CLI; see README "Disabling limbo transactions").
 
 ### PUT /api/config — connection settings and budget
 

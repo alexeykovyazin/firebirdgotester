@@ -28,6 +28,10 @@ EMPLOYEE.FDB.ReplLog/
 .zcode/
 *.exe~
 presentation/node_modules/
+__pycache__/
+
+# local crash-dump / repro artifacts (lab only, never commit)
+*.7z
 
 # generated deck artifacts
 presentation/render/
