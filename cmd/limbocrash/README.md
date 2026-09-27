@@ -55,7 +55,14 @@ Failure working with transactions list: transaction to unlink is missing in the 
 No error without replication, without a change in the transaction, without
 the prepare, or with an ordinary commit. The isolation level does not matter.
 
-## Cause (from the stack, `stack-5.0.4-linux.txt`)
+## Cause (from the stacks)
+
+Two stacks, the same path: `stack-5.0.4-linux.txt` (vanilla 5.0.4, Linux core,
+gdb with the kit's debug symbols) and `stack-hqbird-5.0.5.1881-windows.txt`
+(HQbird 5.0.5.1881, Windows full dump from procdump at the first-chance
+ACCESS_VIOLATION, cdb with the kit's pdb; the fault address is 0x2a0 inside
+`RtlEnterCriticalSection`, the Linux one 0x2a8 inside `pthread_mutex_lock`:
+the mutex of a null memory pool).
 
 1. The server purges the dead attachment: `purge_transactions` (jrd.cpp:8259)
    calls `TRA_release_transaction` for the prepared (limbo) transaction.

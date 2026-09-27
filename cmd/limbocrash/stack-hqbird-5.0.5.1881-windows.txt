@@ -1,0 +1,52 @@
+HQbird Firebird 5.0.5.1881 (Windows 11, Super), procdump -ma at the first-chance ACCESS_VIOLATION, cdb 1.2606 with the kit's pdb.
+
+ntdll!RtlEnterCriticalSection+0x4d:
+00007ffb`1ce1283d f00fba770800    lock btr dword ptr [rdi+8],0 ds:00000000`000002a0=????????
+Last event: c68.2aa8: Access violation - code c0000005 (first/second chance not available)
+ # Child-SP          RetAddr               Call Site
+00 00000000`034fe530 00007ffa`8879a177     ntdll!RtlEnterCriticalSection+0x4d
+01 (Inline Function) --------`--------     engine13!Firebird::Mutex::enter+0xd [H:\SNAPSHOTS\HQbird\src\common\classes\locks.h @ 94]
+02 (Inline Function) --------`--------     engine13!Firebird::EnsureUnlock<Firebird::Mutex,Firebird::NotRefCounted>::enter+0xd [H:\SNAPSHOTS\HQbird\src\common\classes\RefMutex.h @ 129]
+03 00000000`034fe570 00007ffa`88799a2e     engine13!Firebird::MemPool::releaseBlock+0x47 [H:\SNAPSHOTS\HQbird\src\common\classes\alloc.cpp @ 2466]
+04 (Inline Function) --------`--------     engine13!Firebird::MemPool::releaseMemory+0xf [H:\SNAPSHOTS\HQbird\src\common\classes\alloc.cpp @ 2445]
+05 (Inline Function) --------`--------     engine13!Firebird::MemPool::deallocate+0xf [H:\SNAPSHOTS\HQbird\src\common\classes\alloc.cpp @ 2726]
+06 (Inline Function) --------`--------     engine13!Firebird::MemPool::globalFree+0xf [H:\SNAPSHOTS\HQbird\src\common\classes\alloc.cpp @ 2714]
+07 00000000`034fe5a0 00007ffa`886acf0d     engine13!Firebird::MemoryPool::globalFree+0x1e [H:\SNAPSHOTS\HQbird\src\common\classes\alloc.cpp @ 3083]
+08 (Inline Function) --------`--------     engine13!Firebird::Array<Firebird::MetaString,Firebird::EmptyStorage<Firebird::MetaString> >::freeData+0xe [H:\SNAPSHOTS\HQbird\src\common\classes\array.h @ 186]
+09 (Inline Function) --------`--------     engine13!Firebird::Array<Firebird::MetaString,Firebird::EmptyStorage<Firebird::MetaString> >::{dtor}+0xe [H:\SNAPSHOTS\HQbird\src\common\classes\array.h @ 160]
+0a 00000000`034fe5d0 00007ffa`886ad1a1     engine13!Replication::Replicator::Transaction::`scalar deleting destructor'+0x1d
+0b (Inline Function) --------`--------     engine13!Replication::Replicator::Transaction::dispose+0x2b [H:\SNAPSHOTS\HQbird\src\jrd\replication\Replicator.h @ 176]
+0c 00000000`034fe600 00007ffa`886f8f93     engine13!Firebird::IReplicatedTransactionBaseImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::IDisposableImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IReplicatedTransaction> > > > >::cloopdisposeDispatcher+0x31 [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 20845]
+0d (Inline Function) --------`--------     engine13!Firebird::IDisposable::dispose+0xa [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 235]
+0e 00000000`034fe630 00007ffa`88606a6c     engine13!TRA_release_transaction+0x353 [H:\SNAPSHOTS\HQbird\src\jrd\tra.cpp @ 1340]
+0f 00000000`034fe690 00007ffa`886140d4     engine13!Jrd::JTransaction::freeEngineData+0xac [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 8273]
+10 00000000`034fe950 00007ffa`885fe869     engine13!Jrd::JTransaction::release+0x84 [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 199]
+11 00000000`034fea70 00007ffa`886acf21     engine13!Firebird::ITransactionBaseImpl<Jrd::JTransaction,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JTransaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JTransaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::ITransaction> > > > >::cloopreleaseDispatcher+0x19 [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 9713]
+12 (Inline Function) --------`--------     engine13!Firebird::IReferenceCounted::release+0xa [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 205]
+13 (Inline Function) --------`--------     engine13!Firebird::RefPtr<Firebird::ITransaction>::{dtor}+0x13 [H:\SNAPSHOTS\HQbird\src\common\classes\RefCounted.h @ 140]
+14 00000000`034feaa0 00007ffa`886ad1a1     engine13!Replication::Replicator::Transaction::`scalar deleting destructor'+0x31
+15 (Inline Function) --------`--------     engine13!Replication::Replicator::Transaction::dispose+0x2b [H:\SNAPSHOTS\HQbird\src\jrd\replication\Replicator.h @ 176]
+16 00000000`034fead0 00007ffa`886f8f93     engine13!Firebird::IReplicatedTransactionBaseImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::IDisposableImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IReplicatedTransaction> > > > >::cloopdisposeDispatcher+0x31 [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 20845]
+17 (Inline Function) --------`--------     engine13!Firebird::IDisposable::dispose+0xa [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 235]
+18 00000000`034feb00 00007ffa`886119fe     engine13!TRA_release_transaction+0x353 [H:\SNAPSHOTS\HQbird\src\jrd\tra.cpp @ 1340]
+19 00000000`034feb60 00007ffa`886115d2     engine13!purge_transactions+0x19e [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 8330]
+1a 00000000`034fede0 00007ffa`8860598f     engine13!purge_attachment+0x322 [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 8525]
+1b 00000000`034ff320 00007ffa`885fc7a0     engine13!Jrd::JAttachment::freeEngineData+0xef [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 3383]
+1c (Inline Function) --------`--------     engine13!Jrd::JAttachment::internalDetach+0x28 [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 3318]
+1d (Inline Function) --------`--------     engine13!Jrd::JAttachment::detach+0x28 [H:\SNAPSHOTS\HQbird\src\jrd\jrd.cpp @ 3330]
+1e 00000000`034ff5d0 00007ffa`f96175c8     engine13!Firebird::IAttachmentBaseImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x40 [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 12203]
+1f (Inline Function) --------`--------     fbclient!Why::YAttachment::detach::__l3::<lambda_e028eee13ee23ebbbe4311ea3ad94733>::operator()+0xb2 [H:\SNAPSHOTS\HQbird\src\yvalve\why.cpp @ 6081]
+20 (Inline Function) --------`--------     fbclient!std::invoke+0xb2 [C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\include\type_traits @ 1696]
+21 00000000`034ff630 00007ffa`f960b94d     fbclient!std::_Func_impl_no_alloc<<lambda_e028eee13ee23ebbbe4311ea3ad94733>,void>::_Do_call+0xd8 [C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\include\functional @ 879]
+22 (Inline Function) --------`--------     fbclient!std::_Func_class<void>::operator()+0x13 [C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\include\functional @ 925]
+23 00000000`034ff6c0 00007ffa`f96287ac     fbclient!Why::done<Why::YAttachment>+0x3d [H:\SNAPSHOTS\HQbird\src\yvalve\why.cpp @ 1356]
+24 00000000`034ff700 00007ffa`f9622aab     fbclient!Why::YAttachment::detach+0xbc [H:\SNAPSHOTS\HQbird\src\yvalve\why.cpp @ 6079]
+25 00000000`034ff7e0 00000001`4001af0a     fbclient!Firebird::IAttachmentBaseImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x2b [H:\SNAPSHOTS\HQbird\src\include\firebird\IdlFbInterfaces.h @ 12203]
+26 00000000`034ff840 00000001`400241c1     firebird!rem_port::disconnect+0x34a [H:\SNAPSHOTS\HQbird\src\remote\server\server.cpp @ 3133]
+27 00000000`034ff9a0 00000001`4002268e     firebird!process_packet+0x1f1 [H:\SNAPSHOTS\HQbird\src\remote\server\server.cpp @ 5167]
+28 00000000`034ffe10 00000001`40048bc7     firebird!loopThread+0x32e [H:\SNAPSHOTS\HQbird\src\remote\server\server.cpp @ 7006]
+29 (Inline Function) --------`--------     firebird!`anonymous-namespace'::ThreadArgs::run+0x5 [H:\SNAPSHOTS\HQbird\src\common\ThreadStart.cpp @ 78]
+2a 00000000`034fff00 00007ffb`1a9ecd30     firebird!threadStart+0x67 [H:\SNAPSHOTS\HQbird\src\common\ThreadStart.cpp @ 97]
+2b 00000000`034fff30 00007ffb`1bd7cd87     ucrtbase!thread_start<unsigned int (__cdecl*)(void *),1>+0x30
+2c 00000000`034fff60 00007ffb`1ceacaec     kernel32!BaseThreadInitThunk+0x17
+2d 00000000`034fff90 00000000`00000000     ntdll!RtlUserThreadStart+0x2c
