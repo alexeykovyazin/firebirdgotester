@@ -429,8 +429,12 @@ func (l *Logger) terminalNamed(txn int64, event string, ins, upd, del int64, dur
 }
 
 // pendingOffset returns the file offset the next buffered line will land at
-// (informational, mirrors the repl journal's per-event offsets).
+// (informational, mirrors the repl journal's per-event offsets). The buffer
+// is shared with concurrent emitters, so the read takes the lock; callers
+// evaluate it while formatting, before emit takes the lock itself.
 func (l *Logger) pendingOffset() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	return l.offset + int64(len(l.buf))
 }
 
