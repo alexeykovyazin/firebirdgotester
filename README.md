@@ -106,6 +106,55 @@ The **OLTPEMUL tab** shows the live score, a score sparkline, `mon$` memory peak
 
 More on the model and design decisions: [OLTP_EMUL_PLAN.md](OLTP_EMUL_PLAN.md). The vendored SQL scripts stay verbatim to upstream (MIT — credit and provenance in [`emul/assets/NOTICE`](emul/assets/NOTICE)).
 
+## LWM probe — reproducing HQbird LightWeight Monitoring conflicts
+
+`fb-loadgen lwmprobe` is a special minimal mode for reproducing the periodic
+connection resets observed on machines where **several different HQbird builds
+share one server host** (for example the main FB5 and FBHQ5Replica instances).
+The older build keeps the machine-global LightWeight Monitoring shared-memory
+region at an older format version; every attachment to the newer build then
+hits:
+
+```
+LWMonMemory: inconsistent shared memory type/version; found 160/2:2, expected 160/2:3
+LightWeight Monitoring: Cannot initialize the shared memory region
+```
+
+The probe has **no tables and no data operations**: each cycle is one fresh
+attachment plus at most a single one-row SELECT.
+
+```bash
+# hammer FB5 with attach/detach cycles, watch its firebird.log for new LWMon lines
+fb-loadgen lwmprobe --dsn "localhost/3055:E:/data/LWM_MAIN.FDB" \
+  --action select --c 2 --rate 5 --d 60s \
+  --fblog "C:\HQbird\Firebird50\firebird.log"
+
+# actions: attach (open+close) | select (RDB$DATABASE) | mon (MON$ATTACHMENTS)
+#          | monmem (the MON$MEMORY_USAGE aggregate the emul Monitor uses)
+#          | drop   (hard socket drop via the driver-fork intent, as the
+#                   extended-load connDrop axis does)
+# --idle N keeps N persistent connections pinging inside transactions
+# --hold-dsn pins one extra attachment open for the whole run (point it at the
+#            other instance to hold the LWMon region in that build's version)
+```
+
+A pure-Python twin that needs no Go toolchain lives in
+[`scripts/lwm_probe.py`](scripts/lwm_probe.py) (ctypes on `fbclient.dll`,
+same actions and flags). The full write-up — symptoms, diagnosis on a live
+server, clean-machine reproduction, line-by-line script dissection and
+remedies — is in
+[`LWMON_SHARED_MEMORY_CONFLICT_REPRO.md`](LWMON_SHARED_MEMORY_CONFLICT_REPRO.md).
+
+Findings from the 2026-09-27 investigation on a mixed-build machine: the
+LWMon init failure itself is **benign** for the attachment (thousands of
+attach cycles at one server log line per attach, zero client-visible
+failures), and the client-visible resets of a full load run correlate with
+server-side `Fatal lock interface error: Invalid lock type in
+get_owner_type()` events, which could **not** be reproduced with data-free
+operations alone — they require the full write-mix workload. Use the probe to
+check a machine for the version conflict: the log watcher turns it into a
+simple go/no-go signal.
+
 ## Build
 
 ```bash
@@ -736,6 +785,23 @@ design, the fb_repl_print log format spec (§7) and the verified-facts table.
   reports as Go errors (the Services API delivers them through the action's
   own output, not the protocol status), so unverifiable resolutions are
   retried, not counted.
+- **Disabling limbo transactions.** When the target must stay free of
+  prepared/recovering transactions, switch limbo generation off: `--no-limbo`
+  on the CLI, `extendedLoad.txVariants.noLimbo` in the API session config, or
+  the "no limbo" checkbox in the Extended load panel. The prepare-then-die
+  completion is then never drawn (its completion weight is forced to 0) and
+  the limbo recovery sidecar never starts.
+- **Prepare-then-die can crash the server (FB 4.0.7 / 5.0.x, replicated
+  databases).** A prepared transaction whose connection dies — exactly what
+  the limbo completion does — triggers `Failure working with transactions
+  list: transaction to unlink is missing in the attachment` and a
+  `0xC0000005` process crash in every tested build (vanilla 4.0.7 and 5.0.x,
+  Super/Classic/SuperClassic, Linux and Windows) when replication is enabled.
+  Minimal reproducer and build matrix:
+  [cmd/limbocrash](cmd/limbocrash/README.md); investigation plan and
+  findings: [FB5_LIMBO_CRASH_REPRO_PLAN.md](FB5_LIMBO_CRASH_REPRO_PLAN.md).
+  Until the engine bug is fixed, run replicated targets with `--no-limbo`
+  (or `txVariants.mode=off`).
 - **The rare-completion gate is run-global.** `RareCompletionMinGapSec`
   bounds limbo/connDrop completions across the whole worker pool (a
   per-worker gate multiplied the rate by the pool size and produced a stuck

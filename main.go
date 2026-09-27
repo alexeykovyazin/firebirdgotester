@@ -38,6 +38,10 @@ func main() {
 		runProvision(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "lwmprobe" {
+		runLWMProbe(os.Args[2:])
+		return
+	}
 
 	cfg, err := config.ParseFlags()
 	if err != nil {
@@ -267,7 +271,7 @@ func startEmulSidecars(ctx context.Context, cfg *config.Config, sched *ramp.Sche
 	if cfg.ExtendedLoad.Enabled {
 		el := cfg.ExtendedLoad
 		el.Normalize()
-		if el.TxVariants.Completion.Limbo > 0 {
+		if el.TxVariants.Completion.Limbo > 0 && !el.TxVariants.NoLimbo {
 			emul.StartLimboRecovery(ctx, cfg, wm.OpsLog(), emul.Extended())
 		}
 		if el.HeavySelect.EverySec > 0 || el.BulkDml.EverySec > 0 {
@@ -391,6 +395,10 @@ func runCLI(cfg *config.Config) {
 			defer opsLogger.Close()
 			fmt.Printf("Operations log → %s\n", opsPath)
 		}
+	}
+
+	if cfg.ExtendedLoad.TxVariants.NoLimbo {
+		fmt.Println("Limbo transactions disabled: no prepare-then-die completions, no recovery sidecar")
 	}
 
 	scheduler := ramp.NewScheduler(cfg, connFactory, cache, prof, workerMetrics)
