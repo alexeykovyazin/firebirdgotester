@@ -242,9 +242,30 @@ limbocrash -dsn localhost/3095:C:\repro\EMP.FDB -workers 1 -loops 1000
 - **Утреннее зависание мастера g15 при остановке** — то же следствие: после 158
   таких ошибок движок ждал подключения, которые не освободятся.
 - **WER не пишет дампы**: процесс завершается сам с кодом исключения (событий
-  Application Error нет). Для стека нужен отладчик (procdump / cdb).
-- Осталось: стек (дамп), Firebird 4.0.x (репликация есть и там), Linux, снимок
-  5.0 master; версия скрипта на Python для отчёта.
+  Application Error нет). Стек снят на Linux (core + gdb + отладочные символы
+  ванильного 5.0.4): `cmd/limbocrash/stack-5.0.4-linux.txt`.
+- **Ванильный 4.0.7.3271** (Super, Windows) — тоже падает 3/3 (0xC0000005).
+- **Ванильный 5.0.4 на Linux** (Super, Ubuntu 24.04) — SIGSEGV 3/3,
+  `segfault at 2a8 … in libc.so.6`.
+- **Причина по стеку:** `purge_transactions` → `TRA_release_transaction` для
+  подготовленной транзакции мёртвого подключения → `tra_replicator->dispose()`
+  (tra.cpp:1330) → деструктор `Replicator::Transaction` снимает последнюю ссылку
+  `RefPtr<ITransaction>` на ту же транзакцию → `JTransaction::release` →
+  **повторный `TRA_release_transaction` того же `jrd_tra`** → строка "to unlink" в
+  логе и второй `dispose()` того же объекта → `MemPool::releaseBlock(this=0x0)`.
+  Код тот же в ветках `master` и `v5.0-release`; задачи в трекере нет.
+- Описание, таблица и черновик задачи для трекера: `cmd/limbocrash/README.md`.
+
+### 9.2. Статус фаз
+
+| Фаза | Статус |
+|---|---|
+| 0 | сделано: наблюдатель `crash_watch.ps1`, коды выхода через `Win32_ProcessStopTrace`; WER-дампы включены, но не срабатывают |
+| 1 | сделано на свежем HQbird 5.0.5.1881 (с согласия владельца) |
+| 2 | не понадобилась: фаза 3 нашла минимум быстрее |
+| 3 | сделано: минимальный сценарий, `cmd/limbocrash` |
+| 4 | сделано: 5.0.4 Super/SuperClassic/Classic Windows, 5.0.4 Linux, 4.0.7 Windows, HQbird 5.0.5.1881. Не проверены: снимок master (код тот же), 3.0 (там нет встроенной репликации) |
+| 5 | черновик готов; публикация — только после проверки владельцем. Версия на Python не делалась |
 
 ## 10. Риски
 
