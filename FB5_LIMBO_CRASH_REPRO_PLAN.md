@@ -260,7 +260,7 @@ limbocrash -dsn localhost/3095:C:\repro\EMP.FDB -workers 1 -loops 1000
 
 | Фаза | Статус |
 |---|---|
-| 0 | сделано: наблюдатель `crash_watch.ps1`, коды выхода через `Win32_ProcessStopTrace`; WER-дампы включены, но не срабатывают |
+| 0 | сделано: наблюдатель `crash_watch.ps1`, коды выхода через `Win32_ProcessStopTrace`; WER-дампы включены, но не срабатывают (процесс сам завершается). Полный дамп на Windows снят procdump 12.01, подключённым к процессу: `procdump64 -accepteula -ma -e 1 -f C0000005 <pid> C:\dumps\fb505_1881_av.dmp` (dellg15, HQbird 5.0.5.1881, 181 МБ, момент первого ACCESS_VIOLATION; перед ним 4 обычных `status_exception`). pdb — в `C:\FB505_1881` |
 | 1 | сделано на свежем HQbird 5.0.5.1881 (с согласия владельца) |
 | 2 | не понадобилась: фаза 3 нашла минимум быстрее |
 | 3 | сделано: минимальный сценарий, `cmd/limbocrash` |
