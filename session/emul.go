@@ -46,7 +46,7 @@ func launchEmulSidecars(s *Session, runCfg *config.Config, wMetrics *worker.Metr
 	// before the workers started (see startInternal), because the scenario
 	// picker reads its config once.
 	if runCfg.ExtendedLoad.Enabled {
-		if runCfg.ExtendedLoad.TxVariants.Completion.Limbo > 0 {
+		if runCfg.ExtendedLoad.TxVariants.Completion.Limbo > 0 && !runCfg.ExtendedLoad.TxVariants.NoLimbo {
 			emul.StartLimboRecovery(emulCtx, runCfg, wMetrics.OpsLog(), emul.Extended())
 		}
 		if runCfg.ExtendedLoad.HeavySelect.EverySec > 0 || runCfg.ExtendedLoad.BulkDml.EverySec > 0 {

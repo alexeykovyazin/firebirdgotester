@@ -112,6 +112,7 @@ func ParseFlags() (*Config, error) {
 	flag.StringVar(&cfg.ExtendedLoad.OpsLog.Level, "ops-log-level", "all", "Extended load: ops log level (all|periodic|errors)")
 	flag.BoolVar(&cfg.ExtendedLoad.OpsLog.RotateOnStart, "ops-log-rotate-on-start", true, "Extended load: rename the previous ops log chain on restart")
 	flag.StringVar(&cfg.ExtendedLoad.TxVariants.Mode, "tx-variants", "emul-safe", "Extended load: transaction variant mode (off|emul-safe|full)")
+	flag.BoolVar(&cfg.ExtendedLoad.TxVariants.NoLimbo, "no-limbo", false, "Extended load: disable limbo transactions (no prepare-then-die completions, no recovery sidecar)")
 	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.Enabled, "plusddl", false, "Extended load: enable the DDL churn sidecar (ALTER TABLE/CREATE TABLE rounds); implies --extended-load")
 	flag.IntVar(&cfg.ExtendedLoad.PlusDDL.EverySec, "ddl-every", 60, "Extended load: seconds between DDL churn rounds")
 	flag.IntVar(&cfg.EmulInvariantEvery, "emul-invariant-every", 60, "oltp-emul: seconds between stock/money invariant self-checks (0 = off)")
@@ -386,6 +387,8 @@ func PrintUsage() {
 	fmt.Fprintf(os.Stderr, "  --tx-timeout    int      Statement timeout in seconds (default: 10)\n")
 	fmt.Fprintf(os.Stderr, "  --dry-run       bool     Print config and exit (default: false)\n")
 	fmt.Fprintf(os.Stderr, "  --debug         bool     Enable debug output (default: false)\n")
+	fmt.Fprintf(os.Stderr, "  --no-limbo      bool     Disable limbo transactions: no prepare-then-die\n")
+	fmt.Fprintf(os.Stderr, "                           completions, no recovery sidecar (default: false)\n")
 }
 
 // ValidateDryRun performs validation specific to dry-run mode

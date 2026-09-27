@@ -53,6 +53,13 @@ type TxVariants struct {
 	SavepointProb           float64           `json:"savepointProb"`
 	AutonomousCallProb      float64           `json:"autonomousCallProb"`
 	DDLRollbackFrac         float64           `json:"ddlRollbackFrac"`
+	// NoLimbo switches limbo transaction generation off outright: the
+	// prepare-then-die completion is never drawn and the recovery sidecar
+	// never starts. Normalize forces the limbo completion weight to 0, so
+	// every existing Limbo>0 gate follows the switch. Use it when the target
+	// must stay free of prepared/recovering transactions (e.g. FB5/HQBird
+	// LightWeight Monitoring resets on limbo lists).
+	NoLimbo bool `json:"noLimbo,omitempty"`
 }
 
 // CompletionWeights are relative weights of the transaction completion axis
@@ -165,6 +172,11 @@ func (e *ExtendedLoad) Normalize() {
 	if e.TxVariants.Mode == "" {
 		e.TxVariants.Mode = def.TxVariants.Mode
 	}
+	if e.TxVariants.Mode != "off" && e.TxVariants.Completion.Total() == 0 {
+		// a section-level patch that only sets leaves (e.g. the API shortcut
+		// {"txVariants":{"noLimbo":true}}) must not zero the completion axis
+		e.TxVariants.Completion = def.TxVariants.Completion
+	}
 	if len(e.TxVariants.LockTimeoutChoicesSec) == 0 {
 		e.TxVariants.LockTimeoutChoicesSec = def.TxVariants.LockTimeoutChoicesSec
 	}
@@ -176,6 +188,9 @@ func (e *ExtendedLoad) Normalize() {
 	}
 	if e.TxVariants.TwoPhaseAuxDB == "" {
 		e.TxVariants.TwoPhaseAuxDB = def.TxVariants.TwoPhaseAuxDB
+	}
+	if e.TxVariants.NoLimbo {
+		e.TxVariants.Completion.Limbo = 0
 	}
 	if e.TxVariants.SavepointProb < 0 {
 		e.TxVariants.SavepointProb = 0

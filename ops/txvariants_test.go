@@ -209,6 +209,29 @@ func TestRareGateIsRunGlobal(t *testing.T) {
 	}
 }
 
+// noLimbo must win over leftover completion weights: pickers can be built
+// from API session configs that never passed ExtendedLoad.Normalize, so
+// NewPicker sanitizes its own copy.
+func TestNoLimboNeverDrawsLimbo(t *testing.T) {
+	RareGateReset()
+	cfg := testCfg("emul-safe")
+	cfg.TxVariants.NoLimbo = true
+	cfg.TxVariants.Completion = config.CompletionWeights{Commit: 1, Limbo: 99}
+	p := NewPicker(cfg, 1, 13)
+	for i := 0; i < 500; i++ {
+		sc, ok := p.Pick(KindWrite)
+		if !ok {
+			t.Fatal("emul-safe must draw")
+		}
+		if sc.Completion == CompletionLimbo {
+			t.Fatal("noLimbo config drew a prepare-then-die completion")
+		}
+		if sc.Completion != CompletionCommit {
+			t.Fatalf("with limbo weight zeroed only plain commits may draw, got %s", sc.Completion)
+		}
+	}
+}
+
 func TestRetainingChainCap(t *testing.T) {
 	cfg := testCfg("emul-safe")
 	cfg.TxVariants.RetainingChainMax = 3

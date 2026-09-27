@@ -1256,6 +1256,16 @@ components:
         spikeHold: { type: integer, minimum: 0 }
         thinkMs: { type: integer, minimum: 0 }
         txTimeout: { type: integer, minimum: 1 }
+        extendedLoad:
+          type: object
+          description: >
+            Extended load mix; replaces the stored section wholesale. Key fields:
+            enabled, heavySelect.everySec, bulkDml.{everySec,minRows,maxRows},
+            opsLog.{level,format}, plusDDL.{enabled,everySec}, txVariants.mode.
+            txVariants.noLimbo (boolean, default false) disables limbo transaction
+            generation: the prepare-then-die completion is never drawn and the
+            limbo recovery sidecar never starts (txVariants.completion.limbo is
+            forced to 0).
 
     StartRequest:
       type: object

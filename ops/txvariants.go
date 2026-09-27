@@ -114,6 +114,11 @@ func NewPicker(cfg config.ExtendedLoad, workerID int, seed int64) *Picker {
 		workerID: workerID,
 	}
 	p.cfg.LockTimeoutChoicesSec = append([]int(nil), cfg.TxVariants.LockTimeoutChoicesSec...)
+	if cfg.TxVariants.NoLimbo {
+		// noLimbo wins over leftover completion weights: pickers can be built
+		// from configs that never passed ExtendedLoad.Normalize (API path).
+		p.cfg.Completion.Limbo = 0
+	}
 	p.rng = rand.New(rand.NewSource(seed))
 	if os.Getenv("FB_PICKER_DEBUG") != "" {
 		fmt.Printf("[picker] worker=%d mode=%s weights=%+v total=%d\n",

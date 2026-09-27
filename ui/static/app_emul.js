@@ -163,6 +163,7 @@ function emulLoadExtended(s) {
   document.getElementById("extLdBulkMax").value = bd.maxRows || 1000;
   const tv = el.txVariants || {};
   document.getElementById("extLdTxMode").value = tv.mode || "emul-safe";
+  document.getElementById("extLdNoLimbo").checked = !!tv.noLimbo;
   const ol = el.opsLog || {};
   document.getElementById("extLdOpsLevel").value = ol.level || "all";
   document.getElementById("extLdOpsFormat").value = ol.format || "repl-print";
@@ -194,7 +195,8 @@ function emulExtendedPayload() {
     txVariants: {
       mode: document.getElementById("extLdTxMode").value,
       lockTimeoutChoicesSec: [1, 3, 5, 10],
-      completion: { commit: 60, rollback: 15, commitRetaining: 7, rollbackRetaining: 3, twoPhase: 5, limbo: 2, connDrop: 2 },
+      noLimbo: document.getElementById("extLdNoLimbo").checked,
+      completion: { commit: 60, rollback: 15, commitRetaining: 7, rollbackRetaining: 3, twoPhase: 5, limbo: document.getElementById("extLdNoLimbo").checked ? 0 : 2, connDrop: 2 },
       rareCompletionMinGapSec: 10,
       retainingChainMax: 50,
       savepointProb: 0.15,
