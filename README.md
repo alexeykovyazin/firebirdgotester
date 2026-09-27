@@ -12,7 +12,7 @@ Both roles are driven by one **web control plane**: a fleet of databases with St
 The product deck is published on **GitHub Pages** — [download the PPTX](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pptx) · [view the PDF](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pdf) · [slides gallery](https://alexeykovyazin.github.io/firebirdgotester/).
 
 <details>
-<summary><b>View the slides (20)</b></summary>
+<summary><b>View the slides (23)</b></summary>
 
 | | |
 |---|---|
@@ -26,6 +26,8 @@ The product deck is published on **GitHub Pages** — [download the PPTX](https:
 | ![Slide 15](presentation/slides/slide-15.png) | ![Slide 16](presentation/slides/slide-16.png) |
 | ![Slide 17](presentation/slides/slide-17.png) | ![Slide 18](presentation/slides/slide-18.png) |
 | ![Slide 19](presentation/slides/slide-19.png) | ![Slide 20](presentation/slides/slide-20.png) |
+| ![Slide 21](presentation/slides/slide-21.png) | ![Slide 22](presentation/slides/slide-22.png) |
+| ![Slide 23](presentation/slides/slide-23.png) | |
 
 </details>
 
