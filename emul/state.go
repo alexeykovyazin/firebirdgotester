@@ -219,7 +219,11 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 							return
 						}
 						failStreak++
-						state.SetInvariant(msg)
+						// Transient: retrying next tick. Keep the last
+						// completed verdict in the state — a retry message
+						// frozen into the final report read like a failure
+						// even when every retry succeeded; the [emul-inv]
+						// console lines carry the trail.
 						logf("[emul-inv] %s", msg)
 						continue
 					}
