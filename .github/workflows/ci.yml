@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       firebird:
-        image: firebirdsql/firebird:5.0
+        image: firebirdsql/firebird:5.0.4
         env:
           ISC_PASSWORD: masterkey
         ports:
@@ -87,7 +87,7 @@ jobs:
       - name: Create empty smoke database
         run: |
           set -e
-          CID=$(docker ps -q --filter "ancestor=firebirdsql/firebird:5.0" | head -1)
+          CID=$(docker ps -q --filter "ancestor=firebirdsql/firebird:5.0.4" | head -1)
           for i in $(seq 1 30); do
             if docker exec "$CID" isql -user SYSDBA -password masterkey -q \
               "create database '/tmp/smoke.fdb';" </dev/null; then
