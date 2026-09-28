@@ -86,8 +86,9 @@ jobs:
           set -e
           CID=$(docker ps -q --filter "ancestor=firebirdsql/firebird:5.0.4" | head -1)
           for i in $(seq 1 30); do
-            if docker exec "$CID" isql -user SYSDBA -password masterkey -q \
-              "create database '/tmp/smoke.fdb';" </dev/null; then
+            # isql takes statements on stdin — a quoted argument would be
+            # parsed as a database name to connect to
+            if echo "create database '/tmp/smoke.fdb';" | docker exec -i "$CID" isql -user SYSDBA -password masterkey; then
               echo "database created"
               exit 0
             fi
