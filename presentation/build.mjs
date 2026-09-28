@@ -584,15 +584,15 @@ function codeBox(s, lines, x, y, w, h) {
   panel(s, 0.55, 1.5, 6.0, 4.7);
   s.addText("Shipped", { x: 0.8, y: 1.7, w: 5.5, h: 0.4, fontSize: 15, bold: true, color: OK, fontFace: "Segoe UI" });
   s.addText([
-    "Scheduled runs (once / interval / cron)\n",
-    "Run history with per-session outcomes\n",
+    "Scheduled runs (cron / interval) + run history\n",
     "Webhooks + Prometheus /metrics\n",
     "API hardening: auth, CORS, headless mode\n",
     "OpenAPI 3.1 spec for the whole API\n",
     "oltp-emul business-process mode + OLTPEMUL dashboard\n",
     "Extended load mix: tx variants, operations log,\nheavy/bulk sidecars, -plusddl, --no-limbo\n",
     "Field diagnostics: LWM probe + limbo-crash reproducer\n",
-    "CI (vet + race + 3 OS) and multi-platform releases\n",
+    "Hardening round: race fixes, worker self-heal,\ninvariant isolation, secure-by-default UI\n",
+    "CI (gofmt + vet + race + Firebird smoke), multi-platform releases\n",
     "IBSurgeon driver fork under the hood",
   ].join(""), { x: 0.8, y: 2.2, w: 5.5, h: 3.6, fontSize: 12, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.3 });
   panel(s, 6.8, 1.5, 6.0, 4.7);
@@ -604,10 +604,35 @@ function codeBox(s, lines, x, y, w, h) {
   ].join(""), { x: 7.05, y: 2.2, w: 5.5, h: 3.6, fontSize: 13.5, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.4 });
   s.addText([
     { text: "Docs: ", options: { bold: true, color: TEXT } },
-    { text: "README.md · API.md · IMPROVEMENTS.md", options: { color: ACCENT } },
+    { text: "README.md · API.md · docs/history/", options: { color: ACCENT } },
     { text: "      Start:  ", options: { bold: true, color: TEXT } },
     { text: "fb-loadgen --ui", options: { fontFace: "Consolas", color: ACCENT } },
   ], { x: 0.57, y: 6.5, w: 12.2, h: 0.4, fontSize: 13, align: "center", fontFace: "Segoe UI" });
+}
+
+// ---------- 16b. hardening round ----------
+{
+  const s = baseSlide({ title: "Hardened & verified — the review round",
+    kicker: "A full source code review, every fix regression-tested and verified against live Firebird 3.0 / 4.0 / 5.0.",
+    notes: "Report: CODE_REVIEW_2026-09-28.md. The sidecar pool starvation surfaced only when every workload variant was run on a three-server lab (FB 3/4/5) — exactly the failure mode a silent BeginTx block produces. All other criticals came from the review and carry regression tests; CI now runs a live Firebird 5.0 smoke." });
+  panel(s, 0.55, 1.5, 6.0, 4.7);
+  s.addText("Found & fixed", { x: 0.8, y: 1.7, w: 5.5, h: 0.4, fontSize: 15, bold: true, color: DANGER, fontFace: "Segoe UI" });
+  s.addText([
+    "Recurring schedules fired once per process\n",
+    "Shared random source raced across 20 workers\n",
+    "Per-op timeout silently retired workers —\nthe pool decayed under lock waits; now self-heals\n",
+    "Invariant self-checks ran in the wrong\nisolation — now real SNAPSHOT + NOWAIT\n",
+    "Classic mode starved its sidecars behind the\nmemory monitor — pool auto-sizes, blocked\nBeginTx warns instead of hanging forever",
+  ].join(""), { x: 0.8, y: 2.2, w: 5.5, h: 3.7, fontSize: 12, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.25 });
+  panel(s, 6.8, 1.5, 6.0, 4.7);
+  s.addText("Secure by default & CI", { x: 7.05, y: 1.7, w: 5.5, h: 0.4, fontSize: 15, bold: true, color: ACCENT, fontFace: "Segoe UI" });
+  s.addText([
+    "UI binds localhost only — a remote address\nrequires a bearer token or an explicit risk flag\n",
+    "Same-origin + Content-Type checks on every\nmutating endpoint; secrets redacted everywhere\n",
+    "CI: gofmt, go vet, -race, a live Firebird 5.0\nsmoke job, 3-OS compile checks\n",
+    "Every fix ships with a regression test;\nlab matrix: FB3 / FB4 / FB5, all workload\nvariants, all invariants OK",
+  ].join(""), { x: 7.05, y: 2.2, w: 5.5, h: 3.7, fontSize: 12, color: TEXT, fontFace: "Segoe UI", lineSpacingMultiple: 1.25 });
+  chip(s, "found by review + verified by running every workload variant on a three-server lab", 0.55, 6.45, 12.25);
 }
 
 // ---------- appendix: endpoint & flag reference ----------
@@ -623,6 +648,9 @@ function codeBox(s, lines, x, y, w, h) {
     "fb-loadgen --no-limbo        # same mix, no limbo generation",
     "PATCH /api/sessions/{id}  {\"extendedLoad\":{\"txVariants\":{\"noLimbo\":true}}}",
     "fb-loadgen lwmprobe --action select --fblog <firebird.log>",
+    "",
+    "# UI security",
+    "fb-loadgen --ui --ui-token T   # non-localhost addr needs a token",
     "",
     "# control",
     "GET  /api/sessions            GET  /api/fleet",

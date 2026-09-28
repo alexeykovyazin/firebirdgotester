@@ -7,12 +7,20 @@
 
 Both roles are driven by one **web control plane**: a fleet of databases with Start / Stop / Pause per row, scheduled unattended runs, run history with webhooks, a Prometheus endpoint, and a dedicated **OLTPEMUL dashboard** tab with live score, per-unit truth and memory peaks.
 
+## What's new (September 2026 hardening round)
+
+A full code review (report: [CODE_REVIEW_2026-09-28.md](CODE_REVIEW_2026-09-28.md)) produced a hardening round, live-verified on Firebird 3.0 / 4.0 / 5.0 with every variant of the workload mix:
+
+- **Correctness fixes**: recurring schedules no longer fire once and die; the shared random source is now race-free (`math/rand/v2`); a per-operation timeout no longer silently retires the worker (the pool no longer decays under lock-timeout load — workers are reaped and replaced); invariant self-checks run in real SNAPSHOT + NOWAIT transactions; the classic (non-extended) mode no longer starves its sidecars behind the memory monitor (sidecar pool auto-sizes, blocked `BeginTx` warns instead of hanging forever).
+- **Secure by default**: the UI binds to localhost only — a non-loopback `--ui-addr` without `--ui-token` now fails at startup unless you pass `--allow-remote-unauthenticated`; same-origin and Content-Type checks protect mutating endpoints; connection strings are redacted in console output.
+- **CI**: adds a Firebird 5.0 service job running a live smoke, `gofmt` check and concurrency race-smoke tests (`go vet` + `-race` + 3-OS compile checks were already there).
+
 ## 📊 Presentation
 
 The product deck is published on **GitHub Pages** — [download the PPTX](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pptx) · [view the PDF](https://alexeykovyazin.github.io/firebirdgotester/IBSurgeon_LoadGenerator.pdf) · [slides gallery](https://alexeykovyazin.github.io/firebirdgotester/).
 
 <details>
-<summary><b>View the slides (23)</b></summary>
+<summary><b>View the slides (24)</b></summary>
 
 | | |
 |---|---|
@@ -27,7 +35,7 @@ The product deck is published on **GitHub Pages** — [download the PPTX](https:
 | ![Slide 17](presentation/slides/slide-17.png) | ![Slide 18](presentation/slides/slide-18.png) |
 | ![Slide 19](presentation/slides/slide-19.png) | ![Slide 20](presentation/slides/slide-20.png) |
 | ![Slide 21](presentation/slides/slide-21.png) | ![Slide 22](presentation/slides/slide-22.png) |
-| ![Slide 23](presentation/slides/slide-23.png) | |
+| ![Slide 23](presentation/slides/slide-23.png) | ![Slide 24](presentation/slides/slide-24.png) |
 
 </details>
 
@@ -106,7 +114,7 @@ fb-loadgen --profile oltp-emul \
 
 The **OLTPEMUL tab** shows the live score, a score sparkline, `mon$` memory peaks at four levels (db / attachments / transactions / statements), invariant status and the per-unit outcome table (ok / conflict / rejected / fail with avg/max ms). On stop it freezes a `results_emul.txt` report next to the standard result files and records the run for the **Last runs** comparison.
 
-More on the model and design decisions: [OLTP_EMUL_PLAN.md](OLTP_EMUL_PLAN.md). The vendored SQL scripts stay verbatim to upstream (MIT — credit and provenance in [`emul/assets/NOTICE`](emul/assets/NOTICE)).
+More on the model and design decisions: [docs/history/OLTP_EMUL_PLAN.md](docs/history/OLTP_EMUL_PLAN.md) (historical design doc). The vendored SQL scripts stay verbatim to upstream (MIT — credit and provenance in [`emul/assets/NOTICE`](emul/assets/NOTICE)).
 
 ## LWM probe — reproducing HQbird LightWeight Monitoring conflicts
 
@@ -173,7 +181,7 @@ Alternatively, grab a prebuilt binary from [GitHub Releases](https://github.com/
 
 ## CI & Releases
 
-- **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `go vet`, the full test suite (with `-race`), and a compile check on Linux, Windows, and macOS.
+- **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `gofmt` check, `go vet`, the full test suite (with `-race`), a compile check on Linux, Windows, and macOS, and a **Firebird 5.0 service job** that runs a live smoke against a real server.
 - **Releases** (`.github/workflows/release.yml`) are published by pushing a version tag:
 
 ```bash
@@ -443,6 +451,7 @@ CLI runs use these values directly. In the web UI, timed runs scale them proport
 | `--discover-recursive` | Scan subfolders | `true` |
 | `--host` / `--port` | Firebird host/port for discovered files | `localhost` / `3050` |
 | `--max-total-conns` | Hard sum of running session max | `200` |
+| `--allow-remote-unauthenticated` | Permit a non-loopback `--ui-addr` without `--ui-token` (insecure) | `false` |
 
 ### Output & misc
 
@@ -638,7 +647,9 @@ fb-loadgen/
 ├── api/openapi.yaml        # OpenAPI 3.1 spec
 ├── EMPLOYEE_metadata.sql   # Schema dump
 ├── Technical_task.md       # Original design / constraint map
-├── OLTP_EMUL_PLAN.md       # oltp-emul integration design
+├── OLTP_EMUL_PLAN.md       # moved to docs/history/ (historical design doc)
+├── EXTENDED_LOAD_PLAN.md   # extended load mix design (fb_repl_print spec)
+├── CODE_REVIEW_2026-09-28.md # hardening round: findings + fixes
 ├── example_usage.sh        # Printed example commands
 ├── API.md                  # REST API guide with examples
 ├── go.mod / go.sum
@@ -661,6 +672,11 @@ go test -race ./...
 # Optional overrides:
 #   FIREBIRD_DSN, FIREBIRD_USER, FIREBIRD_PASS
 go test ./ops/ -v
+
+# Full live smoke (opt-in: set the DSN to enable; set + unreachable = FAIL)
+#   FIREBIRD_TEST_DSN=localhost/3050:/tmp/smoke.fdb
+go test -run TestBasicExecution -v .
+go test ./emul/ -run TestRunSidecarsPoolsEnoughConnections -v
 ```
 
 | Suite | What it covers |
@@ -723,7 +739,8 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE). The vendored oltp-em
 
 ## Further reading
 
-- [OLTP_EMUL_PLAN.md](OLTP_EMUL_PLAN.md) — how oltp-emul was integrated: what is borrowed, what is Go-side, phases and risks
+- [CODE_REVIEW_2026-09-28.md](CODE_REVIEW_2026-09-28.md) — the September 2026 hardening round: findings, fixes and acceptance checks
+- [docs/history/OLTP_EMUL_PLAN.md](docs/history/OLTP_EMUL_PLAN.md) — how oltp-emul was integrated: what is borrowed, what is Go-side, phases and risks
 - [Technical_task.md](Technical_task.md) — schema constraint map, profile design, ramp model, error strategy
 - [EMPLOYEE_metadata.sql](EMPLOYEE_metadata.sql) — tables, procedures, and constraints
 - [example_usage.sh](example_usage.sh) — printable CLI cookbook
@@ -766,6 +783,15 @@ firebirdtest.com) switch it off — `--extended-load=false` on the CLI or the
 "enabled" checkbox in the UI panel; `--tx-variants off` alone keeps the
 periodic sidecars off as well. See `EXTENDED_LOAD_PLAN.md` for the full
 design, the fb_repl_print log format spec (§7) and the verified-facts table.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--extended-load` | Extended mix (heavy SELECT, bulk DML, tx variants); `false` = classic comparable score run | `true` |
+| `--tx-variants` | Transaction variant mode: `off` \| `emul-safe` \| `full` | `emul-safe` |
+| `--no-limbo` | Disable limbo transactions (no prepare-then-die, no recovery sidecar) | `false` |
+| `--plusddl` | Enable the DDL churn sidecar (implies `--extended-load`) | `false` |
+| `--ddl-every` | Seconds between DDL churn rounds | `60` |
+| `--allow-remote-unauthenticated` | Permit a non-loopback UI without `--ui-token` (insecure) | `false` |
 
 **Known interactions (all verified live on FB4/FB5):**
 
