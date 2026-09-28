@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -398,8 +399,8 @@ func TestCallShipOrder(t *testing.T) {
 				return nil
 			}
 			// CUSTOMER_CHECK exception is expected business logic
-			if containsIgnoreCase(err.Error(), "CUSTOMER_CHECK") ||
-				containsIgnoreCase(err.Error(), "ORDER_ALREADY_SHIPPED") {
+			if strings.Contains(strings.ToLower(err.Error()), "customer_check") ||
+				strings.Contains(strings.ToLower(err.Error()), "order_already_shipped") {
 				return nil
 			}
 		}
@@ -497,7 +498,7 @@ func TestRawSelectRandomOrder(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Firebird doesn't have RAND(), use simple query without ORDER BY
+	// plain ROWS-limited scan (no RAND() here: the point is ROWS, not sampling)
 	rows, err := testDB.QueryContext(ctx, `
 		SELECT PO_NUMBER, ORDER_STATUS
 		FROM SALES
@@ -902,9 +903,9 @@ func TestWriteOperationsInterface(t *testing.T) {
 					}
 					// Check for expected business logic exceptions
 					errStr := err.Error()
-					if containsIgnoreCase(errStr, "CUSTOMER_CHECK") ||
-						containsIgnoreCase(errStr, "ORDER_ALREADY_SHIPPED") ||
-						containsIgnoreCase(errStr, "CUSTOMER_ON_HOLD") {
+					if strings.Contains(strings.ToLower(errStr), "customer_check") ||
+						strings.Contains(strings.ToLower(errStr), "order_already_shipped") ||
+						strings.Contains(strings.ToLower(errStr), "customer_on_hold") {
 						return nil
 					}
 				}

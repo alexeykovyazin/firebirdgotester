@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"fb-loadgen/emul"
@@ -33,11 +33,11 @@ type OpWeight struct {
 	Name   string
 }
 
-// WeightedSelector provides weighted random selection
+// WeightedSelector provides weighted random selection. Select is safe for
+// concurrent use by multiple workers (math/rand/v2 global source).
 type WeightedSelector struct {
 	ops         []OpWeight
 	totalWeight int
-	rng         *rand.Rand
 }
 
 // NewWeightedSelector creates a new weighted selector
@@ -50,7 +50,6 @@ func NewWeightedSelector(ops []OpWeight) *WeightedSelector {
 	return &WeightedSelector{
 		ops:         ops,
 		totalWeight: totalWeight,
-		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -60,7 +59,7 @@ func (ws *WeightedSelector) Select() (func(ctx context.Context, tx *sql.Tx, cach
 		return nil, ""
 	}
 
-	target := ws.rng.Intn(ws.totalWeight)
+	target := rand.IntN(ws.totalWeight)
 	current := 0
 
 	for _, op := range ws.ops {

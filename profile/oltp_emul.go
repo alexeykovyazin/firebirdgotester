@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"fb-loadgen/emul"
 	"fb-loadgen/ops"
@@ -25,9 +24,9 @@ type oltpEmulProfile struct {
 }
 
 // NewOLTPEmulProfile builds the profile from a loaded unit registry.
-func NewOLTPEmulProfile(units []emul.Unit, seed int64) *oltpEmulProfile {
+func NewOLTPEmulProfile(units []emul.Unit) *oltpEmulProfile {
 	p := &oltpEmulProfile{
-		selector: emul.NewSelector(units, seed),
+		selector: emul.NewSelector(units),
 	}
 	for _, u := range units {
 		if u.Weight <= 0 {
@@ -85,5 +84,5 @@ func (pf *ProfileFactory) buildEmulProfile() (Profile, error) {
 	if len(pf.emulUnits) == 0 {
 		return nil, fmt.Errorf("profile oltp-emul requires a provisioned oltpemul database (no units loaded; run provision, then point --dsn at the oltpemul database)")
 	}
-	return NewOLTPEmulProfile(pf.emulUnits, time.Now().UnixNano()), nil
+	return NewOLTPEmulProfile(pf.emulUnits), nil
 }

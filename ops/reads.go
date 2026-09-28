@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/rand/v2"
 
 	"fb-loadgen/db"
 )
@@ -380,7 +381,7 @@ func (ro *ReadOperations) ExecuteRandomReadOperation(ctx context.Context, tx *sq
 	}
 
 	// Pick a random operation based on weight
-	target := ro.cache.rng.Intn(totalWeight)
+	target := rand.IntN(totalWeight)
 	current := 0
 
 	for _, op := range ops {

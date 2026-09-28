@@ -505,6 +505,44 @@ func TestEngineTriggerNowIgnoresNextRun(t *testing.T) {
 	waitFor(t, 3*time.Second, func() bool { return fr.runCount() == 1 })
 }
 
+func TestEngineIntervalFiresRepeatedly(t *testing.T) {
+	dir := t.TempDir()
+	fr := &fakeRunner{refs: []session.TargetRef{{ID: "a", RelPath: "db1/x.FDB", ConnMax: 2}}, freeBudget: 10}
+	e := NewEngine(filepath.Join(dir, "schedules.json"), fr)
+	defer e.Stop()
+
+	now := time.Now()
+	e.SetNow(func() time.Time { return now })
+	_, err := e.Create(Schedule{
+		Name:    "every-1",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerInterval, EveryMin: 1},
+		Targets: Targets{SessionIDs: []string{"a"}},
+		Run:     session.RunSpec{TimeLimitMin: 10},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Two consecutive due ticks must each fire once: the first fire must
+	// release the pending guard, otherwise every recurring schedule would
+	// fire exactly once per process.
+	first := now.Add(2 * time.Minute)
+	e.SetNow(func() time.Time { return first })
+	e.tick(first)
+	waitFor(t, 3*time.Second, func() bool { return fr.runCount() == 1 })
+
+	second := first.Add(2 * time.Minute)
+	e.SetNow(func() time.Time { return second })
+	e.tick(second)
+	waitFor(t, 3*time.Second, func() bool { return fr.runCount() == 2 })
+
+	third := second.Add(2 * time.Minute)
+	e.SetNow(func() time.Time { return third })
+	e.tick(third)
+	waitFor(t, 3*time.Second, func() bool { return fr.runCount() == 3 })
+}
+
 func TestEngineUpdateRecomputesNext(t *testing.T) {
 	dir := t.TempDir()
 	fr := &fakeRunner{}

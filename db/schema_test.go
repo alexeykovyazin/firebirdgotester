@@ -29,6 +29,12 @@ func TestValidateSchemaGateAgainstSample(t *testing.T) {
 	}
 	f := db.NewConnectionFactory(cfg)
 	if err := f.ValidateSchemaGate(); err != nil {
+		if os.Getenv("FB_TEST_DSN") == "" {
+			// No explicitly configured database: a unreachable default DSN
+			// must skip, not fail (the repo-root EMPLOYEE.FDB exists even
+			// when no server listens on the default port 3050).
+			t.Skipf("no FB_TEST_DSN and default DSN unreachable: %v", err)
+		}
 		t.Fatalf("ValidateSchemaGate: %v", err)
 	}
 }

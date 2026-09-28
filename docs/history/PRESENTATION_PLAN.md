@@ -1,3 +1,5 @@
+> **Historical document** (moved from the repo root, kept for reference). Current status lives in README.md and the code.
+
 # Presentation Build Plan — IBSurgeon Firebird Load Generator
 
 Goal: a ~16-slide (16:9) deck that explains how the Load Generator works — short text, Mermaid-based infographics — with dedicated sections on the **UI approach** and the **API-first approach** (run + schedule).

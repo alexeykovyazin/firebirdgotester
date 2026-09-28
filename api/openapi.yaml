@@ -64,48 +64,6 @@ paths:
                   fleet:
                     $ref: "#/components/schemas/FleetSummary"
 
-  EmulState:
-    type: object
-    properties:
-      scorePerMin: { type: number }
-      okUnits: { type: integer }
-      totalUnits: { type: integer }
-      phase: { type: string }
-      invariant: { type: string }
-      invariantAt: { type: string }
-      memPeaks:
-        type: object
-        properties:
-          dbBytes: { type: integer }
-          attBytes: { type: integer }
-          trnBytes: { type: integer }
-          stmtBytes: { type: integer }
-      series:
-        type: array
-        items:
-          type: object
-          properties:
-            ts: { type: string }
-            scorePerMin: { type: number }
-            tps: { type: number }
-            dbBytes: { type: integer }
-            phase: { type: string }
-      perUnit:
-        type: array
-        items:
-          type: object
-          properties:
-            unit: { type: string }
-            mode: { type: string }
-            kind: { type: string }
-            ok: { type: integer }
-            conflict: { type: integer }
-            rejected: { type: integer }
-            failure: { type: integer }
-            avgMs: { type: integer }
-            maxMs: { type: integer }
-      workingMode: { type: string }
-
   /api/sessions/{id}:
     parameters:
       - $ref: "#/components/parameters/SessionId"
@@ -132,7 +90,7 @@ paths:
       description: >
         Partial merge; only editable when the session is Idle, Failed or Completed.
         `connMax` is managed by the fleet budget (maxTotalConns / N) and is ignored.
-        Invalid resulting config leaves the session Failed with the reason in `lastError`.
+        An invalid resulting config is rejected with 400; the session keeps its previous config (it is re-validated on the next start).
       security:
         - bearerAuth: []
       requestBody:
@@ -379,7 +337,7 @@ paths:
 
   /api/emul/provision/{jobId}:
     parameters:
-      - $ref: "#/components/parameters/ReportFile"
+      - $ref: "#/components/parameters/EmulJobId"
     get:
       tags: [Config]
       summary: "oltp-emul: provision job status"
@@ -579,7 +537,7 @@ paths:
       - name: file
         in: path
         required: true
-        schema: { type: string, pattern: "^ops.*\.log$" }
+        schema: { type: string, pattern: '^ops.*\.log$' }
         description: Log file name as returned by GET /api/sessions/{id}/logs
     get:
       tags: [Config]
@@ -1086,6 +1044,12 @@ components:
       required: true
       description: Run id (run_<UTC timestamp>_<8 hex>)
       schema: { type: string }
+    EmulJobId:
+      name: jobId
+      in: path
+      required: true
+      description: Provision job id (as returned by POST /api/emul/provision)
+      schema: { type: string }
     ReportFile:
       name: file
       in: path
@@ -1175,7 +1139,7 @@ components:
           $ref: "#/components/schemas/SessionStatus"
         profile:
           type: string
-          enum: [write-heavy, read-heavy, spike]
+          enum: [write-heavy, read-heavy, spike, oltp-emul]
         connMin: { type: integer, minimum: 1 }
         connMax: { type: integer, minimum: 1, description: Budget-managed (maxTotalConns / N) }
         warmup: { type: integer, description: "Seconds; shape ratio when a time limit scales the run" }
@@ -1247,7 +1211,7 @@ components:
       type: object
       description: Partial merge; fields not present are unchanged. connMax is ignored.
       properties:
-        profile: { type: string, enum: [write-heavy, read-heavy, spike] }
+        profile: { type: string, enum: [write-heavy, read-heavy, spike, oltp-emul] }
         connMin: { type: integer, minimum: 1 }
         warmup: { type: integer, minimum: 0 }
         main: { type: integer, minimum: 0 }
@@ -1410,7 +1374,7 @@ components:
         (precedence: override > session config). Connection counts are budget-managed
         and cannot be overridden.
       properties:
-        profile: { type: string, enum: [write-heavy, read-heavy, spike] }
+        profile: { type: string, enum: [write-heavy, read-heavy, spike, oltp-emul] }
         thinkMs: { type: integer, minimum: 0 }
         txTimeout: { type: integer, minimum: 1 }
         spikeCycles: { type: integer, minimum: 1 }

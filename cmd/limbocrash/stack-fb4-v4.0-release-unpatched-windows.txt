@@ -1,0 +1,158 @@
+Firebird 4.0 (HQbird repo branch v4.0-release @ 295b70e0cf, built from source, Windows) WITHOUT any fix.
+limbocrash die-mode: server crashed on loop 1/3, same as 5.0. Source: crash-fb4-unpatched.dmp (procdump first-chance C0000005), cdb WinDbg 10.0.29617, symbols from worktree engine13.pdb.
+
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             E:\Projects_Big\hqbird-v4\temp\x64\Release\engine
+OK                                             E:\Projects_Big\hqbird-v4\temp\x64\Release\fbserver
+OK                                             E:\Projects_Big\hqbird-v4\temp\x64\Release\yvalve
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.016 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.516 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 46
+
+Microsoft (R) Windows Debugger Version 10.0.29617.1000 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [E:\Projects_Big\hqbird\temp\crashdbg-fb4\firebird.exe_260927_203427.dmp]
+Comment: '
+*** E:\Tools\procdump\procdump.exe  -accepteula -mm -e 1 -f C0000005 -x E:\Projects_Big\hqbird\temp\crashdbg-fb4 firebird.exe -a
+*** First chance exception: C0000005.ACCESS_VIOLATION'
+User Mini Dump File: Only registers, stack and portions of memory are available
+
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             E:\Projects_Big\hqbird-v4\temp\x64\Release\engine
+OK                                             E:\Projects_Big\hqbird-v4\temp\x64\Release\fbserver
+OK                                             E:\Projects_Big\hqbird-v4\temp\x64\Release\yvalve
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: E:\Projects_Big\hqbird-v4\temp\x64\Release\engine;E:\Projects_Big\hqbird-v4\temp\x64\Release\fbserver;E:\Projects_Big\hqbird-v4\temp\x64\Release\yvalve;srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+Windows 10 Version 26200 MP (16 procs) Free x64
+Product: WinNt, suite: SingleUserTS Personal
+Edition build lab: 26100.1.amd64fre.ge_release.240331-1435
+Debug session time: Sun Sep 27 20:34:27.000 2026 (UTC + 2:00)
+System Uptime: 5 days 1:01:39.732
+Process Uptime: 0 days 0:00:17.000
+..........................................................
+This dump file has an exception of interest stored in it.
+The stored exception information can be accessed via .ecxr
+(5cd4.8b78): Access violation - code c0000005 (first/second chance not available)
+
++------------------------------------------------------------------------+
+| This target supports Hardware-enforced Stack Protection. A HW based    |
+| "Shadow Stack" may be available to assist in debugging and analysis.   |
+| See aka.ms/userhsp for more info.                                      |
+|                                                                        |
+| dps @ssp                                                               |
+|                                                                        |
++------------------------------------------------------------------------+
+
+For analysis of this file, run !analyze -v
+ntdll!RtlpWaitOnCriticalSection+0xbd:
+00007ffd`2db4fa7d ff4024          inc     dword ptr [rax+24h] ds:00000000`00000024=????????
+0:007> cdb: Reading initial command '.reload; .ecxr; r; k 60; q'
+..........................................................
+rax=0000000000000000 rbx=000000000022a000 rcx=0000000009a40c98
+rdx=00000000fffffffa rsi=00000000fffffffa rdi=0000000009a40c98
+rip=00007ffd2db4fa7d rsp=00000000046de4f0 rbp=00000000046de589
+ r8=0000000000000000  r9=0000000009a40ca0 r10=0000000000000001
+r11=0000000000000001 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=000000007ffe036a
+iopl=0         nv up ei pl nz ac po cy
+cs=0033  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010213
+ntdll!RtlpWaitOnCriticalSection+0xbd:
+00007ffd`2db4fa7d ff4024          inc     dword ptr [rax+24h] ds:00000000`00000024=????????
+Last set context:
+rax=0000000000000000 rbx=000000000022a000 rcx=0000000009a40c98
+rdx=00000000fffffffa rsi=00000000fffffffa rdi=0000000009a40c98
+rip=00007ffd2db4fa7d rsp=00000000046de4f0 rbp=00000000046de589
+ r8=0000000000000000  r9=0000000009a40ca0 r10=0000000000000001
+r11=0000000000000001 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=000000007ffe036a
+iopl=0         nv up ei pl nz ac po cy
+cs=0033  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010213
+ntdll!RtlpWaitOnCriticalSection+0xbd:
+00007ffd`2db4fa7d ff4024          inc     dword ptr [rax+24h] ds:00000000`00000024=????????
+Child-SP          RetAddr               Call Site
+00000000`046de4f0 00007ffd`2db5166f     ntdll!RtlpWaitOnCriticalSection+0xbd
+00000000`046de5f0 00007ffd`2db528e2     ntdll!RtlpEnterCriticalSectionContended+0x1ef
+*** WARNING: Unable to verify checksum for engine13.dll
+00000000`046de670 00007ffc`5aa41a0c     ntdll!RtlEnterCriticalSection+0xf2
+(Inline Function) --------`--------     engine13!Firebird::Mutex::enter+0xd
+(Inline Function) --------`--------     engine13!Firebird::EnsureUnlock<Firebird::Mutex,Firebird::NotRefCounted>::enter+0xd
+00000000`046de6b0 00007ffc`5a973c0d     engine13!Firebird::MemPool::releaseBlock+0x4c
+(Inline Function) --------`--------     engine13!Firebird::Array<Firebird::MetaString,Firebird::EmptyStorage<Firebird::MetaString> >::freeData+0xe
+(Inline Function) --------`--------     engine13!Firebird::Array<Firebird::MetaString,Firebird::EmptyStorage<Firebird::MetaString> >::{dtor}+0xe
+00000000`046de6f0 00007ffc`5a973e51     engine13!Replication::Replicator::Transaction::`scalar deleting destructor'+0x1d
+(Inline Function) --------`--------     engine13!Replication::Replicator::Transaction::dispose+0x2b
+00000000`046de720 00007ffc`5a9b35ea     engine13!Firebird::IReplicatedTransactionBaseImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::IDisposableImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IReplicatedTransaction> > > > >::cloopdisposeDispatcher+0x31
+(Inline Function) --------`--------     engine13!Firebird::IDisposable::dispose+0x7
+00000000`046de750 00007ffc`5a8ec37c     engine13!TRA_release_transaction+0x2ba
+00000000`046de7d0 00007ffc`5a8f92fe     engine13!Jrd::JTransaction::freeEngineData+0xac
+00000000`046dea90 00007ffc`5a8e4d99     engine13!Jrd::JTransaction::release+0x8e
+00000000`046debb0 00007ffc`5a973c1e     engine13!Firebird::ITransactionBaseImpl<Jrd::JTransaction,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JTransaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JTransaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::ITransaction> > > > >::cloopreleaseDispatcher+0x19
+(Inline Function) --------`--------     engine13!Firebird::IReferenceCounted::release+0x7
+(Inline Function) --------`--------     engine13!Firebird::RefPtr<Firebird::ITransaction>::{dtor}+0x10
+00000000`046debe0 00007ffc`5a973e51     engine13!Replication::Replicator::Transaction::`scalar deleting destructor'+0x2e
+(Inline Function) --------`--------     engine13!Replication::Replicator::Transaction::dispose+0x2b
+00000000`046dec10 00007ffc`5a9b35ea     engine13!Firebird::IReplicatedTransactionBaseImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::IDisposableImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Replication::Replicator::Transaction,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IReplicatedTransaction> > > > >::cloopdisposeDispatcher+0x31
+(Inline Function) --------`--------     engine13!Firebird::IDisposable::dispose+0x7
+00000000`046dec40 00007ffc`5a8f6dde     engine13!TRA_release_transaction+0x2ba
+00000000`046decc0 00007ffc`5a8f6a64     engine13!purge_transactions+0x19e
+00000000`046def40 00007ffc`5a8eb0a4     engine13!purge_attachment+0x304
+00000000`046df460 00007ffc`5a8e8705     engine13!Jrd::JAttachment::freeEngineData+0x134
+00000000`046df720 00007ffc`5a8e303b     engine13!Jrd::JAttachment::detach+0x15
+*** WARNING: Unable to verify checksum for fbclient.dll
+00000000`046df750 00007ffc`d167e5c7     engine13!Firebird::IAttachmentBaseImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x2b
+(Inline Function) --------`--------     fbclient!Firebird::IAttachment::detach+0x9d
+(Inline Function) --------`--------     fbclient!Why::YAttachment::detach::__l3::<lambda_e028eee13ee23ebbbe4311ea3ad94733>::operator()+0xa1
+(Inline Function) --------`--------     fbclient!std::invoke+0xa1
+(Inline Function) --------`--------     fbclient!std::_Invoker_ret<void,1>::_Call+0xa1
+00000000`046df7b0 00007ffc`d167296d     fbclient!std::_Func_impl_no_alloc<<lambda_e028eee13ee23ebbbe4311ea3ad94733>,void>::_Do_call+0xc7
+(Inline Function) --------`--------     fbclient!std::_Func_class<void>::operator()+0x13
+00000000`046df840 00007ffc`d168f243     fbclient!Why::done<Why::YAttachment>+0x3d
+00000000`046df880 00007ffc`d168a18b     fbclient!Why::YAttachment::detach+0x103
+*** WARNING: Unable to verify checksum for firebird.exe
+00000000`046df990 00000001`400197af     fbclient!Firebird::IAttachmentBaseImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x2b
+(Inline Function) --------`--------     firebird!Firebird::IAttachment::detach+0x61
+00000000`046df9f0 00000001`40020e6f     firebird!rem_port::disconnect+0x31f
+00000000`046dfb70 00000001`4001f797     firebird!process_packet+0x1ff
+00000000`046dfe10 00000001`4003fa4b     firebird!loopThread+0x1c7
+(Inline Function) --------`--------     firebird!`anonymous-namespace'::ThreadArgs::run+0x5
+00000000`046dff00 00007ffd`2b72cd30     firebird!threadStart+0x5b
+00000000`046dff30 00007ffd`2c94cd87     ucrtbase!thread_start<unsigned int (__cdecl*)(void *),1>+0x30
+00000000`046dff60 00007ffd`2dbecaec     kernel32!BaseThreadInitThunk+0x17
+00000000`046dff90 00000000`00000000     ntdll!RtlUserThreadStart+0x2c
+quit:
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2606.22001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\winrt.natvis'

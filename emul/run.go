@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
@@ -78,15 +78,15 @@ func SchemaGuard(ctx context.Context, db *sql.DB) error {
 }
 
 // Selector picks units with weights, mirroring upstream srv_random_unit_choice
-// but on the Go side (one less round trip per unit).
+// but on the Go side (one less round trip per unit). Pick is safe for
+// concurrent use by multiple workers (math/rand/v2 global source).
 type Selector struct {
 	units  []Unit
 	weight int
-	rng    *rand.Rand
 }
 
-func NewSelector(units []Unit, seed int64) *Selector {
-	s := &Selector{units: units, rng: rand.New(rand.NewSource(seed))}
+func NewSelector(units []Unit) *Selector {
+	s := &Selector{units: units}
 	for _, u := range units {
 		if u.Weight > 0 {
 			s.weight += u.Weight
@@ -102,7 +102,7 @@ func (s *Selector) Pick(allowedKinds map[string]bool) (Unit, bool) {
 		return Unit{}, false
 	}
 	for range 100 {
-		target := s.rng.Intn(s.weight)
+		target := rand.IntN(s.weight)
 		acc := 0
 		for _, u := range s.units {
 			if u.Weight <= 0 {
@@ -158,11 +158,19 @@ func TxOptions() *sql.TxOptions {
 	return &sql.TxOptions{Isolation: NoWaitIsolation}
 }
 
+// SnapshotNoWaitIsolation is the driver's custom sql.TxOptions isolation
+// value: SNAPSHOT (concurrency) with NOWAIT lock resolution. The invariant
+// self-checks need both properties at once: SRV_MAKE_INVNT_SALDO /
+// SRV_MAKE_MONEY_SALDO total the turnover logs and demand TIL = SNAPSHOT,
+// while SP_CHECK_NOWAIT_OR_TIMEOUT (run inside the same checks) rejects any
+// transaction not started NO WAIT (or with a lock timeout).
+const SnapshotNoWaitIsolation = sql.IsolationLevel(1250) // firebirdsql.LevelSnapshotNoWait
+
 // SnapshotTxOptions returns the transaction options required by the
-// invariant self-checks: SRV_MAKE_INVNT_SALDO / SRV_MAKE_MONEY_SALDO demand
-// TIL = SNAPSHOT (they total the turnover logs and need a stable view).
+// invariant self-checks: snapshot isolation for a stable view plus NOWAIT
+// lock resolution (see SnapshotNoWaitIsolation).
 func SnapshotTxOptions() *sql.TxOptions {
-	return &sql.TxOptions{Isolation: sql.LevelRepeatableRead}
+	return &sql.TxOptions{Isolation: SnapshotNoWaitIsolation}
 }
 
 // ExecuteUnit runs one business unit inside the caller's transaction. A unit
@@ -222,7 +230,7 @@ func classifyUnitError(err error) Outcome {
 		}
 		// oltp-emul user exceptions are named ex_*; the driver renders them
 		// with the exception name substituted into the message.
-		if strings.Contains(fe.Message, "ex_") {
+		if containsExceptionName(fe.Message) {
 			return OutcomeRejected
 		}
 	}
@@ -232,8 +240,31 @@ func classifyUnitError(err error) Outcome {
 		strings.Contains(low, "stuck in limbo") {
 		return OutcomeConflict
 	}
-	if strings.Contains(low, "ex_") {
+	if containsExceptionName(low) {
 		return OutcomeRejected
 	}
 	return OutcomeFailure
+}
+
+// containsExceptionName reports a user exception (ex_* naming convention) in
+// a Firebird error message. It matches only at an identifier boundary: a
+// plain substring hit would also match "index_" — RDB$INDEX_<n> shows up in
+// many constraint-violation messages — and misclassify real failures as
+// business rejections, which workers swallow as expected.
+func containsExceptionName(s string) bool {
+	low := strings.ToLower(s)
+	for i := 0; i+3 <= len(low); i++ {
+		if low[i] != 'e' || low[i+1] != 'x' || low[i+2] != '_' {
+			continue
+		}
+		if i > 0 && isIdentByte(low[i-1]) {
+			continue // index_, prefix_, ... — not an exception name
+		}
+		return true
+	}
+	return false
+}
+
+func isIdentByte(b byte) bool {
+	return b == '_' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }

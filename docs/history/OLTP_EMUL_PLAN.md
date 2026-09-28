@@ -1,3 +1,5 @@
+> **Historical document** (moved from the repo root, kept for reference). Current status lives in README.md and the code.
+
 # Borrowing oltp-emul into fb-loadgen — Integration Plan (v2)
 
 Source studied: https://github.com/FirebirdSQL/oltp-emul (cloned to `E:\Projects_2026\oltp-emul`, not committed here).

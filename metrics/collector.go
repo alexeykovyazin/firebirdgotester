@@ -22,22 +22,22 @@ type MetricsCollector struct {
 	profile   profile.Profile
 	cache     *ops.Cache
 
-	// Aggregated statistics
-	totalOps   int64
-	successOps int64
-	errorOps   int64
-	avgLatency time.Duration
-	minLatency time.Duration
-	maxLatency time.Duration
-
-	// Rate calculations
-	startTime      time.Time
-	lastReportTime time.Time
-	lastTotalOps   int64
-
-	// Concurrency tracking
+	// Aggregated statistics. Written by the collect() goroutine, read by
+	// GetReport/GetStats/Reset from reporter and session goroutines — all
+	// access goes through aggMu.
+	aggMu          sync.RWMutex
+	totalOps       int64
+	successOps     int64
+	errorOps       int64
+	avgLatency     time.Duration
+	minLatency     time.Duration
+	maxLatency     time.Duration
+	lastReport     time.Time
+	lastTotal      int64
 	maxWorkers     int
 	currentWorkers int
+
+	startTime time.Time // set at construction/Reset, read-only afterwards
 
 	// Error tracking
 	errorCounts map[string]int64
@@ -63,16 +63,16 @@ func NewMetricsCollector(scheduler *ramp.Scheduler, profile profile.Profile, cac
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &MetricsCollector{
-		workerMetrics:  workerMetrics, // Use shared instance from scheduler
-		scheduler:      scheduler,
-		profile:        profile,
-		cache:          cache,
-		startTime:      time.Now(),
-		lastReportTime: time.Now(),
-		errorCounts:    make(map[string]int64),
-		opCounts:       make(map[string]int64),
-		ctx:            ctx,
-		cancel:         cancel,
+		workerMetrics: workerMetrics, // Use shared instance from scheduler
+		scheduler:     scheduler,
+		profile:       profile,
+		cache:         cache,
+		startTime:     time.Now(),
+		lastReport:    time.Now(),
+		errorCounts:   make(map[string]int64),
+		opCounts:      make(map[string]int64),
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
@@ -117,7 +117,9 @@ func (mc *MetricsCollector) updateMetrics() {
 	mc.updateFromCache()
 
 	// Update timestamp
-	mc.lastReportTime = time.Now()
+	mc.aggMu.Lock()
+	mc.lastReport = time.Now()
+	mc.aggMu.Unlock()
 }
 
 // updateFromWorkerMetrics updates metrics from the worker metrics collector
@@ -126,16 +128,53 @@ func (mc *MetricsCollector) updateFromWorkerMetrics() {
 	total := mc.workerMetrics.GetTotalTransactions()
 	successRate := mc.workerMetrics.GetSuccessRate()
 
+	// Pull the latency histogram the workers record (RecordTransactionNamed
+	// — both EMPLOYEE-profile ops and emul units). Without this the report's
+	// Latency Distribution section stays empty.
+	buckets := mc.workerMetrics.GetLatencyBucketCounts()
+
+	// Derive the aggregate latency figures from the histogram itself:
+	// min/max are the bounds of the outermost non-empty buckets, the average
+	// is a bucket-midpoint estimate. The previous figures mislabeled p50 and
+	// the p50/p95/p99 mean as min and average.
+	totalCount := int64(0)
+	var weightedSum int64
+	var minLower, maxBound int64
+	any := false
+	for i, count := range buckets {
+		if count == 0 {
+			continue
+		}
+		upper := worker.LatencyBucketUpperBoundMs(i)
+		lower := int64(0)
+		if i > 0 {
+			lower = worker.LatencyBucketUpperBoundMs(i - 1)
+		}
+		if !any {
+			minLower = lower
+			any = true
+		}
+		maxBound = upper
+		mid := (lower + upper) / 2
+		weightedSum += mid * count
+		totalCount += count
+	}
+
 	// Update our counters
+	mc.aggMu.Lock()
 	mc.totalOps = total
 	mc.successOps = int64(float64(total) * successRate / 100.0)
 	mc.errorOps = total - mc.successOps
-
-	// Update latency metrics
-	p50, p95, p99 := mc.workerMetrics.GetLatencyPercentiles()
-	mc.avgLatency = time.Duration((p50+p95+p99)/3) * time.Millisecond
-	mc.minLatency = time.Duration(p50) * time.Millisecond
-	mc.maxLatency = time.Duration(p99) * time.Millisecond
+	if any {
+		mc.minLatency = time.Duration(minLower) * time.Millisecond
+		mc.maxLatency = time.Duration(maxBound) * time.Millisecond
+		mc.avgLatency = time.Duration(weightedSum/totalCount) * time.Millisecond
+	} else {
+		mc.minLatency = 0
+		mc.maxLatency = 0
+		mc.avgLatency = 0
+	}
+	mc.aggMu.Unlock()
 
 	// Pull per-op counts recorded by workers via NextOpWithName
 	if ops := mc.workerMetrics.GetOpCounts(); len(ops) > 0 {
@@ -156,10 +195,6 @@ func (mc *MetricsCollector) updateFromWorkerMetrics() {
 		mc.errorMutex.Unlock()
 	}
 
-	// Pull the latency histogram the workers record (RecordTransactionNamed
-	// — both EMPLOYEE-profile ops and emul units). Without this the report's
-	// Latency Distribution section stays empty.
-	buckets := mc.workerMetrics.GetLatencyBucketCounts()
 	mc.latencyMutex.Lock()
 	mc.latencyBuckets = buckets
 	mc.latencyMutex.Unlock()
@@ -167,10 +202,13 @@ func (mc *MetricsCollector) updateFromWorkerMetrics() {
 
 // updateFromScheduler updates metrics from the scheduler
 func (mc *MetricsCollector) updateFromScheduler() {
-	mc.currentWorkers = mc.scheduler.GetCurrentWorkerCount()
+	current := mc.scheduler.GetCurrentWorkerCount()
+	mc.aggMu.Lock()
+	mc.currentWorkers = current
 	if mc.currentWorkers > mc.maxWorkers {
 		mc.maxWorkers = mc.currentWorkers
 	}
+	mc.aggMu.Unlock()
 }
 
 // updateFromCache updates metrics from the cache
@@ -179,47 +217,19 @@ func (mc *MetricsCollector) updateFromCache() {
 	// For now, we'll just note that cache is being used
 }
 
-// RecordTransaction records a transaction result
+// RecordTransaction records a transaction result. Delegates to the worker
+// metrics collector; the aggregate views (op counts, latency buckets) are
+// pulled from there by the sync loop, so no local bookkeeping happens here —
+// it used to double-count between overwrites.
 func (mc *MetricsCollector) RecordTransaction(success bool, latency time.Duration, opName string) {
-	// Record in worker metrics
-	if success {
-		mc.workerMetrics.RecordTransaction(true, latency)
-	} else {
-		mc.workerMetrics.RecordTransaction(false, latency)
-	}
-
-	// Update operation counts
-	mc.opMutex.Lock()
-	mc.opCounts[opName]++
-	mc.opMutex.Unlock()
-
-	// Update latency buckets
-	bucket := mc.getLatencyBucket(latency)
-	mc.latencyMutex.Lock()
-	mc.latencyBuckets[bucket]++
-	mc.latencyMutex.Unlock()
+	mc.workerMetrics.RecordTransactionNamed(success, latency, opName)
 }
 
-// RecordError records an error
+// RecordError records an error. Delegates to the worker metrics collector;
+// the sync loop pulls the taxonomy snapshot from there.
 func (mc *MetricsCollector) RecordError(err error, opName string) {
-	// Record in worker metrics
 	mc.workerMetrics.RecordError(err)
-
-	// Update error counts
-	mc.errorMutex.Lock()
-	errorKey := err.Error()
-	mc.errorCounts[errorKey]++
-	mc.errorMutex.Unlock()
-
-	// Update operation counts (failed operations)
-	mc.opMutex.Lock()
-	mc.opCounts[opName]++
-	mc.opMutex.Unlock()
-}
-
-// getLatencyBucket determines which latency bucket to use
-func (mc *MetricsCollector) getLatencyBucket(latency time.Duration) int {
-	return worker.GetLatencyBucketMs(int64(latency.Milliseconds()))
+	_ = opName
 }
 
 // GetReport generates a comprehensive metrics report
@@ -236,12 +246,15 @@ func (mc *MetricsCollector) GetReport() *Report {
 	mc.latencyMutex.RLock()
 	defer mc.latencyMutex.RUnlock()
 
+	mc.aggMu.RLock()
+	defer mc.aggMu.RUnlock()
+
 	elapsed := time.Since(mc.startTime)
-	interval := time.Since(mc.lastReportTime)
+	interval := time.Since(mc.lastReport)
 
 	// Calculate rates
 	totalRate := float64(mc.totalOps) / elapsed.Seconds()
-	intervalRate := float64(mc.totalOps-mc.lastTotalOps) / interval.Seconds()
+	intervalRate := float64(mc.totalOps-mc.lastTotal) / interval.Seconds()
 
 	// Calculate success rate
 	successRate := 0.0
@@ -308,7 +321,7 @@ func (mc *MetricsCollector) GetReport() *Report {
 		LatencyBuckets:    mc.latencyBuckets,
 	}
 
-	mc.lastTotalOps = mc.totalOps
+	mc.lastTotal = mc.totalOps
 	return report
 }
 
@@ -323,17 +336,19 @@ func (mc *MetricsCollector) getLatencyPercentiles() (p50, p95, p99 time.Duration
 		return 0, 0, 0
 	}
 
-	// Calculate cumulative counts
+	// Calculate cumulative counts. Percentile targets are rounded up so
+	// small samples hit their own (non-empty) bucket instead of the first
+	// one: for total=1 the single transaction is p50, p95 and p99.
 	cumulative := int64(0)
-	p50Target := total * 50 / 100
-	p95Target := total * 95 / 100
-	p99Target := total * 99 / 100
+	p50Target := (total*50 + 99) / 100
+	p95Target := (total*95 + 99) / 100
+	p99Target := (total*99 + 99) / 100
 
 	p50, p95, p99 = 0, 0, 0
 
 	for i, count := range mc.latencyBuckets {
 		cumulative += count
-		bucketMs := mc.getBucketUpperBound(i)
+		bucketMs := worker.LatencyBucketUpperBoundMs(i)
 
 		if p50 == 0 && cumulative >= p50Target {
 			p50 = time.Duration(bucketMs) * time.Millisecond
@@ -364,35 +379,10 @@ func (mc *MetricsCollector) getLatencyPercentiles() (p50, p95, p99 time.Duration
 	return p50, p95, p99
 }
 
-// getBucketUpperBound returns the upper bound of a latency bucket in milliseconds
-func (mc *MetricsCollector) getBucketUpperBound(bucket int) int64 {
-	switch bucket {
-	case 0:
-		return 5
-	case 1:
-		return 10
-	case 2:
-		return 25
-	case 3:
-		return 50
-	case 4:
-		return 100
-	case 5:
-		return 250
-	case 6:
-		return 500
-	case 7:
-		return 1000
-	case 8:
-		return 1000 // >= 1000ms
-	default:
-		return 0
-	}
-}
-
 // Reset resets all metrics
 func (mc *MetricsCollector) Reset() {
 	mc.workerMetrics.Reset()
+	mc.aggMu.Lock()
 	mc.totalOps = 0
 	mc.successOps = 0
 	mc.errorOps = 0
@@ -402,8 +392,9 @@ func (mc *MetricsCollector) Reset() {
 	mc.maxWorkers = 0
 	mc.currentWorkers = 0
 	mc.startTime = time.Now()
-	mc.lastReportTime = time.Now()
-	mc.lastTotalOps = 0
+	mc.lastReport = time.Now()
+	mc.lastTotal = 0
+	mc.aggMu.Unlock()
 
 	mc.errorMutex.Lock()
 	for k := range mc.errorCounts {

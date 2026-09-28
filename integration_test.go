@@ -10,18 +10,25 @@ import (
 	"time"
 )
 
-// TestBasicExecution tests that the load generator can start and stop without errors
+// TestBasicExecution tests that the load generator can start and stop without
+// errors against a live Firebird. Skipped unless FIREBIRD_TEST_DSN points at a
+// reachable database (CI sets it in the firebird job); a configured but
+// unreachable database FAILS instead of vacuously passing.
 func TestBasicExecution(t *testing.T) {
+	dsn := os.Getenv("FIREBIRD_TEST_DSN")
+	if dsn == "" {
+		t.Skip("FIREBIRD_TEST_DSN not set; skipping live-database smoke test")
+	}
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "./fb-loadgen",
 		"--profile", "write-heavy",
-		"--dsn", "localhost/3055:./EMPLOYEE.FDB",
+		"--dsn", dsn,
 		"--warmup", "5",
 		"--main", "10",
 		"--cooldown", "5",
@@ -36,10 +43,7 @@ func TestBasicExecution(t *testing.T) {
 
 	err := cmd.Run()
 	if err != nil {
-		t.Logf("Command failed (expected if database not available): %v", err)
-		t.Logf("Stdout: %s", stdout.String())
-		t.Logf("Stderr: %s", stderr.String())
-		return
+		t.Fatalf("dry-run against %s failed: %v\nstdout: %s\nstderr: %s", dsn, err, stdout.String(), stderr.String())
 	}
 
 	output := stdout.String()
@@ -138,6 +142,3 @@ func TestConfigValidation(t *testing.T) {
 func TestOutputFormats(t *testing.T) {
 	t.Skip("CLI does not expose --output/--format; use --csv and embedded reporter")
 }
-
-// Ensure os import stays used if other tests change
-var _ = os.Remove

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"fb-loadgen/safego"
 	"fb-loadgen/session"
 )
 
@@ -143,19 +144,24 @@ func (e *Engine) persistLocked() {
 	sort.Slice(f.Schedules, func(i, j int) bool { return f.Schedules[i].ID < f.Schedules[j].ID })
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
+		log.Printf("schedule store: marshal %s: %v", e.path, err)
 		return
 	}
 	dir := filepath.Dir(e.path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("schedule store: mkdir %s: %v", dir, err)
 			return
 		}
 	}
 	tmp := e.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		log.Printf("schedule store: write %s: %v", tmp, err)
 		return
 	}
-	_ = os.Rename(tmp, e.path)
+	if err := os.Rename(tmp, e.path); err != nil {
+		log.Printf("schedule store: rename %s -> %s: %v (schedules may stop persisting; check disk space / file locks)", tmp, e.path, err)
+	}
 }
 
 // Run is the blocking tick loop; call from a goroutine.
@@ -189,7 +195,7 @@ func (e *Engine) tick(now time.Time) {
 	}
 	e.mu.Unlock()
 	for _, s := range due {
-		go e.fire(s, false)
+		safego.Go("schedule-fire", func() { e.fire(s, false) })
 	}
 }
 
@@ -200,6 +206,10 @@ func (e *Engine) fire(s *Schedule, forced bool) {
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	// The fire attempt is complete: release the pending guard so the next
+	// due tick can fire again. Clearing here (not only in TriggerNow) also
+	// reclaims the entry when the schedule was deleted mid-fire.
+	delete(e.pending, s.ID)
 	st := e.scheds[s.ID]
 	if st == nil {
 		return // deleted mid-fire
@@ -397,12 +407,12 @@ func (e *Engine) TriggerNow(id string) error {
 	e.pending[id] = true
 	cp := *s
 	e.mu.Unlock()
-	go func() {
+	safego.Go("schedule-trigger-now", func() {
 		e.fire(&cp, true)
 		e.mu.Lock()
 		delete(e.pending, id)
 		e.mu.Unlock()
-	}()
+	})
 	return nil
 }
 

@@ -2,6 +2,7 @@ package errlog
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,7 @@ type Logger struct {
 	source string
 	path   string
 	closed bool
+	warned bool
 }
 
 type bufWriter struct {
@@ -50,8 +52,16 @@ func (b *bufWriter) Flush() (int, error) {
 		return 0, nil
 	}
 	n, err := b.f.Write(b.buf)
+	if err != nil {
+		// A short write must not discard the unwritten tail: keep it so the
+		// next flush retries (this log is the one file that must not lie).
+		if n > 0 && n <= len(b.buf) {
+			b.buf = b.buf[n:]
+		}
+		return n, err
+	}
 	b.buf = b.buf[:0]
-	return n, err
+	return n, nil
 }
 
 // Open creates or appends an error log at path. source labels lines (abs path / DSN).
@@ -134,7 +144,10 @@ func (l *Logger) Log(e Entry) {
 	if l.closed || l.bw == nil {
 		return
 	}
-	_, _ = l.bw.WriteString(line)
+	if _, err := l.bw.WriteString(line); err != nil && !l.warned {
+		l.warned = true
+		log.Printf("errlog %s: write failed (further write failures suppressed): %v", l.path, err)
+	}
 }
 
 // Flush forces buffered bytes to disk.

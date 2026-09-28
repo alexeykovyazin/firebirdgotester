@@ -3,6 +3,7 @@ package discover
 import (
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,11 @@ func Discover(opts Options) ([]DatabaseInfo, error) {
 
 	walkFn := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip unreadable entries
+			// Unreadable entries are skipped, but the failure is surfaced:
+			// a permission problem on the root itself would otherwise be
+			// indistinguishable from "no databases found".
+			log.Printf("discover: skipping %s: %v", path, err)
+			return nil
 		}
 		if d.IsDir() {
 			name := d.Name()

@@ -176,6 +176,17 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 		logf = func(string, ...any) {}
 	}
 
+	// The monitor pins one *sql.Conn for its whole lifetime and the
+	// invariant loop needs a second connection per check. Factory pools cap
+	// at 1, which starves every consumer behind the monitor — silently,
+	// because a blocked BeginTx just never returns. Size the shared sidecar
+	// pool for monitor + invariant + heavy + bulk + plusddl + headroom;
+	// RunExtendedSidecars raises the same limit for direct callers.
+	if db != nil {
+		db.SetMaxOpenConns(6)
+		db.SetMaxIdleConns(6)
+	}
+
 	// Memory monitor (dedicated pool is the caller's responsibility).
 	if monitorEvery > 0 && db != nil {
 		mon := NewMonitor(monitorEvery)
@@ -201,17 +212,35 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 			ticker := time.NewTicker(invariantEvery)
 			defer ticker.Stop()
 			failStreak := 0
+			beginWarned := false
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					tx, err := db.BeginTx(ctx, TxOptions())
+					tx, err := db.BeginTx(ctx, SnapshotTxOptions())
 					if err != nil {
-						continue // transient (shutdown) — next tick retries
+						// Transient by nature (shutdown cancel, a dropped
+						// pooled conn): retry on the next tick. Warn once —
+						// a silent continue here hid a pool starvation for
+						// whole runs.
+						if !beginWarned {
+							beginWarned = true
+							logf("[emul-inv] BeginTx failed, will keep retrying: %v", err)
+						}
+						continue
 					}
 					if err := CheckInvariants(ctx, tx); err != nil {
 						_ = tx.Rollback()
+						if invariantLockConflict(err) {
+							// Under NOWAIT a lock conflict is a routine
+							// event on a loaded database, not a check
+							// defect: retry next tick without growing
+							// failStreak (the failure counter must only
+							// track real check failures).
+							logf("[emul-inv] lock conflict under NOWAIT, will retry: %v", err)
+							continue
+						}
 						permanent, msg := invariantFailure(err, failStreak)
 						if permanent {
 							state.SetInvariant(msg)
@@ -228,6 +257,9 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 						continue
 					}
 					if err := tx.Commit(); err != nil {
+						// A failing commit previously vanished: the UI kept
+						// showing a stale verdict with no trail. Log it.
+						logf("[emul-inv] invariant commit failed, will retry: %v", err)
 						continue
 					}
 					failStreak = 0
@@ -284,6 +316,17 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 
 const maxInvariantFailures = 3
 
+// invariantLockConflict reports a lock-resolution failure (deadlock /
+// immediate no-wait rejection). With NOWAIT transactions these are expected
+// under concurrent load and are retried without counting toward
+// maxInvariantFailures.
+func invariantLockConflict(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "lock conflict") ||
+		strings.Contains(s, "deadlock") ||
+		strings.Contains(s, "no wait")
+}
+
 // invariantFailure classifies an invariant-check error: driver-limitation
 // errors disable the loop permanently, anything else is retried until
 // maxInvariantFailures consecutive attempts. The returned message is what
@@ -314,18 +357,18 @@ func containsAny(s string, subs ...string) bool {
 // EmulStateJSON is the JSON projection carried in the session Snapshot and
 // served by the state endpoint.
 type EmulStateJSON struct {
-	ScorePerMin float64        `json:"scorePerMin"`
-	OKUnits     int64          `json:"okUnits"`
-	TotalUnits  int64          `json:"totalUnits"`
-	Phase       string         `json:"phase"`
-	Invariant   string         `json:"invariant"`
-	InvariantAt time.Time      `json:"invariantAt"`
-	MemPeaks    Sample         `json:"memPeaks"`
-	Series      []SeriesPoint  `json:"series"`
-	PerUnit     []UnitStat     `json:"perUnit"`
-	WorkingMode string         `json:"workingMode,omitempty"`
-	StartedAt   time.Time      `json:"startedAt"`
-	Extended    *ExtendedJSON  `json:"extended,omitempty"`
+	ScorePerMin float64       `json:"scorePerMin"`
+	OKUnits     int64         `json:"okUnits"`
+	TotalUnits  int64         `json:"totalUnits"`
+	Phase       string        `json:"phase"`
+	Invariant   string        `json:"invariant"`
+	InvariantAt time.Time     `json:"invariantAt"`
+	MemPeaks    Sample        `json:"memPeaks"`
+	Series      []SeriesPoint `json:"series"`
+	PerUnit     []UnitStat    `json:"perUnit"`
+	WorkingMode string        `json:"workingMode,omitempty"`
+	StartedAt   time.Time     `json:"startedAt"`
+	Extended    *ExtendedJSON `json:"extended,omitempty"`
 }
 
 // ExtendedJSON is the extended-load sidecar activity snapshot (H5).

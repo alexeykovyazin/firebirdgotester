@@ -2,7 +2,9 @@ package emul
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"os"
 	"testing"
 	"time"
 )
@@ -106,4 +108,47 @@ func TestInvariantFailureClassification(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The monitor pins one pooled connection for its whole lifetime; with the
+// factory's max-1 pool that starved the invariant loop's BeginTx silently
+// (it blocked until the run context was cancelled). RunSidecars must size
+// the shared sidecar pool for all its consumers. Regression needs a live
+// server: a second sql.Conn must be obtainable while the monitor holds the
+// first one.
+func TestRunSidecarsPoolsEnoughConnections(t *testing.T) {
+	dsn := os.Getenv("FIREBIRD_TEST_DSN")
+	if dsn == "" {
+		t.Skip("FIREBIRD_TEST_DSN not set")
+	}
+	db, err := sql.Open("firebirdsql", dsn)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1) // simulate the factory cap that starved the loop
+	if err := db.Ping(); err != nil {
+		t.Skipf("server unreachable: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	state := RunSidecars(ctx, db, 30*time.Millisecond, 0, time.Second, nil, nil)
+	// cancel must precede Wait: the monitor goroutine exits only on ctx.Done.
+	defer func() {
+		cancel()
+		state.Wait()
+	}()
+
+	// The monitor's first sample happens immediately, so its pinned conn is
+	// taken by the time we get here.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		c2, err := db.Conn(ctx)
+		if err == nil {
+			_ = c2.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("pool not sized for a second connection while the monitor holds one: invariant loop would starve")
 }

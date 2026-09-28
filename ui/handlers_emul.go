@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"fb-loadgen/config"
 	"fb-loadgen/emul"
+	"fb-loadgen/safego"
 	"fb-loadgen/session"
 )
 
@@ -101,8 +103,8 @@ func (s *Server) handleEmulState(w http.ResponseWriter, r *http.Request) {
 // provisionJob tracks one async emul.Provision + emul.Fill execution.
 type provisionJob struct {
 	mu       sync.Mutex
+	id       string
 	dsn      string
-	ctx      context.Context
 	cancel   context.CancelFunc
 	done     bool
 	ok       bool
@@ -140,6 +142,31 @@ var emulJobs = struct {
 	sync.Mutex
 	m map[string]*provisionJob
 }{m: make(map[string]*provisionJob)}
+
+// emulJobsMaxFinished bounds the finished-job history: entries used to be
+// kept for the process lifetime (remotely fillable memory leak).
+const emulJobsMaxFinished = 32
+
+// pruneEmulJobsLocked drops finished jobs beyond the retention limit,
+// oldest first. Caller holds emulJobs.Lock.
+func pruneEmulJobsLocked() {
+	var finished []*provisionJob
+	for _, j := range emulJobs.m {
+		j.mu.Lock()
+		done := j.done
+		j.mu.Unlock()
+		if done {
+			finished = append(finished, j)
+		}
+	}
+	if len(finished) <= emulJobsMaxFinished {
+		return
+	}
+	sort.Slice(finished, func(a, b int) bool { return finished[a].finished.Before(finished[b].finished) })
+	for _, j := range finished[:len(finished)-emulJobsMaxFinished] {
+		delete(emulJobs.m, j.id)
+	}
+}
 
 // handleEmulProvision starts an async provisioning job:
 // POST /api/emul/provision {"dsn":"host/port:server-path","user","pass",
@@ -185,13 +212,14 @@ func (s *Server) handleEmulProvision(w http.ResponseWriter, r *http.Request) {
 	jobID := fmt.Sprintf("%x", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &provisionJob{
+		id:      jobID,
 		dsn:     body.DSN,
-		ctx:     ctx,
 		cancel:  cancel,
 		stage:   "queued",
 		started: time.Now(),
 	}
 	emulJobs.Lock()
+	pruneEmulJobsLocked()
 	// one active job per DSN
 	for _, other := range emulJobs.m {
 		other.mu.Lock()
@@ -211,7 +239,7 @@ func (s *Server) handleEmulProvision(w http.ResponseWriter, r *http.Request) {
 		User: body.User, Password: body.Pass,
 		DBPath: dbPath, PageSize: body.PageSize, WorkingMode: body.WorkingMode,
 	}
-	go func() {
+	safego.Go("emul-provision", func() {
 		defer cancel()
 		err := emul.Provision(ctx, cfg, func(format string, args ...any) {
 			job.progressf("scripts", 0.4, format, args...)
@@ -244,7 +272,7 @@ func (s *Server) handleEmulProvision(w http.ResponseWriter, r *http.Request) {
 				job.progressf("done", 1, "provisioned, but fleet registration failed: %v", rerr)
 			}
 		}
-	}()
+	})
 
 	writeJSON(w, http.StatusOK, map[string]any{"jobId": jobID})
 }

@@ -15,6 +15,7 @@ package opslog
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,17 +67,18 @@ type Options struct {
 
 // Logger is a rotating, concurrency-safe operations log.
 type Logger struct {
-	mu        sync.Mutex
-	f         *os.File
-	buf       []byte
-	path      string
-	opts      Options
-	seq       int   // rotation index of the current file (0 = live file)
-	size      int64 // current file size
-	offset    int64 // cumulative bytes written into the current file (informational offsets)
-	unflushed int64
-	written   map[int64]bool // pending tx starts (pairing check is done on Close over the whole chain)
-	closed    bool
+	mu          sync.Mutex
+	f           *os.File
+	buf         []byte
+	path        string
+	opts        Options
+	seq         int   // rotation index of the current file (0 = live file)
+	size        int64 // current file size
+	offset      int64 // cumulative bytes written into the current file (informational offsets)
+	unflushed   int64
+	written     map[int64]bool // pending tx starts (pairing check is done on Close over the whole chain)
+	closed      bool
+	writeWarned bool
 
 	txCounter atomic.Int64 // tool-wide transaction number source
 }
@@ -480,14 +482,28 @@ func (l *Logger) flushLocked() {
 		return
 	}
 	n, err := l.f.Write(l.buf)
+	if err != nil {
+		// A short write must not lose the unflushed tail silently: keep it
+		// for the next flush and surface the failure once.
+		if n > 0 && n <= len(l.buf) {
+			l.buf = l.buf[n:]
+			l.offset += int64(n)
+			l.size += int64(n)
+			l.unflushed -= int64(n)
+			if l.unflushed < 0 {
+				l.unflushed = 0
+			}
+		}
+		if !l.writeWarned {
+			l.writeWarned = true
+			log.Printf("opslog %s: write failed (further write failures suppressed): %v", l.path, err)
+		}
+		return
+	}
 	l.offset += int64(len(l.buf))
 	l.size += int64(len(l.buf))
 	l.unflushed = 0
 	l.buf = l.buf[:0]
-	if err != nil {
-		return
-	}
-	_ = n
 }
 
 // maybeRotate rotates when the current file exceeds MaxSizeMB.
@@ -497,13 +513,18 @@ func (l *Logger) maybeRotate(incoming int) {
 	}
 	l.flushLocked()
 	if l.f != nil {
-		_ = l.f.Close()
+		if err := l.f.Close(); err != nil {
+			log.Printf("opslog %s: close before rotate failed: %v", l.path, err)
+		}
 		l.f = nil
 	}
 	if err := shiftChain(l.path, l.opts.KeepArchives); err != nil {
+		log.Printf("opslog %s: rotation chain shift failed: %v", l.path, err)
 		return
 	}
-	_ = l.openFile()
+	if err := l.openFile(); err != nil {
+		log.Printf("opslog %s: reopen after rotation failed: %v", l.path, err)
+	}
 }
 
 // shiftChain rotates ops.log -> ops.1.log -> ... deleting beyond keep.
@@ -629,7 +650,7 @@ func (l *Logger) pairingCheckLocked() {
 			switch event {
 			case "START":
 				pending[txn] = true
-			case "COMMIT", "ROLLBACK", "COMMIT RETAINING", "ROLLBACK RETAINING", "PREPARE":
+			case "COMMIT", "ROLLBACK", "COMMIT RETAINING", "ROLLBACK RETAINING":
 				delete(pending, txn)
 			}
 		}

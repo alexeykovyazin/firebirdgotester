@@ -1,3 +1,5 @@
+> **Historical document** (moved from the repo root, kept for reference). Current status lives in README.md and the code.
+
 # Improvements Plan — API-first run & scheduling
 
 Status: **implemented, 2026-08-29** (all phases; Phase 5's secure credential storage deferred — see "Implementation status" at the end).

@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -87,7 +89,23 @@ func (n *Notifier) loop() {
 
 var webhookRetries = []time.Duration{0, 2 * time.Second, 4 * time.Second}
 
+// webhookURLOk validates the destination scheme: the notifier POSTs JSON to
+// whatever URL a schedule carries, so file://, gopher:// and friends must be
+// rejected up front.
+func webhookURLOk(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return scheme == "http" || scheme == "https"
+}
+
 func (n *Notifier) deliver(job notifyJob) {
+	if !webhookURLOk(job.url) {
+		log.Printf("webhook: refusing non-http(s) url %q", job.url)
+		return
+	}
 	for i, backoff := range webhookRetries {
 		if backoff > 0 {
 			select {

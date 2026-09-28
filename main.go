@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,6 +42,14 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "lwmprobe" {
 		runLWMProbe(os.Args[2:])
 		return
+	}
+	// Anything else that starts with a non-flag token is a typo'd subcommand
+	// (flag.Parse ignores positional args, so it would otherwise silently
+	// run the default benchmark against the default DSN).
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
+		fmt.Fprintf(os.Stderr, "Unknown subcommand %q (known: provision, lwmprobe)\n", os.Args[1])
+		config.PrintUsage()
+		os.Exit(2)
 	}
 
 	cfg, err := config.ParseFlags()
@@ -121,6 +130,13 @@ func runUI(cfg *config.Config) {
 		// Seed file with current defaults so first Save has a target
 		_ = config.SaveUISettings(settingsPath, config.UISettingsFromConfig(cfg))
 		fmt.Printf("Created default UI settings at %s\n", settingsPath)
+	}
+
+	// Unauthenticated remote control of this tool includes writing the DB
+	// password to disk and starting load runs: require an explicit opt-in
+	// when the UI binds a non-localhost address without a token.
+	if cfg.UIToken == "" && !cfg.AllowRemoteUnauthenticated && !uiAddrIsLoopback(cfg.UIAddr) {
+		log.Fatalf("--ui-addr %s is not localhost: set --ui-token, or pass --allow-remote-unauthenticated to accept the risk", cfg.UIAddr)
 	}
 
 	fmt.Println(cfg.String())
@@ -321,9 +337,14 @@ func runCLI(cfg *config.Config) {
 					_ = bootConn.Close()
 				}
 				if berr != nil {
-					log.Printf("extended load: aux schema bootstrap failed (heavy/bulk/two-phase stay off): %v", berr)
+					log.Printf("extended load: aux schema bootstrap failed (heavy/bulk/two-phase/plusddl stay off): %v", berr)
 					cfg.ExtendedLoad.HeavySelect.EverySec = 0
 					cfg.ExtendedLoad.BulkDml.EverySec = 0
+					// plusddl's grouped DML inserts EL_BULK_SEQ values created
+					// by the bootstrap; without the schema its rounds would
+					// fail silently forever. Limbo recovery stays on: it is
+					// the net for the still-enabled prepare-then-die scenarios.
+					cfg.ExtendedLoad.PlusDDL.Enabled = false
 				}
 			}
 			if err := emul.SchemaGuard(ctx, emulDB); err != nil {
@@ -338,7 +359,7 @@ func runCLI(cfg *config.Config) {
 	} else {
 		fmt.Println("Dry-run mode: will connect, load cache, and exit without running load")
 		fmt.Println(cfg.String())
-		fmt.Printf("Actual connection string: %s\n", cfg.ConnectionString())
+		fmt.Printf("Connection string: %s\n", cfg.RedactedConnectionString())
 		return
 	}
 
@@ -431,7 +452,7 @@ func runCLI(cfg *config.Config) {
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")
 	fmt.Printf("Profile: %s\n", cfg.Profile)
 	fmt.Printf("Connection: %s\n", cfg.DSN)
-	fmt.Printf("Actual connection string: %s\n", cfg.ConnectionString())
+	fmt.Printf("Connection string: %s\n", cfg.RedactedConnectionString())
 	fmt.Printf("Warmup: %ds, Main: %ds, Cooldown: %ds\n", cfg.Warmup, cfg.Main, cfg.Cooldown)
 	fmt.Printf("Connections: %d → %d (random walk in main)\n", cfg.ConnMin, cfg.ConnMax)
 
@@ -497,4 +518,20 @@ func runCLI(cfg *config.Config) {
 	}
 
 	fmt.Println("Shutdown complete.")
+}
+
+// uiAddrIsLoopback reports whether the listen address binds a loopback
+// interface only ("127.x.y.z:port", "localhost:port", "[::1]:port", or
+// ":port" which binds all interfaces and is therefore NOT loopback).
+func uiAddrIsLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(host) {
+	case "localhost", "::1":
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

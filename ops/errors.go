@@ -34,10 +34,12 @@ func IsExpectedException(err error) bool {
 	return false
 }
 
-// ClassifyError classifies a database error as expected or unexpected
+// ClassifyError classifies a database error as expected or unexpected. A nil
+// error is not "expected": it returns (false, nil) so callers never treat a
+// missing error as a classified exception.
 func ClassifyError(err error) (bool, error) {
 	if err == nil {
-		return true, nil
+		return false, nil
 	}
 
 	// Workload-specific classification hook (emul units mark conflicts and
@@ -195,20 +197,11 @@ func ClassifyError(err error) (bool, error) {
 	return false, err
 }
 
-// HandleExpectedError logs expected errors without spam
-func HandleExpectedError(err error, operation string) {
-	if fe, ok := err.(FirebirdException); ok && fe.IsExpected {
-		// Log expected errors at debug level or skip logging entirely
-		// For now, we'll just return without logging to avoid spam
-		return
-	}
-
-	// For unexpected errors, you might want to log them
-	// log.Printf("Unexpected error in %s: %v", operation, err)
-}
-
 // HandleTransactionError handles transaction errors with appropriate logging
 func HandleTransactionError(err error, operation string) error {
+	if err == nil {
+		return nil
+	}
 	isExpected, classifiedErr := ClassifyError(err)
 	if isExpected {
 		// Expected error - just return it, don't log

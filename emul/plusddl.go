@@ -112,7 +112,10 @@ func (s *ddlSidecar) round(ctx context.Context, pool *sql.DB, opsL *opslog.Logge
 	s.tableLifecycle(ctx, pool, opsL, counters)
 }
 
-// columnChurn performs one random ADD/ALTER/DROP of an own column.
+// columnChurn performs one random ADD/ALTER/DROP of an own column. The local
+// column model and the counters only advance when the DDL actually committed:
+// a failed or deliberately rolled-back DDL leaves the database unchanged, and
+// a forgotten (or phantom) column would leak TST_ columns / corrupt the model.
 func (s *ddlSidecar) columnChurn(ctx context.Context, pool *sql.DB, opsL *opslog.Logger, counters *ExtendedCounters) {
 	if len(s.tables) == 0 {
 		return
@@ -127,8 +130,7 @@ func (s *ddlSidecar) columnChurn(ctx context.Context, pool *sql.DB, opsL *opslog
 		col := fmt.Sprintf("%s%s%d", s.cfg.ColPrefix, strings.ToLower(strings.TrimPrefix(wt.name, "T")), time.Now().UnixNano()%100000)
 		typ := ddlColumnTypes[rand.Intn(len(ddlColumnTypes))]
 		ddl := fmt.Sprintf("ALTER TABLE %s ADD %s %s", wt.name, col, typ)
-		s.execDDL(ctx, pool, opsL, counters, ddl, rollbackProbe, wt.name, col)
-		if !rollbackProbe {
+		if s.execDDL(ctx, pool, opsL, counters, ddl, rollbackProbe, wt.name, col) {
 			wt.columns = append(wt.columns, col)
 			if counters != nil {
 				counters.ColumnsAdded.Add(1)
@@ -143,40 +145,47 @@ func (s *ddlSidecar) columnChurn(ctx context.Context, pool *sql.DB, opsL *opslog
 		// ALTER TYPE within the safe set
 		typ := ddlColumnTypes[rand.Intn(len(ddlColumnTypes))]
 		ddl := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", wt.name, col, typ)
-		s.execDDL(ctx, pool, opsL, counters, ddl, rollbackProbe, wt.name, col)
-		if !rollbackProbe && counters != nil {
+		if s.execDDL(ctx, pool, opsL, counters, ddl, rollbackProbe, wt.name, col) && counters != nil {
 			counters.ColumnsAltered.Add(1)
 		}
 		return
 	}
 	// DROP (own columns only)
 	ddl := fmt.Sprintf("ALTER TABLE %s DROP %s", wt.name, col)
-	s.execDDL(ctx, pool, opsL, counters, ddl, rollbackProbe, wt.name, col)
-	wt.columns = append(wt.columns[:idx], wt.columns[idx+1:]...)
-	if !rollbackProbe && counters != nil {
-		counters.ColumnsDropped.Add(1)
+	if s.execDDL(ctx, pool, opsL, counters, ddl, rollbackProbe, wt.name, col) {
+		wt.columns = append(wt.columns[:idx], wt.columns[idx+1:]...)
+		if counters != nil {
+			counters.ColumnsDropped.Add(1)
+		}
 	}
 }
 
 // tableLifecycle alternates create/drop rounds. A create round makes
 // TST_<n> with 2-5 random columns, all six triggers (BI/AI/BU/AU/BD/AD) with
 // test bodies, then — in separate transactions — inserts 100, updates 50 and
-// deletes 30 rows with a randomly drawn grouping.
+// deletes 30 rows with a randomly drawn grouping. Counters advance only when
+// the underlying DDL committed.
 func (s *ddlSidecar) tableLifecycle(ctx context.Context, pool *sql.DB, opsL *opslog.Logger, counters *ExtendedCounters) {
 	if s.owned == "" {
-		s.owned = fmt.Sprintf("%s%d", s.cfg.ColPrefix, time.Now().UnixNano()%1000000)
-		s.tstN++
-		table := s.owned
+		name := fmt.Sprintf("%s%d", s.cfg.ColPrefix, time.Now().UnixNano()%1000000)
+		table := name
 		cols := make([]string, 0, 5)
 		for i := 0; i < 2+rand.Intn(4); i++ {
 			cols = append(cols, fmt.Sprintf("C%d %s", i, ddlColumnTypes[rand.Intn(len(ddlColumnTypes))]))
 		}
-		s.lifecycleTx(ctx, pool, opsL, counters, func(tx *sql.Tx) error {
-			return s.exec(tx, fmt.Sprintf(`RECREATE TABLE %s (
+		created := s.lifecycleTx(ctx, pool, opsL, func(tx *sql.Tx) error {
+			return s.exec(ctx, tx, fmt.Sprintf(`RECREATE TABLE %s (
 				ID INTEGER NOT NULL PRIMARY KEY,
 				NOTE VARCHAR(60),
 				%s)`, table, strings.Join(cols, ",\n")))
 		})
+		if !created {
+			// RECREATE failed (metadata collision under load): keep no
+			// state, the next round draws a fresh name and retries.
+			return
+		}
+		s.owned = name
+		s.tstN++
 		s.createTriggers(ctx, pool, opsL, counters, table)
 		s.groupedDML(ctx, pool, opsL, counters, table)
 		if counters != nil {
@@ -185,9 +194,14 @@ func (s *ddlSidecar) tableLifecycle(ctx context.Context, pool *sql.DB, opsL *ops
 		return
 	}
 	// drop round: triggers go with the table
-	s.lifecycleTx(ctx, pool, opsL, counters, func(tx *sql.Tx) error {
-		return s.exec(tx, "DROP TABLE "+s.owned)
+	dropped := s.lifecycleTx(ctx, pool, opsL, func(tx *sql.Tx) error {
+		return s.exec(ctx, tx, "DROP TABLE "+s.owned)
 	})
+	if !dropped {
+		// Keep s.owned so the next round retries the drop instead of
+		// leaking the table and counting a drop that never happened.
+		return
+	}
 	s.owned = ""
 	if counters != nil {
 		counters.TablesDropped.Add(1)
@@ -206,8 +220,8 @@ func (s *ddlSidecar) createTriggers(ctx context.Context, pool *sql.DB, opsL *ops
 		{"AD", "AFTER", "DELETE", "BEGIN END"},
 	}
 	for _, tr := range triggers {
-		s.lifecycleTx(ctx, pool, opsL, counters, func(tx *sql.Tx) error {
-			return s.exec(tx, fmt.Sprintf(
+		s.lifecycleTx(ctx, pool, opsL, func(tx *sql.Tx) error {
+			return s.exec(ctx, tx, fmt.Sprintf(
 				`CREATE TRIGGER TR_%s_%s FOR %s %s %s POSITION 0 AS BEGIN %s END`,
 				lower, tr.name, table, tr.timing, tr.event, tr.body))
 		})
@@ -227,7 +241,7 @@ func (s *ddlSidecar) groupedDML(ctx context.Context, pool *sql.DB, opsL *opslog.
 	// grouping realized as three txns / one txn / two txns
 	type stepFn func(tx *sql.Tx) error
 	ins := func(tx *sql.Tx) error {
-		return s.exec(tx, fmt.Sprintf(
+		return s.exec(ctx, tx, fmt.Sprintf(
 			`EXECUTE BLOCK AS DECLARE VARIABLE I INTEGER; BEGIN
 			 I = 0;
 			 WHILE (I < %d) DO BEGIN I = I + 1;
@@ -235,10 +249,10 @@ func (s *ddlSidecar) groupedDML(ctx context.Context, pool *sql.DB, opsL *opslog.
 			 END`, s.cfg.TestInsertRows, table))
 	}
 	upd := func(tx *sql.Tx) error {
-		return s.exec(tx, fmt.Sprintf("UPDATE %s SET note = note||'u' WHERE id IN (SELECT FIRST %d id FROM %s ORDER BY id)", table, s.cfg.TestUpdateRows, table))
+		return s.exec(ctx, tx, fmt.Sprintf("UPDATE %s SET note = note||'u' WHERE id IN (SELECT FIRST %d id FROM %s ORDER BY id)", table, s.cfg.TestUpdateRows, table))
 	}
 	del := func(tx *sql.Tx) error {
-		return s.exec(tx, fmt.Sprintf("DELETE FROM %s WHERE id IN (SELECT FIRST %d id FROM %s ORDER BY id DESC)", table, s.cfg.TestDeleteRows, table))
+		return s.exec(ctx, tx, fmt.Sprintf("DELETE FROM %s WHERE id IN (SELECT FIRST %d id FROM %s ORDER BY id DESC)", table, s.cfg.TestDeleteRows, table))
 	}
 
 	var groups [][]stepFn
@@ -275,15 +289,18 @@ func (s *ddlSidecar) groupedDML(ctx context.Context, pool *sql.DB, opsL *opslog.
 	}
 }
 
-func (s *ddlSidecar) exec(tx *sql.Tx, q string) error {
-	_, err := tx.ExecContext(context.Background(), q)
+func (s *ddlSidecar) exec(ctx context.Context, tx *sql.Tx, q string) error {
+	// The sidecar ctx (not context.Background()): a statement blocked on a
+	// metadata lock must unblock on run shutdown — with a detached context
+	// the goroutine hung forever and stopped the session from stopping.
+	_, err := tx.ExecContext(ctx, q)
 	return err
 }
 
 // execDDL runs one column DDL in its own transaction; with rollbackProbe the
 // transaction is rolled back and the column absence verified via
-// rdb$relation_fields (P8).
-func (s *ddlSidecar) execDDL(ctx context.Context, pool *sql.DB, opsL *opslog.Logger, counters *ExtendedCounters, ddl string, rollbackProbe bool, table, column string) {
+// rdb$relation_fields (P8). Returns true only when the DDL committed.
+func (s *ddlSidecar) execDDL(ctx context.Context, pool *sql.DB, opsL *opslog.Logger, counters *ExtendedCounters, ddl string, rollbackProbe bool, table, column string) bool {
 	start := time.Now()
 	txn := int64(0)
 	if opsL != nil {
@@ -295,7 +312,7 @@ func (s *ddlSidecar) execDDL(ctx context.Context, pool *sql.DB, opsL *opslog.Log
 		if opsL != nil {
 			opsL.DDL(txn, ddl, time.Since(start), true)
 		}
-		return
+		return false
 	}
 	_, err = tx.ExecContext(ctx, ddl)
 	if err != nil {
@@ -305,7 +322,7 @@ func (s *ddlSidecar) execDDL(ctx context.Context, pool *sql.DB, opsL *opslog.Log
 		if opsL != nil {
 			opsL.DDL(txn, ddl, time.Since(start), true)
 		}
-		return
+		return false
 	}
 	if rollbackProbe {
 		_ = tx.Rollback()
@@ -314,12 +331,16 @@ func (s *ddlSidecar) execDDL(ctx context.Context, pool *sql.DB, opsL *opslog.Log
 			opsL.DDL(txn, ddl, time.Since(start), false)
 			opsL.RoundRollback(txn, fmt.Sprintf("rollback_ddl verified_absent=%v", verified), 0, 0, 0, time.Since(start), false)
 		}
-		return
+		return false
 	}
-	if err := tx.Commit(); err == nil && opsL != nil {
+	if err := tx.Commit(); err != nil {
+		return false
+	}
+	if opsL != nil {
 		opsL.DDL(txn, ddl, time.Since(start), false)
 		opsL.RoundCommit(txn, 0, 0, 0, time.Since(start), false)
 	}
+	return true
 }
 
 func (s *ddlSidecar) columnAbsent(ctx context.Context, pool *sql.DB, table, column string) bool {
@@ -330,15 +351,19 @@ func (s *ddlSidecar) columnAbsent(ctx context.Context, pool *sql.DB, table, colu
 	return err == nil && n == 0
 }
 
-// lifecycleTx runs a DDL step in its own committed transaction.
-func (s *ddlSidecar) lifecycleTx(ctx context.Context, pool *sql.DB, opsL *opslog.Logger, counters *ExtendedCounters, fn func(tx *sql.Tx) error) {
+// lifecycleTx runs a DDL step in its own committed transaction. Returns true
+// only when the step committed.
+func (s *ddlSidecar) lifecycleTx(ctx context.Context, pool *sql.DB, opsL *opslog.Logger, fn func(tx *sql.Tx) error) bool {
 	tx, err := pool.BeginTx(ctx, nil)
 	if err != nil {
-		return
+		return false
 	}
 	if err := fn(tx); err != nil {
 		_ = tx.Rollback()
-		return
+		return false
 	}
-	_ = tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false
+	}
+	return true
 }

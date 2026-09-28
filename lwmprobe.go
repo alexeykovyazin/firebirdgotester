@@ -44,6 +44,10 @@ func runLWMProbe(args []string) {
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	if *rate <= 0 {
+		fmt.Fprintln(os.Stderr, "lwmprobe: -rate must be > 0 (a zero or negative rate produces an invalid ticker interval)")
+		os.Exit(2)
+	}
 
 	driverDSN := func(d string) string {
 		host, port, database := config.ParseDSN(d)

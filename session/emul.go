@@ -24,7 +24,8 @@ import (
 // checks, score/series ticker) for a running oltp-emul session, on their own
 // dedicated pool bound to a context cancelled when the run stops.
 func launchEmulSidecars(s *Session, runCfg *config.Config, wMetrics *worker.MetricsCollector, sched phaseSource) {
-	s.emulFrozen = nil // a new run supersedes the previous run's frozen report
+	s.emulFrozen = nil   // a new run supersedes the previous run's frozen report
+	emul.ResetExtended() // per-run counters, not process-lifetime totals
 	emulCtx, emulCancel := context.WithCancel(context.Background())
 	pool := emulSidecarPool(runCfg)
 	counts := func() (int64, int64, string) {
@@ -74,7 +75,14 @@ func bootstrapExtended(cfgCopy *config.Config) {
 	defer pool.Close()
 	aux, berr := emul.BootstrapExtendedSchema(ctx, pool, cfgCopy)
 	if berr != nil {
-		logf("extended load: aux schema bootstrap failed (heavy/bulk/two-phase stay off): %v", berr)
+		logf("extended load: aux schema bootstrap failed (heavy/bulk/two-phase/plusddl stay off): %v", berr)
+		cfgCopy.ExtendedLoad.HeavySelect.EverySec = 0
+		cfgCopy.ExtendedLoad.BulkDml.EverySec = 0
+		// plusddl's grouped DML inserts EL_BULK_SEQ values created by the
+		// bootstrap; without the schema its rounds would fail silently
+		// forever. Limbo recovery stays on: it is the net for the
+		// still-enabled prepare-then-die scenarios.
+		cfgCopy.ExtendedLoad.PlusDDL.Enabled = false
 		return
 	}
 	cfgCopy.ExtendedLoad.TxVariants.TwoPhaseAuxDB = aux

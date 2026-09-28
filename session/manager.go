@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -340,10 +341,23 @@ func (m *Manager) saveSessionPrefs() {
 func (m *Manager) Discover(subdir string, mask string, recursive *bool, rootOverride string) ([]Snapshot, error) {
 	m.mu.Lock()
 	if rootOverride != "" {
+		// The API documents the override as constrained to the configured
+		// discovery root: enforce the containment instead of re-pointing
+		// discovery at any directory (e.g. C:\). A different root requires
+		// restarting with a different --discover-dir.
 		abs, err := filepath.Abs(rootOverride)
 		if err != nil {
 			m.mu.Unlock()
 			return nil, fmt.Errorf("discover dir: %w", err)
+		}
+		base, err := filepath.Abs(m.discoverDir)
+		if err != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("discover dir: %w", err)
+		}
+		if !pathsEqualOrUnder(base, abs) {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("discover dir %q is outside the discovery root %q", rootOverride, base)
 		}
 		m.discoverDir = abs
 		m.shared.DiscoverDir = abs
@@ -1038,6 +1052,13 @@ func scalePhases(c *SessionConfig, total time.Duration) {
 }
 
 func (m *Manager) watchCompletion(s *Session, gen int64, outFile *os.File, baseName string) {
+	// Runs on its own goroutine for every session: a panic here would take
+	// the whole process (and every other session) down.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[panic] recovered in watchCompletion(session %s): %v", s.ID, r)
+		}
+	}()
 	s.mu.Lock()
 	sched := s.scheduler
 	reporter := s.reporter
@@ -1835,4 +1856,18 @@ func (s *Session) snapshotLocked() Snapshot {
 	snap.EmulMonitorEvery = s.Config.EmulMonitorEvery
 	snap.EmulWorkingMode = s.Config.EmulWorkingMode
 	return snap
+}
+
+// pathsEqualOrUnder reports whether target equals base or lies under it
+// (case-insensitive on Windows volume/slash quirks resolved by Abs+Clean).
+func pathsEqualOrUnder(base, target string) bool {
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !filepath.IsAbs(rel) && !hasDotDotPrefix(rel))
+}
+
+func hasDotDotPrefix(rel string) bool {
+	return rel == ".." || (len(rel) >= 3 && rel[:3] == ".."+string(filepath.Separator))
 }

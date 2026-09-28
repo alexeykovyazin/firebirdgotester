@@ -8,11 +8,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
 	"fb-loadgen/config"
 	"fb-loadgen/opslog"
+	"fb-loadgen/safego"
 )
 
 // PauseWaiter mirrors worker.PauseGate without importing it (worker imports
@@ -123,29 +125,35 @@ func bulkInsertValues(ctx context.Context, tx *sql.Tx, roundID, batch int64) (sq
 func RunExtendedSidecars(ctx context.Context, pool *sql.DB, cfg *config.Config, opsL *opslog.Logger, counters *ExtendedCounters, pause PauseWaiter) {
 	el := cfg.ExtendedLoad
 	el.Normalize()
-	// heavy + bulk each pin one connection; factories cap pools at 1, which
-	// would starve the second grab
-	pool.SetMaxOpenConns(4)
-	pool.SetMaxIdleConns(4)
+	// heavy + bulk each pin one connection for their lifetime; the monitor,
+	// the invariant loop and the plusddl sidecar share the same pool and
+	// need one connection each. RunSidecars sizes the shared pool for all
+	// five consumers; this raise stays so direct callers (sessions with
+	// heavy/bulk but no sidecar loop) are covered too.
+	pool.SetMaxOpenConns(6)
+	pool.SetMaxIdleConns(6)
 
-	grab := func(run func(conn *sql.Conn)) {
-		go func() {
+	grab := func(name string, run func(conn *sql.Conn)) {
+		safego.Go("extended-sidecar-"+name, func() {
 			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
 			defer ccancel()
 			conn, err := pool.Conn(cctx)
 			if err != nil {
+				// A saturated pool silently disabled this sidecar before —
+				// make the condition visible in the run logs.
+				log.Printf("[emul-ext] %s sidecar disabled: no free connection within 10s: %v", name, err)
 				return
 			}
 			defer func() { _ = conn.Close() }()
 			run(conn)
-		}()
+		})
 	}
 
 	if el.HeavySelect.EverySec > 0 {
-		grab(func(conn *sql.Conn) { runHeavySidecar(ctx, conn, el.HeavySelect, opsL, counters, pause) })
+		grab("heavy-select", func(conn *sql.Conn) { runHeavySidecar(ctx, conn, el.HeavySelect, opsL, counters, pause) })
 	}
 	if el.BulkDml.EverySec > 0 {
-		grab(func(conn *sql.Conn) { runBulkSidecar(ctx, conn, el.BulkDml, opsL, counters, pause) })
+		grab("bulk-dml", func(conn *sql.Conn) { runBulkSidecar(ctx, conn, el.BulkDml, opsL, counters, pause) })
 	}
 }
 
@@ -157,7 +165,12 @@ func runHeavySidecar(ctx context.Context, conn *sql.Conn, hs config.HeavySelect,
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var maxDocID int64
-	_ = conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(ID), 0) FROM DOC_LIST`).Scan(&maxDocID)
+	if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(ID), 0) FROM DOC_LIST`).Scan(&maxDocID); err != nil {
+		// A failed probe leaves maxDocID at its zero value and every heavy
+		// scan degenerates to the same narrow ID window forever — surface
+		// it instead of failing silently.
+		log.Printf("[emul-ext] heavy-select MAX(ID) probe failed (maxDocID stays %d): %v", maxDocID, err)
+	}
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

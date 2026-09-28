@@ -4,20 +4,34 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: Vet & Test (linux/amd64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
 
       - name: Vet
         run: go vet ./...
@@ -36,11 +50,56 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Build
         run: go build ./...
+
+  firebird:
+    name: Smoke (Firebird 5, linux)
+    runs-on: ubuntu-latest
+    services:
+      firebird:
+        image: firebirdsql/firebird:5.0
+        env:
+          ISC_PASSWORD: masterkey
+        ports:
+          - 3050:3050
+        options: >-
+          --health-cmd "isql -user SYSDBA -password masterkey -q \"select 1 from rdb\$database;\""
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build test binary
+        run: go build -o fb-loadgen .
+
+      - name: Create empty smoke database
+        run: |
+          set -e
+          CID=$(docker ps -q --filter "ancestor=firebirdsql/firebird:5.0" | head -1)
+          for i in $(seq 1 30); do
+            if docker exec "$CID" isql -user SYSDBA -password masterkey -q \
+              "create database '/tmp/smoke.fdb';" </dev/null; then
+              echo "database created"
+              exit 0
+            fi
+            echo "waiting for firebird ($i/30)"; sleep 2
+          done
+          echo "firebird did not become ready"
+          exit 1
+
+      - name: Smoke test
+        env:
+          FIREBIRD_TEST_DSN: localhost/3050:/tmp/smoke.fdb
+        run: go test -race -run "TestBasicExecution|TestHelpOutput|TestConfigValidation" -v .

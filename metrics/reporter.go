@@ -51,18 +51,25 @@ func (r *Reporter) Stop() {
 	r.wg.Wait()
 }
 
-// report runs the reporting loop
+// report runs the reporting loop. The interval is re-read each iteration so
+// SetReportInterval takes effect on the live reporter instead of only
+// changing the field.
 func (r *Reporter) report() {
 	defer r.wg.Done()
 
-	ticker := time.NewTicker(r.reportInterval)
-	defer ticker.Stop()
-
 	for {
+		r.outputMutex.Lock()
+		interval := r.reportInterval
+		r.outputMutex.Unlock()
+		if interval <= 0 {
+			interval = time.Second
+		}
+		t := time.NewTimer(interval)
 		select {
 		case <-r.ctx.Done():
+			t.Stop()
 			return
-		case <-ticker.C:
+		case <-t.C:
 			r.generateReport()
 		}
 	}

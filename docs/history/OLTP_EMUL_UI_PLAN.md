@@ -1,3 +1,5 @@
+> **Historical document** (moved from the repo root, kept for reference). Current status lives in README.md and the code.
+
 # OLTPEMUL Web UI Tab — Build Plan (v2)
 
 Goal: a dedicated **"OLTPEMUL"** tab in the embedded web UI covering the full lifecycle of the

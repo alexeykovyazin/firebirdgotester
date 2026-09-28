@@ -3,9 +3,8 @@ package ops
 import (
 	"database/sql"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
-	"time"
 
 	"fb-loadgen/db"
 )
@@ -19,9 +18,6 @@ type Cache struct {
 	CustNos     []int
 	Countries   []string
 	JobSalaries map[string]JobSalaryRange // job_code -> min/max salary (approx)
-
-	// Random number generator (thread-safe)
-	rng *rand.Rand
 }
 
 // JobSalaryRange holds min/max salary for a job
@@ -38,9 +34,7 @@ func NewCache(connFactory *db.ConnectionFactory) (*Cache, error) {
 	}
 	defer connFactory.Close(dbConn)
 
-	cache := &Cache{
-		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
+	cache := &Cache{}
 
 	// Load all lookup data
 	if err := cache.loadDeptNos(dbConn); err != nil {
@@ -227,22 +221,22 @@ func (c *Cache) loadJobSalaries(db *sql.DB) error {
 
 // RandomDeptNo returns a random department number
 func (c *Cache) RandomDeptNo() string {
-	return c.DeptNos[c.rng.Intn(len(c.DeptNos))]
+	return c.DeptNos[rand.IntN(len(c.DeptNos))]
 }
 
 // RandomEmpNo returns a random employee number
 func (c *Cache) RandomEmpNo() int {
-	return c.EmpNos[c.rng.Intn(len(c.EmpNos))]
+	return c.EmpNos[rand.IntN(len(c.EmpNos))]
 }
 
 // RandomProjId returns a random project ID
 func (c *Cache) RandomProjId() string {
-	return c.ProjIds[c.rng.Intn(len(c.ProjIds))]
+	return c.ProjIds[rand.IntN(len(c.ProjIds))]
 }
 
 // RandomCustNo returns a random customer number
 func (c *Cache) RandomCustNo() int {
-	return c.CustNos[c.rng.Intn(len(c.CustNos))]
+	return c.CustNos[rand.IntN(len(c.CustNos))]
 }
 
 // RandomJobSalaryRange returns a random job salary range
@@ -251,7 +245,7 @@ func (c *Cache) RandomJobSalaryRange() (string, JobSalaryRange) {
 	for k := range c.JobSalaries {
 		keys = append(keys, k)
 	}
-	jobCode := keys[c.rng.Intn(len(keys))]
+	jobCode := keys[rand.IntN(len(keys))]
 	return jobCode, c.JobSalaries[jobCode]
 }
 
@@ -260,7 +254,7 @@ func (c *Cache) RandomSalaryInRange(min, max float64) float64 {
 	if min >= max {
 		return min
 	}
-	return min + c.rng.Float64()*(max-min)
+	return min + rand.Float64()*(max-min)
 }
 
 // RandomString generates a random string of given length
@@ -268,7 +262,7 @@ func (c *Cache) RandomString(length int) string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[c.rng.Intn(len(charset))]
+		b[i] = charset[rand.IntN(len(charset))]
 	}
 	return string(b)
 }
@@ -277,14 +271,14 @@ func (c *Cache) RandomString(length int) string {
 func (c *Cache) RandomName() string {
 	firstNames := []string{"John", "Jane", "Bob", "Alice", "Charlie", "Diana", "Eve", "Frank"}
 	lastNames := []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis"}
-	return firstNames[c.rng.Intn(len(firstNames))] + " " + lastNames[c.rng.Intn(len(lastNames))]
+	return firstNames[rand.IntN(len(firstNames))] + " " + lastNames[rand.IntN(len(lastNames))]
 }
 
 // RandomAddress generates a random address
 func (c *Cache) RandomAddress() string {
 	streets := []string{"Main St", "Oak Ave", "Pine Rd", "Maple Dr", "Cedar Ln"}
 	cities := []string{"Springfield", "Shelbyville", "Ogdenville", "North Haverbrook", "Capital City"}
-	return fmt.Sprintf("%d %s, %s", c.rng.Intn(9999)+1000, streets[c.rng.Intn(len(streets))], cities[c.rng.Intn(len(cities))])
+	return fmt.Sprintf("%d %s, %s", rand.IntN(9999)+1000, streets[rand.IntN(len(streets))], cities[rand.IntN(len(cities))])
 }
 
 // RandomCountry returns a random country from the COUNTRY table (valid FK).
@@ -292,7 +286,7 @@ func (c *Cache) RandomCountry() string {
 	if len(c.Countries) == 0 {
 		return "USA"
 	}
-	return c.Countries[c.rng.Intn(len(c.Countries))]
+	return c.Countries[rand.IntN(len(c.Countries))]
 }
 
 // RandomCitySimple returns a random city name
@@ -300,19 +294,19 @@ func (c *Cache) RandomCitySimple() string {
 	cities := []string{"Springfield", "Shelbyville", "Ogdenville", "North Haverbrook", "Capital City",
 		"Metropolis", "Gotham", "Star City", "Central City", "National City",
 		"Boston", "Chicago", "Seattle", "Portland", "Denver"}
-	return cities[c.rng.Intn(len(cities))]
+	return cities[rand.IntN(len(cities))]
 }
 
 // RandomOrderStatus returns a random order status suitable for INSERT
 // (never "shipped" — that requires SHIP_DATE and fails CHECK on SALES).
 func (c *Cache) RandomOrderStatus() string {
 	statuses := []string{"new", "open", "waiting"}
-	return statuses[c.rng.Intn(len(statuses))]
+	return statuses[rand.IntN(len(statuses))]
 }
 
 // RandomPaid returns a random paid status
 func (c *Cache) RandomPaid() string {
-	if c.rng.Intn(2) == 0 {
+	if rand.IntN(2) == 0 {
 		return "y"
 	}
 	return "n"
@@ -320,7 +314,7 @@ func (c *Cache) RandomPaid() string {
 
 // RandomOnHold returns a random on-hold status
 func (c *Cache) RandomOnHold() *string {
-	if c.rng.Intn(10) == 0 { // 10% chance of being on hold
+	if rand.IntN(10) == 0 { // 10% chance of being on hold
 		value := "*"
 		return &value
 	}
@@ -329,7 +323,7 @@ func (c *Cache) RandomOnHold() *string {
 
 // RandomDiscount returns a random discount between 0 and 1
 func (c *Cache) RandomDiscount() float64 {
-	return c.rng.Float64() * 0.1 // 0-10% discount
+	return rand.Float64() * 0.1 // 0-10% discount
 }
 
 // RandomPONumber generates a random PO number starting with 'V'
@@ -339,7 +333,7 @@ func (c *Cache) RandomPONumber() string {
 
 // RandomPercentChange returns a random percent change between -50 and 50
 func (c *Cache) RandomPercentChange() float64 {
-	return (c.rng.Float64() * 100) - 50
+	return (rand.Float64() * 100) - 50
 }
 
 // SalaryWithinPercentCap returns a new salary within job range and ±maxPct of current.

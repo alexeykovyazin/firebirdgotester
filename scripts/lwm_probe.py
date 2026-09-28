@@ -144,9 +144,15 @@ def run_query(fbc, db, stmt_text):
     fbc.dll.isc_dsql_allocate_statement(status, ctypes.byref(db), ctypes.byref(stmt))
     out = XSQLDA()
     out.version, out.sqln = 1, 8
+    # sqldata holds only a raw address: the buffers must be kept referenced
+    # until after isc_dsql_fetch, or the allocator may reuse/reclaim them
+    # mid-fetch (garbage readings / heap corruption).
+    kept = []
     for i in range(8):
         buf = ctypes.create_string_buffer(64)
         ind = ctypes.c_short(0)
+        kept.append(buf)
+        kept.append(ind)
         out.sqlvar[i].sqltype = SQL_LONG
         out.sqlvar[i].sqldata = ctypes.cast(buf, ctypes.c_void_p)
         out.sqlvar[i].sqlind = ctypes.pointer(ind)
@@ -162,6 +168,8 @@ def run_query(fbc, db, stmt_text):
         raise RuntimeError(fbc.error_text(status))
     fbc.dll.isc_dsql_free_statement(status, ctypes.byref(stmt), 2)  # DSQL_drop
     fbc.dll.isc_commit_transaction(status, ctypes.byref(tr))
+    if fb_error(status):
+        raise RuntimeError(fbc.error_text(status))
     row = []
     for i in range(out.sqld):
         v = out.sqlvar[i]
@@ -199,6 +207,8 @@ def main():
     ap.add_argument("--duration", type=float, default=30.0)
     ap.add_argument("--fblog", default="", help="firebird.log to watch for new LWMon lines")
     args = ap.parse_args()
+    if args.rate <= 0:
+        ap.error("--rate must be > 0 (a zero or negative rate would busy-loop)")
 
     fbc = FbClient(args.dll)
     dpb = make_dpb(args.user, args.password)
@@ -209,8 +219,10 @@ def main():
 
     counter = {"lwm": 0}
     stop = threading.Event()
+    watcher = None
     if args.fblog:
-        threading.Thread(target=watch_log, args=(args.fblog, counter, stop), daemon=True).start()
+        watcher = threading.Thread(target=watch_log, args=(args.fblog, counter, stop), daemon=True)
+        watcher.start()
 
     ok = reset = other = 0
     deadline = time.monotonic() + args.duration
@@ -249,6 +261,8 @@ def main():
         pass
     finally:
         stop.set()
+        if watcher is not None:
+            watcher.join(timeout=2)  # let the watcher count its final chunk
 
     total = ok + reset + other
     print(f"\n=== lwm_probe.py summary: {args.dsn} action={args.action}")

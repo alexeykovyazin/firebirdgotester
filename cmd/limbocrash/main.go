@@ -53,8 +53,18 @@ func main() {
 		fmt.Println("init:", errText(err))
 		return
 	}
-	isoLevel := map[string]int{"rc": firebirdsql.IsoRC, "rcnowait": firebirdsql.IsoRCNoWait,
+	isoLevel, isoOK := map[string]int{"rc": firebirdsql.IsoRC, "rcnowait": firebirdsql.IsoRCNoWait,
 		"snapshot": firebirdsql.IsoSnapshot, "snapshotnowait": firebirdsql.IsoSnapshotNoWait}[*iso]
+	if !isoOK {
+		fmt.Fprintf(os.Stderr, "bad -iso %q (known: rc, rcnowait, snapshot, snapshotnowait)\n", *iso)
+		os.Exit(2)
+	}
+	switch *resolve {
+	case "none", "commit", "rollback":
+	default:
+		fmt.Fprintf(os.Stderr, "bad -resolve %q (known: none, commit, rollback)\n", *resolve)
+		os.Exit(2)
+	}
 	level := isoLevel
 	switch *mode {
 	case "die":

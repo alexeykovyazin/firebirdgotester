@@ -3,10 +3,10 @@ package ops
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
-	"time"
 
 	"fb-loadgen/db"
 )
@@ -15,7 +15,6 @@ import (
 type WriteOperations struct {
 	connFactory *db.ConnectionFactory
 	cache       *Cache
-	rng         *rand.Rand
 }
 
 // NewWriteOperations creates a new WriteOperations instance
@@ -23,7 +22,6 @@ func NewWriteOperations(connFactory *db.ConnectionFactory, cache *Cache) *WriteO
 	return &WriteOperations{
 		connFactory: connFactory,
 		cache:       cache,
-		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -68,7 +66,7 @@ func (wo *WriteOperations) InsertSales(ctx context.Context, tx *sql.Tx) error {
 	orderStatus := wo.cache.RandomOrderStatus()
 	paid := wo.cache.RandomPaid()
 	discount := wo.cache.RandomDiscount()
-	totalValue := float64(wo.rng.Intn(10000) + 100) // Random value between 100 and 10100
+	totalValue := float64(rand.IntN(10000) + 100) // Random value between 100 and 10100
 
 	// Insert sales order - note SALES.SALES_REP is the FK to EMPLOYEE, not EMP_NO
 	// SALES table requires: PO_NUMBER, CUST_NO, ORDER_STATUS, TOTAL_VALUE (others have defaults)
@@ -99,16 +97,31 @@ func (wo *WriteOperations) UpdateSalesStatus(ctx context.Context, tx *sql.Tx) er
 	var currentStatus string
 	var onHold sql.NullString
 
+	// Index-friendly random order pick: seek the PO_NUMBER primary-key index
+	// from a random key in the same keyspace our generated POs occupy
+	// ('V' + 7 chars). ORDER BY RAND() would sort the whole (growing) SALES
+	// relation on every call and come to dominate the measured cost. If no
+	// progressable order sorts after the random key, wrap once to the head.
 	err := tx.QueryRowContext(ctx, `
 		SELECT S.PO_NUMBER, S.ORDER_STATUS, C.ON_HOLD
 		FROM SALES S
 		JOIN CUSTOMER C ON C.CUST_NO = S.CUST_NO
-		WHERE S.ORDER_STATUS IN ('new', 'open', 'waiting')
-		ORDER BY RAND()
+		WHERE S.PO_NUMBER >= ? AND S.ORDER_STATUS IN ('new', 'open', 'waiting')
+		ORDER BY S.PO_NUMBER
 		ROWS 1
-	`).Scan(&poNumber, &currentStatus, &onHold)
+	`, wo.cache.RandomPONumber()).Scan(&poNumber, &currentStatus, &onHold)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `
+			SELECT S.PO_NUMBER, S.ORDER_STATUS, C.ON_HOLD
+			FROM SALES S
+			JOIN CUSTOMER C ON C.CUST_NO = S.CUST_NO
+			WHERE S.ORDER_STATUS IN ('new', 'open', 'waiting')
+			ORDER BY S.PO_NUMBER
+			ROWS 1
+		`).Scan(&poNumber, &currentStatus, &onHold)
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil // nothing progressable
 		}
 		return fmt.Errorf("failed to get random sales order: %w", err)
@@ -164,17 +177,31 @@ func (wo *WriteOperations) CallShipOrder(ctx context.Context, tx *sql.Tx) error 
 	// Get a random sales order that can be shipped
 	var poNumber string
 
+	// Same index-seek pick as UpdateSalesStatus, with the ship eligibility
+	// filters applied after the seek.
 	err := tx.QueryRowContext(ctx, `
-		SELECT S.PO_NUMBER 
+		SELECT S.PO_NUMBER
 		FROM SALES S
 		JOIN CUSTOMER C ON C.CUST_NO = S.CUST_NO
-		WHERE S.ORDER_STATUS IN ('new', 'open', 'waiting')
+		WHERE S.PO_NUMBER >= ?
+		  AND S.ORDER_STATUS IN ('new', 'open', 'waiting')
 		  AND (C.ON_HOLD IS NULL OR C.ON_HOLD <> '*')
-		ORDER BY RAND()
+		ORDER BY S.PO_NUMBER
 		ROWS 1
-	`).Scan(&poNumber)
+	`, wo.cache.RandomPONumber()).Scan(&poNumber)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `
+			SELECT S.PO_NUMBER
+			FROM SALES S
+			JOIN CUSTOMER C ON C.CUST_NO = S.CUST_NO
+			WHERE S.ORDER_STATUS IN ('new', 'open', 'waiting')
+			  AND (C.ON_HOLD IS NULL OR C.ON_HOLD <> '*')
+			ORDER BY S.PO_NUMBER
+			ROWS 1
+		`).Scan(&poNumber)
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil // nothing shippable right now
 		}
 		return fmt.Errorf("failed to get random sales order: %w", err)
@@ -200,39 +227,29 @@ func (wo *WriteOperations) CallShipOrder(ctx context.Context, tx *sql.Tx) error 
 	return nil
 }
 
-// contains checks if a string contains a substring (case-insensitive)
+// contains checks if a string contains a substring (case-insensitive).
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsIgnoreCase(s, substr))
-}
-
-func containsIgnoreCase(s, substr string) bool {
-	s = strings.ToLower(s)
-	substr = strings.ToLower(substr)
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // UpdateEmployeeSalary updates the salary of a random employee within job band
-// and SALARY_HISTORY percent_change CHECK (±50%).
+// and SALARY_HISTORY percent_change CHECK (±50%). The employee is drawn from
+// the cache-loaded EMP_NO list and fetched by primary key — no full-relation
+// sort per call.
 func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx) error {
-	var empNo int
 	var minSalary, maxSalary, currentSalary float64
+	empNo := wo.cache.RandomEmpNo()
 
 	err := tx.QueryRowContext(ctx, `
-		SELECT E.EMP_NO, J.MIN_SALARY, J.MAX_SALARY, E.SALARY
+		SELECT J.MIN_SALARY, J.MAX_SALARY, E.SALARY
 		FROM EMPLOYEE E
 		JOIN JOB J ON E.JOB_CODE = J.JOB_CODE
 			AND E.JOB_GRADE = J.JOB_GRADE
 			AND E.JOB_COUNTRY = J.JOB_COUNTRY
-		ORDER BY RAND()
-		ROWS 1
-	`).Scan(&empNo, &minSalary, &maxSalary, &currentSalary)
+		WHERE E.EMP_NO = ?
+	`, empNo).Scan(&minSalary, &maxSalary, &currentSalary)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("no employees found to update salary")
 		}
 		return fmt.Errorf("failed to get random employee: %w", err)
@@ -267,31 +284,17 @@ func (wo *WriteOperations) UpdateEmployeeSalary(ctx context.Context, tx *sql.Tx)
 // CallAddEmpProj assigns an employee to a project that is not already linked.
 // Concurrent duplicate inserts are treated as a successful no-op.
 func (wo *WriteOperations) CallAddEmpProj(ctx context.Context, tx *sql.Tx) error {
-	var empNo int
-	var projId string
+	// Draw the pair from the cache-loaded EMP_NO / PROJ_ID lists and let the
+	// procedure detect an already-assigned pair: the previous NOT EXISTS
+	// scan sorted the whole EMPLOYEE×PROJECT cross join per call. The dup
+	// insert lands in the same benign branch as a concurrent insert race.
+	empNo := wo.cache.RandomEmpNo()
+	projId := wo.cache.RandomProjId()
 
-	err := tx.QueryRowContext(ctx, `
-		SELECT E.EMP_NO, P.PROJ_ID
-		FROM EMPLOYEE E
-		CROSS JOIN PROJECT P
-		WHERE NOT EXISTS (
-			SELECT 1 FROM EMPLOYEE_PROJECT EP
-			WHERE EP.EMP_NO = E.EMP_NO AND EP.PROJ_ID = P.PROJ_ID
-		)
-		ORDER BY RAND()
-		ROWS 1
-	`).Scan(&empNo, &projId)
-	if err == sql.ErrNoRows {
-		return nil // every emp/proj pair already exists
-	}
-	if err != nil {
-		return fmt.Errorf("failed to find unassigned emp/proj: %w", err)
-	}
-
-	_, err = tx.ExecContext(ctx, "EXECUTE PROCEDURE ADD_EMP_PROJ(?, ?)", empNo, projId)
+	_, err := tx.ExecContext(ctx, "EXECUTE PROCEDURE ADD_EMP_PROJ(?, ?)", empNo, projId)
 	if err != nil {
 		errStr := strings.ToLower(err.Error())
-		// Another worker inserted the same pair between SELECT and EXEC.
+		// Pair already assigned, or another worker inserted it concurrently.
 		if strings.Contains(errStr, "unique") ||
 			strings.Contains(errStr, "primary") ||
 			strings.Contains(errStr, "integ_39") {
@@ -303,7 +306,9 @@ func (wo *WriteOperations) CallAddEmpProj(ctx context.Context, tx *sql.Tx) error
 	return nil
 }
 
-// DeleteEmpProj deletes a random employee-project assignment
+// DeleteEmpProj deletes a random employee-project assignment. EMPLOYEE_PROJECT
+// is bounded (employees × projects, ~200 rows in the reference schema), so
+// the RAND() sort here is negligible and keeps the pick uniform.
 func (wo *WriteOperations) DeleteEmpProj(ctx context.Context, tx *sql.Tx) error {
 	var empNo int
 	var projId string
@@ -315,7 +320,7 @@ func (wo *WriteOperations) DeleteEmpProj(ctx context.Context, tx *sql.Tx) error 
 		ROWS 1
 	`).Scan(&empNo, &projId)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil // nothing to delete
 		}
 		return fmt.Errorf("failed to get random employee-project assignment: %w", err)
@@ -391,7 +396,7 @@ func (wo *WriteOperations) generateCustomerAddress() (address1, address2, city, 
 		state = state[:15]
 	}
 	country = wo.cache.RandomCountry()
-	postalCode = fmt.Sprintf("%05d", wo.rng.Intn(99999))
+	postalCode = fmt.Sprintf("%05d", rand.IntN(99999))
 	return
 }
 
@@ -468,7 +473,7 @@ func (wo *WriteOperations) ExecuteRandomWriteOperation(ctx context.Context, tx *
 	}
 
 	// Pick a random operation based on weight
-	target := wo.rng.Intn(totalWeight)
+	target := rand.IntN(totalWeight)
 	current := 0
 
 	for _, op := range ops {
@@ -491,7 +496,7 @@ func (wo *WriteOperations) ExecuteRandomRareWriteOperation(ctx context.Context, 
 		return nil
 	}
 
-	op := ops[wo.rng.Intn(len(ops))]
+	op := ops[rand.IntN(len(ops))]
 	return op.Function(ctx, tx)
 }
 

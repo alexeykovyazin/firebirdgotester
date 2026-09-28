@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 const DefaultUISettingsFile = "fb-loadgen.ui.json"
@@ -222,7 +223,14 @@ func LoadUISettings(path string) (UISettings, bool, error) {
 	return s, true, nil
 }
 
-// SaveUISettings writes settings atomically.
+// saveSettingsMu serializes all writes to any settings file: concurrent
+// writers previously shared one fixed ".tmp" name and could tear the file or
+// silently lose a rename. Callers run on many goroutines (config PUT,
+// session PATCH, discover upserts, async provision registration).
+var saveSettingsMu sync.Mutex
+
+// SaveUISettings writes settings atomically (unique temp file + rename,
+// serialized by saveSettingsMu).
 func SaveUISettings(path string, s UISettings) error {
 	s.Version = UISettingsVersion
 	if s.Sessions == nil {
@@ -235,15 +243,35 @@ func SaveUISettings(path string, s UISettings) error {
 	if err != nil {
 		return err
 	}
+	saveSettingsMu.Lock()
+	defer saveSettingsMu.Unlock()
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
 }

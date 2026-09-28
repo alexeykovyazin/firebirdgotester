@@ -1,17 +1,21 @@
 package ui
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"fb-loadgen/config"
+	"fb-loadgen/safego"
 	"fb-loadgen/schedule"
 	"fb-loadgen/session"
 )
@@ -155,7 +159,7 @@ func (s *Server) authRead(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.authAll && s.token != "" {
 			h := r.Header.Get("Authorization")
-			if h != "Bearer "+s.token {
+			if !constantTimeBearer(h, s.token) {
 				writeError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
 				return
 			}
@@ -164,12 +168,53 @@ func (s *Server) authRead(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// constantTimeBearer compares an Authorization header against the expected
+// value without leaking match length through timing.
+func constantTimeBearer(header, token string) bool {
+	return subtle.ConstantTimeCompare([]byte(header), []byte("Bearer "+token)) == 1
+}
+
+// sameOrigin rejects browser cross-site requests: a browser-driven mutation
+// (form/beacon/fetch) always carries an Origin header, and a cross-site one
+// will not match the request host — the classic CSRF defense for a JSON API.
+// Non-browser clients (curl, scripts) send no Origin and pass. An explicitly
+// configured CORS origin is accepted as well.
+func (s *Server) sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	if s.corsOrigin != "" && origin == s.corsOrigin {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return u.Host == r.Host
+}
+
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.sameOrigin(r) {
+			writeError(w, http.StatusForbidden, fmt.Errorf("cross-origin request rejected"))
+			return
+		}
+		// Drive-by protection: a mutating request with a non-empty body must
+		// be application/json. Empty-body calls (start/stop/pause/resume)
+		// pass; a browser cross-site text/plain POST would not.
+		if r.Body != nil && r.ContentLength > 0 {
+			ct := r.Header.Get("Content-Type")
+			mt, _, err := mime.ParseMediaType(ct)
+			if err != nil || mt != "application/json" {
+				writeError(w, http.StatusUnsupportedMediaType, fmt.Errorf("Content-Type must be application/json"))
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
+		}
 		if s.token != "" {
 			h := r.Header.Get("Authorization")
-			want := "Bearer " + s.token
-			if h != want {
+			if !constantTimeBearer(h, s.token) {
 				writeError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
 				return
 			}
@@ -221,6 +266,16 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
+}
+
+// writeSessionErr returns 404 for unknown session ids (per the OpenAPI
+// contract), 400 for everything else.
+func writeSessionErr(w http.ResponseWriter, err error) {
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeError(w, http.StatusBadRequest, err)
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -400,7 +455,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !wait {
 		// Fire-and-forget: poll GET /api/sessions/{id} for the outcome.
-		go func() { _, _ = s.manager.Start(id, timeLimitMin) }()
+		safego.Go("session-start", func() { _, _ = s.manager.Start(id, timeLimitMin) })
 		snap, err := s.manager.Get(id)
 		if err != nil {
 			writeError(w, http.StatusNotFound, err)
@@ -414,7 +469,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	snap, err := s.manager.Start(id, timeLimitMin)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -423,7 +478,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
 	snap, err := s.manager.Pause(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -432,7 +487,7 @@ func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	snap, err := s.manager.Resume(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -441,7 +496,7 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	snap, err := s.manager.Stop(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -450,7 +505,7 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 	snap, err := s.manager.ValidateSession(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -458,7 +513,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRemove(w http.ResponseWriter, r *http.Request) {
 	if err := s.manager.Remove(r.PathValue("id")); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -482,7 +537,7 @@ func (s *Server) handleReportList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleReportDownload(w http.ResponseWriter, r *http.Request) {
 	path, err := s.manager.ResolveReportFile(r.PathValue("id"), r.PathValue("file"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeSessionErr(w, err)
 		return
 	}
 	f, err := os.Open(path)

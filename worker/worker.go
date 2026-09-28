@@ -34,6 +34,24 @@ const defaultStopTimeout = 5 * time.Second
 // start a replacement.
 var ErrNoConnection = errors.New("worker has no usable database connection")
 
+// OpTimeoutError marks a failure caused by the per-operation tx-timeout
+// deadline (--tx-timeout) while the worker context is still live. The run
+// loop treats it as a measured, transient event and keeps the worker running:
+// the load profiles deliberately create lock contention, and exiting here
+// would silently shrink the load, because the ramp scheduler never respawns
+// exited workers (V17).
+type OpTimeoutError struct{ Err error }
+
+func (e *OpTimeoutError) Error() string { return "operation timed out: " + e.Err.Error() }
+func (e *OpTimeoutError) Unwrap() error { return e.Err }
+
+// opDeadlineExceeded reports that the operation-scoped deadline fired while
+// the worker context is still alive. If the worker context is done, the
+// failure is shutdown, not a timeout.
+func (w *Worker) opDeadlineExceeded(opCtx context.Context) bool {
+	return w.ctx.Err() == nil && errors.Is(opCtx.Err(), context.DeadlineExceeded)
+}
+
 // Connector opens and closes the per-worker database handle.
 // *db.ConnectionFactory satisfies it; tests substitute a stub.
 type Connector interface {
@@ -71,6 +89,10 @@ type Worker struct {
 	plannedDrop bool
 	kind        ops.OpKind
 
+	// done is closed when the run goroutine exits; the ramp scheduler uses
+	// it to reap self-exited workers.
+	done chan struct{}
+
 	wg sync.WaitGroup
 }
 
@@ -100,6 +122,7 @@ func NewWorkerWithPause(id int, ctx context.Context, connFactory Connector, cach
 		stopTimeout:   defaultStopTimeout,
 		running:       false,
 		kind:          opKindFor(config),
+		done:          make(chan struct{}),
 	}
 	if config != nil && config.ExtendedLoad.Enabled && config.ExtendedLoad.TxVariants.Mode != "off" {
 		w.picker = ops.NewPicker(config.ExtendedLoad, id, time.Now().UnixNano()+int64(id))
@@ -236,6 +259,7 @@ func (w *Worker) Stop() error {
 // run is the main worker loop
 func (w *Worker) run() {
 	defer w.wg.Done()
+	defer close(w.done)
 	defer w.cleanup()
 	// Last-resort guard. A load generator drives many databases from one
 	// process, alongside the web UI session, so a single worker must fail on
@@ -260,25 +284,35 @@ func (w *Worker) run() {
 			}
 
 			if err := w.executeOperation(); err != nil {
-				if isCancelErr(err) || w.ctx.Err() != nil {
+				var opTO *OpTimeoutError
+				if errors.As(err, &opTO) {
+					// Per-op tx-timeout: already recorded by
+					// executeOperation. Transient by design — keep the
+					// worker in the loop so the load does not silently
+					// decay (ramp never respawns exited workers — V17).
+					err = nil
+				} else if isCancelErr(err) || w.ctx.Err() != nil {
 					return
-				}
-				// No usable handle: Stop closed it, the pool is gone, or a
-				// limbo/conn-drop completion just killed the socket. Rebuild
-				// the pool in place for planned drops AND unplanned stale
-				// connections alike (server-side sweep, TCP reset): the ramp
-				// scheduler never respawns exited workers (V17), so an exit
-				// permanently shrinks the load — on FB4 the pool decayed to a
-				// quarter over ten minutes. Exit only when the database is
-				// really unreachable (rebuild fails).
-				if isDeadConnErr(err) {
-					_ = w.takePlannedDrop()
-					if rerr := w.rebuildConn(); rerr == nil {
-						continue
+				} else {
+					// No usable handle: Stop closed it, the pool is gone, or a
+					// limbo/conn-drop completion just killed the socket. Rebuild
+					// the pool in place for planned drops AND unplanned stale
+					// connections alike (server-side sweep, TCP reset): the ramp
+					// scheduler never respawns exited workers (V17), so an exit
+					// permanently shrinks the load — on FB4 the pool decayed to a
+					// quarter over ten minutes. Exit only when the database is
+					// really unreachable (rebuild fails).
+					if isDeadConnErr(err) {
+						_ = w.takePlannedDrop()
+						if rerr := w.rebuildConn(); rerr == nil {
+							err = nil
+						} else {
+							return
+						}
+					} else {
+						w.metrics.RecordError(err)
 					}
-					return
 				}
-				w.metrics.RecordError(err)
 			}
 
 			if w.thinkDuration > 0 {
@@ -347,6 +381,17 @@ func (w *Worker) executeOperation() error {
 
 	tx, err := conn.BeginTx(ctx, txOpts)
 	if err != nil {
+		if w.opDeadlineExceeded(ctx) {
+			// tx-timeout hit while waiting for the transaction to start:
+			// record the failed transaction, keep the worker alive.
+			w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
+			if scenarioActive {
+				w.metrics.RecordVariant(sc, false)
+				w.picker.NoteResult(sc, false, opsTxn)
+			}
+			w.metrics.LogSQLError(w.id, "BeginTx", "timeout", err)
+			return &OpTimeoutError{Err: err}
+		}
 		if isCancelErr(err) || w.ctx.Err() != nil || isDeadConnErr(err) {
 			return err
 		}
@@ -383,7 +428,7 @@ func (w *Worker) executeOperation() error {
 		tv := w.config.ExtendedLoad.TxVariants
 		if tv.SavepointProb > 0 && rand.Float64() < tv.SavepointProb {
 			if _, err := tx.ExecContext(ctx, "SAVEPOINT EL_SP"); err != nil {
-				return w.t5StatementFailed(opName, startTime, "SAVEPOINT", err)
+				return w.t5StatementFailed(ctx, opName, startTime, "SAVEPOINT", err)
 			}
 			if l := w.metrics.OpsLog(); l != nil {
 				l.Stmt(opsTxn, "SAVEPOINT EL_SP", 0, 0, false)
@@ -393,7 +438,7 @@ func (w *Worker) executeOperation() error {
 		if tv.AutonomousCallProb > 0 && rand.Float64() < tv.AutonomousCallProb {
 			if _, err := tx.ExecContext(ctx,
 				"EXECUTE PROCEDURE SP_ELT_AUTON_LOG (?)", fmt.Sprintf("w%d %s", w.id, opName)); err != nil {
-				return w.t5StatementFailed(opName, startTime, "SP_ELT_AUTON_LOG", err)
+				return w.t5StatementFailed(ctx, opName, startTime, "SP_ELT_AUTON_LOG", err)
 			}
 			if l := w.metrics.OpsLog(); l != nil {
 				l.Stmt(opsTxn, "SP_ELT_AUTON_LOG", 0, 0, false)
@@ -403,6 +448,25 @@ func (w *Worker) executeOperation() error {
 
 	// Execute the operation
 	if err := op(ctx, tx, w.cache); err != nil {
+		if w.opDeadlineExceeded(ctx) {
+			// tx-timeout during the operation: record the failed transaction
+			// and keep the worker alive (was previously invisible in metrics
+			// and permanently killed the worker).
+			dur := time.Since(startTime)
+			if w.config != nil && w.config.Profile == "oltp-emul" {
+				w.metrics.RecordUnit(opName, dur, emul.OutcomeFailure)
+			}
+			w.metrics.RecordTransactionNamed(false, dur, opName)
+			if scenarioActive {
+				w.metrics.RecordVariant(sc, false)
+				w.picker.NoteResult(sc, false, opsTxn)
+				if l := w.metrics.OpsLog(); l != nil {
+					l.Rollback(opsTxn, "timeout", 0, 0, 0, dur, true)
+				}
+			}
+			w.metrics.LogSQLError(w.id, opName, "timeout", err)
+			return &OpTimeoutError{Err: err}
+		}
 		if isCancelErr(err) || w.ctx.Err() != nil {
 			return err
 		}
@@ -452,7 +516,7 @@ func (w *Worker) executeOperation() error {
 			stmt = "ROLLBACK TO SAVEPOINT EL_SP"
 		}
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
-			return w.t5StatementFailed(opName, startTime, stmt, err)
+			return w.t5StatementFailed(ctx, opName, startTime, stmt, err)
 		}
 		if l := w.metrics.OpsLog(); l != nil {
 			l.Stmt(opsTxn, stmt, 0, 0, false)
@@ -463,6 +527,22 @@ func (w *Worker) executeOperation() error {
 	completed = true
 	txErr := w.completeTransaction(ctx, tx, sc, scenarioActive, opsTxn)
 	if txErr != nil {
+		if w.opDeadlineExceeded(ctx) {
+			// tx-timeout during completion: the server-side transaction may
+			// still resolve; roll back best-effort so the connection is not
+			// left holding a live transaction, record the failure and keep
+			// the worker alive.
+			_ = tx.Rollback()
+			dur := time.Since(startTime)
+			w.metrics.RecordTransactionNamed(false, dur, opName)
+			w.metrics.RecordCompletion(sc.Completion, false)
+			if scenarioActive {
+				w.metrics.RecordVariant(sc, false)
+				w.picker.NoteResult(sc, false, opsTxn)
+			}
+			w.metrics.LogSQLError(w.id, opName, "commit_timeout", txErr)
+			return &OpTimeoutError{Err: txErr}
+		}
 		if isCancelErr(txErr) || w.ctx.Err() != nil {
 			return txErr
 		}
@@ -514,13 +594,17 @@ func (w *Worker) executeOperation() error {
 // t5StatementFailed finishes the unit when a T5 statement (savepoint or
 // autonomous SP) fails inside the live transaction: it records the unit as
 // failed for oltp-emul, logs the failure and returns a wrapped error. The
-// deferred rollback in executeOperation tears the transaction down.
-func (w *Worker) t5StatementFailed(opName string, startTime time.Time, stmt string, err error) error {
+// deferred rollback in executeOperation tears the transaction down. A per-op
+// tx-timeout is returned as OpTimeoutError so the run loop keeps the worker.
+func (w *Worker) t5StatementFailed(opCtx context.Context, opName string, startTime time.Time, stmt string, err error) error {
 	if w.config != nil && w.config.Profile == "oltp-emul" {
 		w.metrics.RecordUnit(opName, time.Since(startTime), emul.OutcomeFailure)
 	}
 	w.metrics.RecordTransactionNamed(false, time.Since(startTime), opName)
 	w.metrics.LogSQLError(w.id, stmt, "unexpected", err)
+	if w.opDeadlineExceeded(opCtx) {
+		return &OpTimeoutError{Err: err}
+	}
 	return fmt.Errorf("worker %d %s: %w", w.id, stmt, err)
 }
 
@@ -528,8 +612,6 @@ func (w *Worker) t5StatementFailed(opName string, startTime time.Time, stmt stri
 // twoPhase it enlists the aux database first (engine-side 2PC); limbo and
 // connDrop dispatch through the fork's begin-time intents.
 func (w *Worker) completeTransaction(ctx context.Context, tx *sql.Tx, sc ops.Scenario, scenarioActive bool, opsTxn int64) error {
-	dur := func() time.Duration { return 0 }
-	_ = dur
 	switch sc.Completion {
 	case ops.CompletionRollback:
 		if scenarioActive {
@@ -565,6 +647,12 @@ func (w *Worker) completeTransaction(ctx context.Context, tx *sql.Tx, sc ops.Sce
 		// an engine-side two-phase commit (F6a).
 		if aux := w.config.ExtendedLoad.TxVariants.TwoPhaseAuxDB; aux != "" {
 			if err := ops.EnlistTwoPhase(ctx, tx, aux, w.config.User, w.config.Pass, w.id); err != nil {
+				// The transaction never reached a completion statement, and
+				// the caller already marked it completed — without this
+				// rollback the *sql.Tx (and, at MaxOpenConns(1), the whole
+				// connection) would be abandoned while the server keeps its
+				// locks until the next BeginTx times out.
+				_ = tx.Rollback()
 				return fmt.Errorf("2pc enlist: %w", err)
 			}
 		}
@@ -626,6 +714,15 @@ func (w *Worker) rebuildConn() error {
 	}
 
 	w.mu.Lock()
+	if w.closed {
+		// Stop() ran while the fresh pool was opening: it closed the old
+		// handle and expects this worker to exit. Installing the fresh pool
+		// here would leak it (cleanup skips closing when Stop already
+		// closed), so close it and abort the rebuild instead.
+		w.mu.Unlock()
+		go func() { _ = w.connFactory.Close(fresh) }()
+		return fmt.Errorf("worker %d pool rebuild aborted: worker stopped", w.id)
+	}
 	w.dbConn = fresh
 	w.mu.Unlock()
 
@@ -684,6 +781,11 @@ func (w *Worker) cleanup() {
 	w.closed = true
 	w.mu.Unlock()
 
+	// Release the derived context even when the worker exits without Stop
+	// (a NewWorker that was started and died on its own, e.g. a failed pool
+	// rebuild); cancel is idempotent, Stop already cancelled.
+	w.cancel()
+
 	// Stop already closed the handle; skip the redundant second close.
 	if conn != nil && !stopClosed {
 		w.connFactory.Close(conn)
@@ -693,6 +795,13 @@ func (w *Worker) cleanup() {
 // GetID returns the worker ID
 func (w *Worker) GetID() int {
 	return w.id
+}
+
+// Done returns a channel closed when the worker goroutine has exited. A
+// never-started worker's channel never closes (Start closes over failure via
+// closed=true; such workers never enter the ramp set anyway).
+func (w *Worker) Done() <-chan struct{} {
+	return w.done
 }
 
 // IsRunning returns true if the worker is currently running
@@ -1003,6 +1112,11 @@ func (mc *MetricsCollector) GetTPSInterval() float64 {
 	lastTotal := mc.lastReportTotal
 	mc.mu.RUnlock()
 	delta := mc.GetTotalTransactions() - lastTotal
+	if delta < 0 {
+		// A concurrent Reset rolled the totals back: this window is not
+		// negative TPS, it is zero.
+		delta = 0
+	}
 	if elapsed <= 0 {
 		return 0.0
 	}
@@ -1022,9 +1136,9 @@ func (mc *MetricsCollector) GetLatencyPercentiles() (p50, p95, p99 int64) {
 		bucketCounts[i] = mc.latBuckets[i].Load()
 	}
 
-	p50Target := total * 50 / 100
-	p95Target := total * 95 / 100
-	p99Target := total * 99 / 100
+	p50Target := (total*50 + 99) / 100
+	p95Target := (total*95 + 99) / 100
+	p99Target := (total*99 + 99) / 100
 
 	p50, p95, p99 = -1, -1, -1
 
@@ -1060,7 +1174,10 @@ func (mc *MetricsCollector) GetLatencyPercentiles() (p50, p95, p99 int64) {
 	return p50, p95, p99
 }
 
-func getBucketUpperBound(bucket int) int64 {
+// LatencyBucketUpperBoundMs returns the upper bound of a latency bucket in
+// milliseconds. Single source of truth for the bucket table: the reporting
+// package derives percentiles from the same ranges the workers record into.
+func LatencyBucketUpperBoundMs(bucket int) int64 {
 	switch bucket {
 	case 0:
 		return 5
@@ -1091,6 +1208,10 @@ func getBucketUpperBound(bucket int) int64 {
 	default:
 		return 60000
 	}
+}
+
+func getBucketUpperBound(bucket int) int64 {
+	return LatencyBucketUpperBoundMs(bucket)
 }
 
 // GetStats returns a summary of current statistics

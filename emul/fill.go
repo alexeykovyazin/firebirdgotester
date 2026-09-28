@@ -29,7 +29,7 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 	if err != nil {
 		return err
 	}
-	sel := NewSelector(units, time.Now().UnixNano())
+	sel := NewSelector(units)
 
 	var done, conflicts, rejected, failures int
 	lastReport := time.Now()
@@ -90,9 +90,21 @@ func Fill(ctx context.Context, db *sql.DB, initDocs int, progress Progress) erro
 		}
 
 		if done >= initDocs {
-			progress("fill complete: %d documents (%d conflicts, %d rejected, %d failed units)",
-				done, conflicts, rejected, failures)
-			return nil
+			// `done` counts committed units, but state_next units create no
+			// document — verify the real doc_list count before declaring
+			// completion, otherwise the fill can end under-filled while the
+			// progress line claims otherwise.
+			var have int
+			if err := db.QueryRowContext(ctx, `select count(*) from doc_list`).Scan(&have); err != nil {
+				progress("fill: done %d units, doc count check failed: %v", done, err)
+				return nil
+			}
+			if have >= initDocs {
+				progress("fill complete: %d documents (%d conflicts, %d rejected, %d failed units)",
+					have, conflicts, rejected, failures)
+				return nil
+			}
+			// Not there yet (many no-op state_next draws): keep filling.
 		}
 		iterations++
 		if iterations%checkEvery == 0 || time.Since(lastReport) > 5*time.Second {

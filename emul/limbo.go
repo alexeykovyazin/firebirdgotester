@@ -8,6 +8,7 @@ package emul
 
 import (
 	"context"
+	"log"
 	"math/rand"
 	"strings"
 	"time"
@@ -52,6 +53,10 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 		// holds no persistent connection — nothing to close here.
 		mm, merr := firebirdsql.NewMaintenanceManager(addr, cfg.User, cfg.Pass, firebirdsql.GetDefaultServiceManagerOptions())
 		if merr != nil {
+			// The limbo-recovery feature silently did not exist when this
+			// failed — make it visible; prepare-then-die scenarios would
+			// otherwise leave limbo transactions unresolved with no trace.
+			log.Printf("[emul-limbo] recovery disabled: maintenance manager unavailable: %v", merr)
 			return
 		}
 		ticker := time.NewTicker(gap)
@@ -87,8 +92,15 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 					// its prepared transaction fails without any error on
 					// the wire (verified on FB4). Count a resolution only
 					// once the tid has actually left the limbo list; the
-					// next tick retries otherwise.
-					if still, verr := mm.GetLimboTransactions(dbPath); verr == nil && limboListHas(still, tid) {
+					// next tick retries otherwise. If the re-list call
+					// itself fails, the outcome is unknown — do not count
+					// (the previous fall-through counted unverified
+					// resolutions).
+					still, verr := mm.GetLimboTransactions(dbPath)
+					if verr != nil {
+						continue
+					}
+					if limboListHas(still, tid) {
 						continue
 					}
 					if counters != nil {

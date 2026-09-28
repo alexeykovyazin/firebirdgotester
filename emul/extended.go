@@ -103,7 +103,7 @@ func BootstrapExtendedSchema(ctx context.Context, mainDB *sql.DB, cfg *config.Co
 		}
 	}
 	// the autonomous SP depends on EL_AUTON_LOG: drop it before RECREATE
-	if _, err = mainDB.ExecContext(ctx, `DROP PROCEDURE ` + elAutonSP); err != nil && !isNotFound(err) {
+	if _, err = mainDB.ExecContext(ctx, `DROP PROCEDURE `+elAutonSP); err != nil && !isNotFound(err) {
 		return "", fmt.Errorf("extended bootstrap (drop sp): %w", err)
 	}
 
@@ -265,6 +265,29 @@ var defaultCounters ExtendedCounters
 // Extended returns the package-level extended counters singleton.
 func Extended() *ExtendedCounters {
 	return &defaultCounters
+}
+
+// ResetExtended zeroes the package-level extended counters. Call once per
+// run/session start: without a reset every new session's live state and
+// final report carry the cumulative totals of all previous runs in the
+// process (the worker metrics are reset, these were not).
+func ResetExtended() {
+	defaultCounters.HeavyRounds.Store(0)
+	defaultCounters.HeavyFailures.Store(0)
+	defaultCounters.BulkInserts.Store(0)
+	defaultCounters.BulkUpdates.Store(0)
+	defaultCounters.BulkDeletes.Store(0)
+	defaultCounters.BulkFailures.Store(0)
+	defaultCounters.BulkRows.Store(0)
+	defaultCounters.DDLRounds.Store(0)
+	defaultCounters.ColumnsAdded.Store(0)
+	defaultCounters.ColumnsAltered.Store(0)
+	defaultCounters.ColumnsDropped.Store(0)
+	defaultCounters.TablesCreated.Store(0)
+	defaultCounters.TablesDropped.Store(0)
+	defaultCounters.LimboResolved.Store(0)
+	defaultCounters.AutonValidated.Store(0)
+	defaultCounters.AutonViolations.Store(0)
 }
 
 // SnapshotJSON renders the current extended counters for the emul state API

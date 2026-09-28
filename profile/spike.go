@@ -13,6 +13,9 @@ import (
 // SpikeProfile implements the spike simulation profile
 type SpikeProfile struct {
 	*BaseProfile
+	// Pre-built selector for the write-heavy mix used during spike phases
+	// (safe for concurrent Select calls; see writeHeavyWeights).
+	writeSelector *WeightedSelector
 	// Spike-specific configuration
 	mu             sync.RWMutex
 	spikeCycles    int
@@ -72,7 +75,7 @@ func NewSpikeProfile(readOps *ops.ReadOperations, writeOps *ops.WriteOperations,
 	}
 
 	baseProfile := NewBaseProfile("spike", opsWeights, readOps, writeOps, cache)
-	return &SpikeProfile{
+	sp := &SpikeProfile{
 		BaseProfile:    baseProfile,
 		spikeCycles:    3, // Default values, will be set by config
 		spikeHold:      10 * time.Second,
@@ -81,51 +84,15 @@ func NewSpikeProfile(readOps *ops.ReadOperations, writeOps *ops.WriteOperations,
 		inSpikePhase:   false,
 		spikeStartTime: time.Time{},
 	}
+	sp.writeSelector = NewWeightedSelector(sp.writeHeavyWeights())
+	return sp
 }
 
-// SetSpikeConfiguration sets the spike-specific configuration
-func (sp *SpikeProfile) SetSpikeConfiguration(cycles int, hold, between time.Duration) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.spikeCycles = cycles
-	sp.spikeHold = hold
-	sp.betweenSpike = between
-}
-
-// Name returns the profile name
-func (sp *SpikeProfile) Name() string {
-	return "spike"
-}
-
-// NextOp returns the next operation to execute
-// During spike phases, it returns write-heavy operations
-// During between-spike phases, it returns read-heavy operations
-func (sp *SpikeProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
-	op, _ := sp.NextOpWithName()
-	return op
-}
-
-// NextOpWithName returns the next operation and its name
-func (sp *SpikeProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
-	sp.mu.RLock()
-	inSpike := sp.inSpikePhase
-	sp.mu.RUnlock()
-	if inSpike {
-		return sp.getWriteHeavyOperationWithName()
-	}
-	return sp.selector.Select()
-}
-
-// getWriteHeavyOperation returns a write-heavy operation
-func (sp *SpikeProfile) getWriteHeavyOperation() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
-	op, _ := sp.getWriteHeavyOperationWithName()
-	return op
-}
-
-// getWriteHeavyOperationWithName returns a write-heavy operation and its name
-func (sp *SpikeProfile) getWriteHeavyOperationWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
-	// Create a temporary weighted selector for write-heavy operations
-	writeOpsWeights := []OpWeight{
+// writeHeavyWeights defines the write-heavy operation mix used during spike
+// phases. Built once and shared: WeightedSelector is safe for concurrent
+// Select calls, so the spike hot path must not rebuild it per operation.
+func (sp *SpikeProfile) writeHeavyWeights() []OpWeight {
+	return []OpWeight{
 		{
 			Weight: 25,
 			Op: func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
@@ -174,9 +141,51 @@ func (sp *SpikeProfile) getWriteHeavyOperationWithName() (func(ctx context.Conte
 			Name: "DeleteEmpProj",
 		},
 	}
+}
 
-	selector := NewWeightedSelector(writeOpsWeights)
-	return selector.Select()
+// SetSpikeConfiguration sets the spike-specific configuration
+func (sp *SpikeProfile) SetSpikeConfiguration(cycles int, hold, between time.Duration) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.spikeCycles = cycles
+	sp.spikeHold = hold
+	sp.betweenSpike = between
+}
+
+// Name returns the profile name
+func (sp *SpikeProfile) Name() string {
+	return "spike"
+}
+
+// NextOp returns the next operation to execute
+// During spike phases, it returns write-heavy operations
+// During between-spike phases, it returns read-heavy operations
+func (sp *SpikeProfile) NextOp() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
+	op, _ := sp.NextOpWithName()
+	return op
+}
+
+// NextOpWithName returns the next operation and its name
+func (sp *SpikeProfile) NextOpWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
+	sp.mu.RLock()
+	inSpike := sp.inSpikePhase
+	sp.mu.RUnlock()
+	if inSpike {
+		return sp.getWriteHeavyOperationWithName()
+	}
+	return sp.selector.Select()
+}
+
+// getWriteHeavyOperation returns a write-heavy operation
+func (sp *SpikeProfile) getWriteHeavyOperation() func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error {
+	op, _ := sp.getWriteHeavyOperationWithName()
+	return op
+}
+
+// getWriteHeavyOperationWithName returns a write-heavy operation and its name
+// from the pre-built spike selector.
+func (sp *SpikeProfile) getWriteHeavyOperationWithName() (func(ctx context.Context, tx *sql.Tx, cache *ops.Cache) error, string) {
+	return sp.writeSelector.Select()
 }
 
 // UpdateSpikePhase updates the current spike phase based on elapsed time

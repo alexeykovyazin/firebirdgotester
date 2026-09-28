@@ -69,13 +69,14 @@ type Config struct {
 	MaxTotalConns     int
 
 	// API / scheduling
-	APIOnly       bool
-	UIAuthAll     bool
-	CORSOrigin    string
-	WebhookURL    string
-	WebhookSecret string
-	SchedulesFile string
-	RunsFile      string
+	APIOnly                    bool
+	UIAuthAll                  bool
+	AllowRemoteUnauthenticated bool
+	CORSOrigin                 string
+	WebhookURL                 string
+	WebhookSecret              string
+	SchedulesFile              string
+	RunsFile                   string
 }
 
 // ParseFlags parses CLI flags and returns a validated Config
@@ -137,6 +138,7 @@ func ParseFlags() (*Config, error) {
 
 	flag.BoolVar(&cfg.APIOnly, "api-only", false, "Serve the REST API without the embedded web UI")
 	flag.BoolVar(&cfg.UIAuthAll, "ui-auth-all", false, "Require --ui-token for read endpoints too (health and /metrics stay open)")
+	flag.BoolVar(&cfg.AllowRemoteUnauthenticated, "allow-remote-unauthenticated", false, "Explicitly allow running the UI without --ui-token on a non-localhost --ui-addr")
 	flag.StringVar(&cfg.CORSOrigin, "cors-origin", "", "Allow cross-origin API access from this origin (e.g. http://localhost:3000)")
 	flag.StringVar(&cfg.WebhookURL, "webhook-url", "", "POST run-finished events to this URL (default for all runs)")
 	flag.StringVar(&cfg.WebhookSecret, "webhook-secret", "", "HMAC-SHA256 secret for webhook signatures (X-FBLoadGen-Signature)")
@@ -254,6 +256,12 @@ func (c *Config) validateCommon() error {
 func (c *Config) ConnectionString() string {
 	host, port, database := c.parseDSN(c.DSN)
 	return fmt.Sprintf("%s:%s@%s:%d/%s", c.User, c.Pass, host, port, database)
+}
+
+// RedactedConnectionString is safe for console logs: the password is masked.
+func (c *Config) RedactedConnectionString() string {
+	host, port, database := c.parseDSN(c.DSN)
+	return fmt.Sprintf("%s:***@%s:%d/%s", c.User, host, port, database)
 }
 
 func (c *Config) parseDSN(dsn string) (host string, port int, database string) {

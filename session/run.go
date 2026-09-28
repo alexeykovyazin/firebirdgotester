@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -100,11 +101,6 @@ type Run struct {
 	FinishedAt string       `json:"finishedAt,omitempty"`
 	Outcome    RunOutcome   `json:"outcome"`
 	Sessions   []SessionRun `json:"sessions"`
-}
-
-type runStore struct {
-	Version int    `json:"version"`
-	Runs    []*Run `json:"runs"`
 }
 
 // RunHistory records runs, persists them atomically, and enforces retention.
@@ -205,19 +201,24 @@ func (h *RunHistory) persistLocked() {
 	f := runFile{Version: runsStoreVersion, Runs: h.pruneLocked()}
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
+		log.Printf("runs store: marshal %s: %v", h.path, err)
 		return
 	}
 	dir := filepath.Dir(h.path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("runs store: mkdir %s: %v", dir, err)
 			return
 		}
 	}
 	tmp := h.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		log.Printf("runs store: write %s: %v", tmp, err)
 		return
 	}
-	_ = os.Rename(tmp, h.path)
+	if err := os.Rename(tmp, h.path); err != nil {
+		log.Printf("runs store: rename %s -> %s: %v (history may stop persisting; check disk space / file locks)", tmp, h.path, err)
+	}
 }
 
 // pruneLocked drops runs beyond retention limits. Runs referenced by
@@ -284,13 +285,15 @@ func (h *RunHistory) Create(origin RunOrigin, scheduleID string, entries []Sessi
 	return r
 }
 
-// Get returns a copy of one run.
+// Get returns a copy of one run. The Sessions slice is deep-copied: HTTP
+// handlers marshal the copy outside the history lock while watchCompletion
+// keeps mutating the stored entries in place.
 func (h *RunHistory) Get(id string) (Run, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, r := range h.runs {
 		if r.ID == id {
-			return *r, true
+			return copyRun(r), true
 		}
 	}
 	return Run{}, false
@@ -327,12 +330,21 @@ func (h *RunHistory) List(f ListFilter) []Run {
 				continue
 			}
 		}
-		out = append(out, *r)
+		out = append(out, copyRun(r))
 		if f.Limit > 0 && len(out) >= f.Limit {
 			break
 		}
 	}
 	return out
+}
+
+// copyRun clones a Run including its Sessions backing array, so callers
+// marshaling outside the lock never race with in-place entry updates.
+func copyRun(r *Run) Run {
+	cp := *r
+	cp.Sessions = make([]SessionRun, len(r.Sessions))
+	copy(cp.Sessions, r.Sessions)
+	return cp
 }
 
 func runHasSession(r *Run, id string) bool {
@@ -447,7 +459,7 @@ func (h *RunHistory) maybeFinishLocked(r *Run) *Run {
 	r.Outcome = aggregateOutcome(r.Sessions)
 	h.persistLocked()
 	if h.onFinished != nil {
-		cp := *r
+		cp := copyRun(r)
 		h.onFinished(&cp)
 	}
 	return r
@@ -512,7 +524,7 @@ func (h *RunHistory) Cancel(runID, reason string) bool {
 	r.Outcome = RunCancelled
 	h.persistLocked()
 	if h.onFinished != nil {
-		cp := *r
+		cp := copyRun(r)
 		h.onFinished(&cp)
 	}
 	return true
