@@ -69,11 +69,8 @@ jobs:
           ISC_PASSWORD: masterkey
         ports:
           - 3050:3050
-        options: >-
-          --health-cmd "isql -user SYSDBA -password masterkey -q \"select 1 from rdb\$database;\""
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
+    # No docker health check: the isql one-liner never reports healthy in this
+    # image; readiness is handled by the retry loop below instead.
     steps:
       - uses: actions/checkout@v5
 
