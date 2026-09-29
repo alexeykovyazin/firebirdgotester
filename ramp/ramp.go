@@ -393,8 +393,14 @@ func (s *Scheduler) handleMain() {
 		}
 		s.lastWalkAdjust = now
 		if rampDebugEnabled() {
+			// We hold stateMu (write) here: read currentPhase directly —
+			// GetCurrentPhase() would RLock the same non-reentrant RWMutex
+			// from the same goroutine and self-deadlock the run loop
+			// (reproduced 2026-09-29: freeze at the first main-phase walk
+			// step with FB_RAMP_DEBUG=1). GetCurrentWorkerCount() is safe:
+			// workerMutex has no path back to stateMu.
 			fmt.Printf("[ramp-dbg] phase=%s roll=%d step=%+d walkTarget=%d live=%d min=%d max=%d\n",
-				s.GetCurrentPhase(), roll, step, s.walkTarget, s.GetCurrentWorkerCount(), min, max)
+				s.currentPhase, roll, step, s.walkTarget, s.GetCurrentWorkerCount(), min, max)
 		}
 	}
 	target := s.walkTarget
@@ -572,6 +578,22 @@ func (s *Scheduler) GetCurrentWorkerCount() int {
 	s.workerMutex.RLock()
 	defer s.workerMutex.RUnlock()
 	return len(s.workers)
+}
+
+// OpenConnectionCount returns the total number of pool connections actually
+// open across all live workers (sum of db.Stats().OpenConnections). It can
+// legitimately exceed len(workers) (stop-timed-out workers still hold a
+// socket until their op returns) or fall below it (a worker that lost its
+// handle mid-rebuild), which is exactly the divergence this metric exists to
+// expose next to the bookkeeping count.
+func (s *Scheduler) OpenConnectionCount() int {
+	s.workerMutex.RLock()
+	defer s.workerMutex.RUnlock()
+	n := 0
+	for _, w := range s.workers {
+		n += w.OpenConnections()
+	}
+	return n
 }
 
 // GetTargetWorkerCount returns the current walk/ramp target

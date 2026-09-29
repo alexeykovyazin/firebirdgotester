@@ -320,11 +320,18 @@ const maxInvariantFailures = 3
 // immediate no-wait rejection). With NOWAIT transactions these are expected
 // under concurrent load and are retried without counting toward
 // maxInvariantFailures.
+//
+// FB 4.0.8 also reports contention on the semaphores bookkeeping records
+// (deferred lock inside SRV_MAKE_*_SALDO) as "can`t lock semaphores.id=N,
+// deferred" with EX_CANT_LOCK_SEMAPHORE_RECORD and none of the words above —
+// counting it as a hard failure disabled the invariant loop mid-soak
+// (D1, 2026-09-29).
 func invariantLockConflict(err error) bool {
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "lock conflict") ||
 		strings.Contains(s, "deadlock") ||
-		strings.Contains(s, "no wait")
+		strings.Contains(s, "no wait") ||
+		strings.Contains(s, "lock semaphores")
 }
 
 // invariantFailure classifies an invariant-check error: driver-limitation

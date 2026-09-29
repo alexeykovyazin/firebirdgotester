@@ -965,6 +965,7 @@ func (m *Manager) startInternal(s *Session, spec RunSpec, runID string) (Snapsho
 	sched := ramp.NewSchedulerWithPause(runCfg, factory, cache, prof, wMetrics, pause)
 
 	sysMetrics := metrics.NewMetricsCollector(sched, prof, cache, wMetrics)
+	sysMetrics.SetOpenConnectionsFunc(sched.OpenConnectionCount)
 	sysMetrics.Start()
 
 	baseName := filepath.Join(reportDir, "results")

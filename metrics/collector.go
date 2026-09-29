@@ -37,6 +37,13 @@ type MetricsCollector struct {
 	maxWorkers     int
 	currentWorkers int
 
+	// openConnsFn, when set, reports the actual number of pool connections
+	// open across workers (Scheduler.OpenConnectionCount) — read under aggMu
+	// alongside currentWorkers so the status line can show both the
+	// bookkeeping count and the real socket count.
+	openConnsFn     func() int
+	openConnections int
+
 	startTime time.Time // set at construction/Reset, read-only afterwards
 
 	// Error tracking
@@ -203,12 +210,24 @@ func (mc *MetricsCollector) updateFromWorkerMetrics() {
 // updateFromScheduler updates metrics from the scheduler
 func (mc *MetricsCollector) updateFromScheduler() {
 	current := mc.scheduler.GetCurrentWorkerCount()
+	var open int
+	if mc.openConnsFn != nil {
+		open = mc.openConnsFn()
+	}
 	mc.aggMu.Lock()
 	mc.currentWorkers = current
+	mc.openConnections = open
 	if mc.currentWorkers > mc.maxWorkers {
 		mc.maxWorkers = mc.currentWorkers
 	}
 	mc.aggMu.Unlock()
+}
+
+// SetOpenConnectionsFunc wires the live pool-connection counter (usually
+// Scheduler.OpenConnectionCount). Optional: without it the status line shows
+// only the bookkeeping worker count.
+func (mc *MetricsCollector) SetOpenConnectionsFunc(fn func() int) {
+	mc.openConnsFn = fn
 }
 
 // updateFromCache updates metrics from the cache
@@ -313,6 +332,7 @@ func (mc *MetricsCollector) GetReport() *Report {
 		P99Latency:        p99,
 		MaxWorkers:        mc.maxWorkers,
 		CurrentWorkers:    mc.currentWorkers,
+		OpenConnections:   mc.openConnections,
 		SchedulerStats:    schedulerStats,
 		CacheStats:        cacheStats,
 		ProfileName:       profileStats,
@@ -391,6 +411,7 @@ func (mc *MetricsCollector) Reset() {
 	mc.maxLatency = 0
 	mc.maxWorkers = 0
 	mc.currentWorkers = 0
+	mc.openConnections = 0
 	mc.startTime = time.Now()
 	mc.lastReport = time.Now()
 	mc.lastTotal = 0
@@ -440,6 +461,7 @@ type Report struct {
 	P99Latency        time.Duration
 	MaxWorkers        int
 	CurrentWorkers    int
+	OpenConnections   int
 	SchedulerStats    string
 	CacheStats        string
 	ProfileName       string
@@ -451,11 +473,11 @@ type Report struct {
 // GetSummary returns a summary string of the report
 func (r *Report) GetSummary() string {
 	return fmt.Sprintf(
-		"Total: %d, Success: %.1f%%, TPS: %.1f, Lat: avg=%v min=%v max=%v p50=%v p95=%v p99=%v, Workers: %d/%d, Profile: %s",
+		"Total: %d, Success: %.1f%%, TPS: %.1f, Lat: avg=%v min=%v max=%v p50=%v p95=%v p99=%v, Workers: %d/%d, Conns: %d, Profile: %s",
 		r.TotalOperations, r.SuccessRate, r.TotalTPS,
 		r.AverageLatency, r.MinLatency, r.MaxLatency,
 		r.P50Latency, r.P95Latency, r.P99Latency,
-		r.CurrentWorkers, r.MaxWorkers, r.ProfileName,
+		r.CurrentWorkers, r.MaxWorkers, r.OpenConnections, r.ProfileName,
 	)
 }
 

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -314,6 +315,19 @@ func runCLI(cfg *config.Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Opt-in pprof endpoint for live deadlock/hang diagnostics on long runs:
+	// FB_PPROF_ADDR=127.0.0.1:9060 serves the default mux (goroutine?debug=2
+	// dumps full native stacks of every goroutine, including lock holders —
+	// delve re-attach on Windows does not survive a first session).
+	if addr := os.Getenv("FB_PPROF_ADDR"); addr != "" {
+		go func() {
+			fmt.Printf("[pprof] serving on http://%s/debug/pprof\n", addr)
+			if lerr := http.ListenAndServe(addr, nil); lerr != nil {
+				fmt.Printf("[pprof] stopped: %v\n", lerr)
+			}
+		}()
+	}
+
 	connFactory := db.NewConnectionFactory(cfg)
 
 	var cache *ops.Cache
@@ -425,6 +439,7 @@ func runCLI(cfg *config.Config) {
 	scheduler := ramp.NewScheduler(cfg, connFactory, cache, prof, workerMetrics)
 
 	metricsCollector := metrics.NewMetricsCollector(scheduler, prof, cache, workerMetrics)
+	metricsCollector.SetOpenConnectionsFunc(scheduler.OpenConnectionCount)
 	metricsCollector.Start()
 	defer metricsCollector.Stop()
 

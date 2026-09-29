@@ -170,6 +170,19 @@ func (w *Worker) conn() *sql.DB {
 	return w.dbConn
 }
 
+// OpenConnections reports the size of this worker's pool right now
+// (db.Stats().OpenConnections). The scheduler's worker count is bookkeeping:
+// a worker parked in a long server-side lock wait is still counted there but
+// its pool is one of the live sockets this number (summed over workers)
+// actually shows. 0 for a closed or not-yet-started worker.
+func (w *Worker) OpenConnections() int {
+	db := w.conn()
+	if db == nil {
+		return 0
+	}
+	return db.Stats().OpenConnections
+}
+
 // Start opens the database connection and, only if that succeeds, starts the
 // worker goroutine. A worker that cannot connect is marked dead so it never
 // enters the operation loop without a handle.

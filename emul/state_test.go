@@ -110,6 +110,44 @@ func TestInvariantFailureClassification(t *testing.T) {
 	}
 }
 
+// The soak on ubuntu-5 (2026-09-29, D1) saw FB 4.0.8 surface deferred
+// semaphores-record contention inside SRV_MAKE_INVNT_SALDO as
+// "can`t lock semaphores.id=3, deferred" — a transient lock conflict by
+// nature, but with none of the words the pre-fix classifier matched, so
+// three consecutive checks disabled the invariant loop for the rest of the
+// run. Golden strings: the exact soak message, the same message with a
+// straight apostrophe (client version skew), a classic lock conflict, and a
+// genuine hard failure that must stay hard.
+func TestInvariantLockConflictSemaphoresDeferred(t *testing.T) {
+	soakMsg := "emul: invariant SRV_MAKE_INVNT_SALDO failed: exception 8\n" +
+		"EX_CANT_LOCK_SEMAPHORE_RECORD\n" +
+		"2026-09-29T18:39:48.6140 ATT_179 TRA_10056 can`t lock semaphores.id=3, deferred\n" +
+		"At procedure 'SRV_MAKE_INVNT_SALDO' line: 107, col: 9\n" +
+		"At procedure 'SRV_MAKE_INVNT_SALDO' line: 241, col: 9"
+	tests := []struct {
+		name string
+		err  string
+		want bool
+	}{
+		{"exact soak message is transient", soakMsg, true},
+		{"straight apostrophe variant is transient",
+			"exception 8 EX_CANT_LOCK_SEMAPHORE_RECORD can't lock semaphores.id=1, deferred", true},
+		{"classic lock conflict stays transient",
+			"lock conflict on no wait transaction", true},
+		{"deadlock stays transient", "deadlock", true},
+		{"connection refused stays hard", "connection refused", false},
+		{"semaphore exception without lock text stays hard",
+			"exception 8 EX_CANT_LOCK_SEMAPHORE_RECORD something else", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := invariantLockConflict(errors.New(tt.err)); got != tt.want {
+				t.Errorf("invariantLockConflict(%q) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 // The monitor pins one pooled connection for its whole lifetime; with the
 // factory's max-1 pool that starved the invariant loop's BeginTx silently
 // (it blocked until the run context was cancelled). RunSidecars must size
