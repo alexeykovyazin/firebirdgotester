@@ -740,6 +740,7 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE). The vendored oltp-em
 ## Further reading
 
 - [CODE_REVIEW_2026-09-28.md](CODE_REVIEW_2026-09-28.md) — the September 2026 hardening round: findings, fixes and acceptance checks
+- [docs/BACKLOG.md](docs/BACKLOG.md) — parked items with verification plans (e.g. FB3 "cannot update erased record" classification)
 - [docs/history/OLTP_EMUL_PLAN.md](docs/history/OLTP_EMUL_PLAN.md) — how oltp-emul was integrated: what is borrowed, what is Go-side, phases and risks
 - [Technical_task.md](Technical_task.md) — schema constraint map, profile design, ramp model, error strategy
 - [EMPLOYEE_metadata.sql](EMPLOYEE_metadata.sql) — tables, procedures, and constraints
