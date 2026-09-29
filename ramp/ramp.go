@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -379,7 +380,8 @@ func (s *Scheduler) handleMain() {
 	now := time.Now()
 	if now.Sub(s.lastWalkAdjust) >= walkInterval {
 		step := 1
-		if s.rng.Intn(2) == 0 {
+		roll := s.rng.Intn(2)
+		if roll == 0 {
 			step = -1
 		}
 		s.walkTarget += step
@@ -390,6 +392,10 @@ func (s *Scheduler) handleMain() {
 			s.walkTarget = max
 		}
 		s.lastWalkAdjust = now
+		if rampDebugEnabled() {
+			fmt.Printf("[ramp-dbg] phase=%s roll=%d step=%+d walkTarget=%d live=%d min=%d max=%d\n",
+				s.GetCurrentPhase(), roll, step, s.walkTarget, s.GetCurrentWorkerCount(), min, max)
+		}
 	}
 	target := s.walkTarget
 	s.stateMu.Unlock()
@@ -739,4 +745,10 @@ func (sm *SpikeManager) GetSpikeStats() string {
 		phase = "spike"
 	}
 	return fmt.Sprintf("Spike: cycle %d, phase %s", sm.currentCycle+1, phase)
+}
+
+// rampDebugEnabled gates the per-walk-step trace used to diagnose pool
+// decay in the field: set FB_RAMP_DEBUG=1 to log every walk step.
+func rampDebugEnabled() bool {
+	return os.Getenv("FB_RAMP_DEBUG") == "1"
 }
