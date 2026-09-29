@@ -18,4 +18,4 @@ require (
 // (branch extended-load-intents, tip a967ed8 — limbo repair actions surface
 // failures as errors). The fork keeps the upstream module path
 // github.com/nakagami/firebirdsql, so the replace maps it back.
-replace github.com/nakagami/firebirdsql => github.com/IBSurgeon/firebirdsql-go v0.0.0-20260926211255-a967ed82686c
+replace github.com/nakagami/firebirdsql => github.com/IBSurgeon/firebirdsql-go v0.9.20-ib.1
