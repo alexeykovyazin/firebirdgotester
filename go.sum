@@ -1,5 +1,5 @@
-github.com/IBSurgeon/firebirdsql-go v0.9.20-ib.1 h1:+IjD0usQGFuF2CJg5kTzuIq0bsAKSmWbnlEAvJKbNKs=
-github.com/IBSurgeon/firebirdsql-go v0.9.20-ib.1/go.mod h1:HsxjwNJ2Xr4MIppGCJheXkvaOFcvsj3UIYaveiQb6rQ=
+github.com/IBSurgeon/firebirdsql-go v0.9.20-ib.2 h1:6UbsBGx3MacwlsDru5XB7L0IXK4Zse+dgOgsqpw10gg=
+github.com/IBSurgeon/firebirdsql-go v0.9.20-ib.2/go.mod h1:HsxjwNJ2Xr4MIppGCJheXkvaOFcvsj3UIYaveiQb6rQ=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uiaSepXwyf3o52HaUYcV+Tu66S3F5GA=

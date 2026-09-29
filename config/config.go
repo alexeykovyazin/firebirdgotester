@@ -59,6 +59,12 @@ type Config struct {
 	DryRun    bool
 	Debug     bool
 
+	// Cancel hard-drop (fork driver v0.9.20-ib.2): close the socket when a
+	// timed-out statement read is stuck in a server-side wait op_cancel
+	// cannot interrupt.
+	CancelHardDrop        bool
+	CancelHardDropGraceMs int
+
 	// Web UI / multi-DB
 	UI                bool
 	UIAddr            string
@@ -125,6 +131,8 @@ func ParseFlags() (*Config, error) {
 
 	flag.IntVar(&cfg.ThinkMs, "think-ms", 50, "Worker think time between ops in ms")
 	flag.IntVar(&cfg.TxTimeout, "tx-timeout", 10, "Statement timeout in seconds")
+	flag.BoolVar(&cfg.CancelHardDrop, "cancel-hard-drop", false, "Append cancel_hard_drop=true to the driver DSN (fork v0.9.20-ib.2): after a per-op timeout + grace the stuck socket is closed and the worker rebuilds its pool")
+	flag.IntVar(&cfg.CancelHardDropGraceMs, "cancel-hard-drop-grace", 3000, "Grace in ms between the ctx timeout and the socket close (with --cancel-hard-drop)")
 	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Connect, list what would run, exit")
 	flag.BoolVar(&cfg.Debug, "debug", false, "Enable debug output for each operation")
 
@@ -255,7 +263,15 @@ func (c *Config) validateCommon() error {
 // ConnectionString builds the complete connection string for the firebirdsql driver.
 func (c *Config) ConnectionString() string {
 	host, port, database := c.parseDSN(c.DSN)
-	return fmt.Sprintf("%s:%s@%s:%d/%s", c.User, c.Pass, host, port, database)
+	dsn := fmt.Sprintf("%s:%s@%s:%d/%s", c.User, c.Pass, host, port, database)
+	if c.CancelHardDrop {
+		grace := c.CancelHardDropGraceMs
+		if grace <= 0 {
+			grace = 3000
+		}
+		dsn += fmt.Sprintf("?cancel_hard_drop=true&cancel_hard_drop_grace=%d", grace)
+	}
+	return dsn
 }
 
 // RedactedConnectionString is safe for console logs: the password is masked.
