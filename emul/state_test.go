@@ -135,6 +135,8 @@ func TestInvariantLockConflictSemaphoresDeferred(t *testing.T) {
 		{"classic lock conflict stays transient",
 			"lock conflict on no wait transaction", true},
 		{"deadlock stays transient", "deadlock", true},
+		{"limbo-stuck record under own limbo load is transient",
+			"emul: invariant SRV_MAKE_INVNT_SALDO failed: record from transaction 43811 is stuck in limbo", true},
 		{"connection refused stays hard", "connection refused", false},
 		{"semaphore exception without lock text stays hard",
 			"exception 8 EX_CANT_LOCK_SEMAPHORE_RECORD something else", false},

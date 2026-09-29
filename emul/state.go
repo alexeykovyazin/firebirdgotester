@@ -325,13 +325,16 @@ const maxInvariantFailures = 3
 // (deferred lock inside SRV_MAKE_*_SALDO) as "can`t lock semaphores.id=N,
 // deferred" with EX_CANT_LOCK_SEMAPHORE_RECORD and none of the words above —
 // counting it as a hard failure disabled the invariant loop mid-soak
-// (D1, 2026-09-29).
+// (D1, 2026-09-29). Under the extended load's own limbo completions the
+// snapshot check can also hit "record from transaction N is stuck in limbo"
+// — transient by nature, it resolves when our limbo sidecar resolves.
 func invariantLockConflict(err error) bool {
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "lock conflict") ||
 		strings.Contains(s, "deadlock") ||
 		strings.Contains(s, "no wait") ||
-		strings.Contains(s, "lock semaphores")
+		strings.Contains(s, "lock semaphores") ||
+		strings.Contains(s, "stuck in limbo")
 }
 
 // invariantFailure classifies an invariant-check error: driver-limitation
