@@ -69,46 +69,71 @@ EX_SNAPSHOT_ISOLATION_REQUIRED) классифицируются коррект�
 
 ## 4. Краш-дамп и стек
 
-Полный дамп памяти падающего процесса (установка B, 3.0.13.33818, снят
-procdump на необработанном исключении, 259 МБ):
-`dumps/firebird.exe_260930_141400.dmp`.
+Два полных дампа сняты procdump'ом на необработанном исключении:
 
-Из дампа (`evidence/crash_dump_analysis.txt`):
+- **установка B' (HQbird 3.0.15.33884, приложение)** —
+  `dumps/firebird.exe_260930_154838.dmp` (661 МБ), краш в D6-профиле
+  (20 соединений, emul-safe) на ~5-й минуте; для этого билда есть PDB
+  (`plugins\engine12.pdb` HQbird), поэтому стек символизирован — основной;
+- установка B (plain 3.0.13.33818) — `dumps/firebird.exe_260930_141400.dmp`
+  (259 МБ); PDB для plain-сборки не поставляется, там только адреса
+  (`evidence/crash_dump_analysis.txt`).
+
+Контекст исключения (B'):
 
 ```
 ExceptionCode   : 0xC0000005 (ACCESS_VIOLATION)
-ExceptionAddress: engine12.dll+0x27915a
-ThreadID        : 14916
-RIP=engine12.dll+0x27915a  RSP=0x000000001644F090  RBP=0x000000001644F159
-RAX=0x000000000FA0A170  RBX=0x00000000117E93C0  RCX=0x000000000FA0A170
-RDX=0x0000000000010440  RSI=0x000000001644F700  RDI=0x00000000117E93C0
+ExceptionAddress: ntdll.dll (fast-fail/terminate path after the engine AV)
+ThreadID        : 57272
 ```
 
-Сырой скан стека падающего потока (x64, адреса возврата в модулях; полный
-список — в `evidence/crash_dump_analysis.txt`, верхние ~20 фреймов):
+Символизированный стек падающего потока (B'; сырой скан стека, порядок —
+расположение на стеке; полный список из 60 адресов —
+`evidence/crash_stack_symbolized_hq3015.txt`, анализ дампа —
+`evidence/crash_dump_hq3015.txt`):
 
 ```
-engine12.dll+0x23a1d6
-engine12.dll+0x18f210
-engine12.dll+0x18c49d
-engine12.dll+0x252c9e
-engine12.dll+0x4a6760 / +0x4a6748
-engine12.dll+0x248e42
-engine12.dll+0x25910a
-engine12.dll+0x18cdc2
-firebird.exe+0xd0e00 / +0x8b45c / +0x78a68 / +0x78aec / +0x1f7a2   (superserver main path)
-engine12.dll+0x206305 / +0x3a1016 / +0x3bf7e2 / ...
+Firebird::MemPool::releaseBlock            <- crash site (AV inside pool release)
+Firebird::MemPool::alloc / allocate / allocate2 / Firebird::MemoryPool::calloc
+Firebird::FreeObjects<LinkedList,LowLimits>::allocateBlock
+Jrd::vec<Lock *>::newVector
+hash_allocate
+hash_get_lock
+hash_remove_lock
+internal_dequeue
+LCK_release
+TRA_release_transaction
+purge_transactions
+purge_attachment
+Jrd::JAttachment::freeEngineData
+Jrd::JAttachment::cancelOperation
+Jrd::TipCache::setState / TRA_set_state / TRA_prepare
+Jrd::jrd_rel::delPages / write_page / Jrd::BufferDesc::unLockIO
+EXE_execute_db_triggers
+Firebird::ThreadSync::getThread / Jrd::thread_db::thread_db
 ```
 
-Кластер `engine12.dll+0x18c4xx…0x18f2xx` соответствует области lock-менеджера
-(lock.cpp); маппинг на строки — по PDB разработчиков (в дистрибутиве Windows
-PDB не поставляется).
+Читается так: при снятии лока (`LCK_release → internal_dequeue →
+hash_remove_lock`) lock-хеш перевыделяет вектор (`hash_allocate →
+vec<Lock*>::newVector → MemPool::alloc`), и падает `MemPool::releaseBlock` —
+повреждение lock-менеджера/пула памяти; вокруг — разборка транзакций и
+аттачмента (`TRA_release_transaction`, `purge_transactions`,
+`purge_attachment`, `freeEngineData`), а также 2PC-путь (`TRA_prepare`,
+`TipCache::setState`). Это согласуется с предсмертными записями сервера
+`DEBUG_LCK_LIST: found not detached lock ... in deleting pool`.
 
-Непосредственно в момент снятия дампа procdump зафиксировал серию
-first-chance `E06D7363 (AVStatus_exception@Firebird)` (C++ статусы Firebird),
-завершившуюся необработанным AV — то есть фатальный путь
-«Invalid lock type in get_owner_type()» проливается через status_exception и
-заканчивается AV.
+Установка B (3.0.13, только адреса): кластер возвратов
+`engine12.dll+0x18c4xx…0x18f2xx` — та же lock-область; сырой скан в
+`evidence/crash_dump_analysis.txt`.
+
+В момент снятия дампов procdump фиксирует серию first-chance
+`E06D7363 (AVStatus_exception@Firebird)` (C++ статусы Firebird),
+завершающуюся необработанным AV — фатальный путь
+«Invalid lock type in get_owner_type()» проливается через status_exception.
+
+Условия для стеков с именами: нужны PDB — HQbird поставляет их в комплекте
+(`C:\HQbird\Firebird30\plugins\engine12.pdb`); plain-дистрибутив Firebird 3.0
+для Windows PDB не содержит.
 
 ## 5. Минимальное воспроизведение
 
@@ -187,14 +212,18 @@ reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\fire
 
 | Файл | Что |
 |---|---|
-| дамп `firebird.exe_260930_141400.dmp` (259 МБ) | полный дамп, AV, установка B — **в репозиторий не включён** (размер); выдаётся по запросу |
-| `evidence/crash_dump_analysis.txt` | контекст исключения, регистры, сырой скан стека, список потоков |
+| `dumps/firebird.exe_260930_154838.dmp` | полный дамп (661 МБ), HQbird 3.0.15, AV; **в репозиторий не включён** (размер), по запросу |
+| `dumps/firebird.exe_260930_141400.dmp` | полный дамп (259 МБ), plain 3.0.13, AV; не включён, по запросу |
+| `evidence/crash_stack_symbolized_hq3015.txt` | символизированный стек падающего потока (по `engine12.pdb` HQbird) |
+| `evidence/crash_dump_hq3015.txt` | контекст исключения, регистры, скан стека — HQbird 3.0.15 |
+| `evidence/crash_dump_analysis.txt` | контекст исключения, регистры, скан стека — plain 3.0.13 |
 | `evidence/hqbird_fb3_firebird.log` | firebird.log сервисной установки: 4 × `Fatal lock interface error` в окне прогона |
 | `evidence/devcopy_fb3_firebird.log`, `evidence/devcopy_firebird.conf` | лог и конфиг dev-копии |
 | `evidence/run_fb3_full_console.log` | консольный лог 10-минутного прогона (статус-строки, отказ-волны, финальная сводка) |
 | `evidence/run_fb3_full_final_summary.txt` | итоговая статистика прогона |
 | `evidence/run_fb3_full_sql_errors.log` | полный лог ошибок SQL с PSQL-стеками процедур |
 | `evidence/devcopy_run1/2/4_console.log` | прогоны dev-копии с крашами (разные conn-max, tx-variants on/off) |
+| `evidence/dump_run_hq_console.log` | консольный лог прогона, в котором снят HQbird-дамп |
 | `evidence/server_versions.txt`, `evidence/os_info.txt` | версии серверов и ОС |
 
 ## 8. Контакты
