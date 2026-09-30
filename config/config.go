@@ -103,7 +103,7 @@ func ParseFlags() (*Config, error) {
 	flag.IntVar(&cfg.ConnMax, "conn-max", 0, "Max connections (0 = use conn-peak)")
 
 	flag.IntVar(&cfg.Warmup, "warmup", 30, "Ramp-up / heat period in seconds")
-	flag.IntVar(&cfg.Main, "main", 120, "Main steady-state period in seconds")
+	flag.IntVar(&cfg.Main, "main", 3600, "Main steady-state period in seconds (default: 1 hour; warmup/cooldown add on top)")
 	flag.IntVar(&cfg.Cooldown, "cooldown", 20, "Graceful disconnect period in seconds")
 
 	flag.IntVar(&cfg.SpikeCycles, "spike-cycles", 3, "Number of spike cycles during main period")
@@ -386,7 +386,7 @@ func PrintUsage() {
 	fmt.Fprintf(os.Stderr, "  --conn-peak / --conn-max   int   Max/peak connections (default: 20)\n\n")
 	fmt.Fprintf(os.Stderr, "Timing (all in seconds):\n")
 	fmt.Fprintf(os.Stderr, "  --warmup        int      Ramp-up period (default: 30)\n")
-	fmt.Fprintf(os.Stderr, "  --main          int      Main period (default: 120)\n")
+	fmt.Fprintf(os.Stderr, "  --main          int      Main period (default: 3600 = 1 hour)\n")
 	fmt.Fprintf(os.Stderr, "  --cooldown      int      Cooldown period (default: 20)\n\n")
 	fmt.Fprintf(os.Stderr, "Spike profile extras:\n")
 	fmt.Fprintf(os.Stderr, "  --spike-cycles  int      Spike cycles (default: 3)\n")

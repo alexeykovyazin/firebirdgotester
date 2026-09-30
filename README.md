@@ -83,6 +83,8 @@ The product deck is published on **GitHub Pages** — [download the PPTX](https:
 ./fb-loadgen --help
 
 # Classic: single-DB CLI run against the EMPLOYEE schema
+# (default run length: without --main the main phase is 3600 s = 1 hour,
+#  warmup 30 s + cooldown 20 s add on top)
 ./fb-loadgen --profile write-heavy \
   --dsn "localhost/3050:./EMPLOYEE.FDB" \
   --warmup 30 --main 120 --cooldown 20
