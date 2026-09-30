@@ -239,6 +239,17 @@
 
     /* ---------- OLTPEMUL tab ---------- */
     #tab-oltpemul { padding: 12px 18px 40px; display: flex; flex-direction: column; gap: 12px; }
+    /* ---------- SUMMARY tab ---------- */
+    #tab-summary { padding: 12px 18px 40px; display: flex; flex-direction: column; gap: 12px; }
+    .sum-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+    .sum-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+    .sum-tile .label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; display: block; }
+    .sum-tile b { font-size: 15px; word-break: break-all; }
+    .sum-bars { display: flex; align-items: flex-end; gap: 2px; height: 90px; padding: 6px 2px 0; overflow-x: auto; }
+    .sum-col { display: flex; flex-direction: column; justify-content: flex-end; width: 11px; flex: 0 0 auto; }
+    .sum-col .sum-ok { background: #16a34a; width: 100%; border-radius: 1px 1px 0 0; }
+    .sum-col .sum-err { background: #dc2626; width: 100%; }
+    .sum-kv { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
     #tab-oltpemul .filters { border: 1px solid var(--border); border-radius: 6px; }
     .emul-grid { display: grid; gap: 12px; align-items: stretch; }
     .emul-grid.cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -318,6 +329,7 @@
     <button class="tab" data-tab="schedules">Schedules</button>
     <button class="tab" data-tab="runs">Runs</button>
     <button class="tab" data-tab="oltpemul">OLTPEMUL</button>
+    <button class="tab" data-tab="summary">Summary</button>
   </nav>
 
   <section class="tabsection active" id="tab-sessions">
@@ -619,8 +631,20 @@
     </div>
   </section>
 
+  <section class="tabsection" id="tab-summary">
+    <div class="panel-row">
+      <span class="row-label">Final summary</span>
+      <select id="sumSession" style="min-width:260px"></select>
+      <button id="sumRefresh">Refresh</button>
+      <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sumAuto" checked /> auto</label>
+      <span class="meta">Detailed run statistics, served from memory — safe to view mid-run; after completion it is the frozen final picture.</span>
+    </div>
+    <div id="sumContent" class="muted">Select a database.</div>
+  </section>
+
   <script src="/app.js"></script>
   <script src="/app_schedules.js"></script>
   <script src="/app_emul.js"></script>
+  <script src="/app_summary.js"></script>
 </body>
 </html>

@@ -112,6 +112,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}/emul/units", s.authRead(s.handleEmulUnits))
 	s.mux.HandleFunc("PUT /api/sessions/{id}/emul/weights", s.auth(s.handleEmulWeights))
 	s.mux.HandleFunc("GET /api/sessions/{id}/emul/state", s.authRead(s.handleEmulState))
+	s.mux.HandleFunc("GET /api/sessions/{id}/summary", s.authRead(s.handleSessionSummary))
 	s.mux.HandleFunc("POST /api/emul/provision", s.auth(s.handleEmulProvision))
 	s.mux.HandleFunc("GET /api/emul/provision/{jobId}", s.authRead(s.handleEmulProvisionStatus))
 	s.mux.HandleFunc("DELETE /api/emul/provision/{jobId}", s.auth(s.handleEmulProvisionCancel))

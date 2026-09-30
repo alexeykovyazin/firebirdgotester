@@ -21,6 +21,7 @@ import (
 	"fb-loadgen/errlog"
 	"fb-loadgen/metrics"
 	"fb-loadgen/ops"
+	"fb-loadgen/summary"
 	"fb-loadgen/opslog"
 	"fb-loadgen/profile"
 	"fb-loadgen/ramp"
@@ -473,6 +474,16 @@ func (m *Manager) Get(id string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return s.Snapshot(), nil
+}
+
+// Summary builds the detailed run summary of one session (the UI summary
+// endpoint). In-memory reads only.
+func (m *Manager) Summary(id string) (*summary.Summary, error) {
+	s, err := m.findByID(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.Summary(), nil
 }
 
 func (m *Manager) snapshotsLocked() []Snapshot {
@@ -1728,6 +1739,21 @@ func (s *Session) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snapshotLocked()
+}
+
+// Summary assembles the detailed final-run summary from the live engine
+// structures. In-memory reads only — safe mid-run and after completion; for
+// a session that never started everything renders as zero values.
+func (s *Session) Summary() *summary.Summary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return (&summary.Builder{
+		Collector: s.sysMetrics,
+		Sched:     s.scheduler,
+		WM:        s.metrics,
+		Emul:      s.emulState,
+		Cfg:       s.runCfg,
+	}).Build()
 }
 
 func (s *Session) snapshotLocked() Snapshot {

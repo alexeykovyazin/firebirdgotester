@@ -181,6 +181,7 @@ Fast-cancels the run: workers finish their current transaction, connections clos
 | Fleet counters only | `GET /api/fleet` | — |
 | List report files | `GET /api/sessions/{id}/report` | — |
 | Download report file | `GET /api/sessions/{id}/report/{file}` | — |
+| Detailed run summary | `GET /api/sessions/{id}/summary` | — (in-memory totals/latency/errors top/units/variants/invariants/limbo/teardown/per-minute timeline; safe mid-run) |
 | List schedules | `GET /api/schedules` | — |
 | Create schedule | `POST /api/schedules` | schedule body, see below |
 | One schedule | `GET /api/schedules/{id}` | — |
