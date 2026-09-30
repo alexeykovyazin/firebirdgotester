@@ -1,0 +1,64 @@
+HQbird Firebird 3.0.15.33884, dump firebird.exe_260930_154838.dmp
+Faulting-thread stack scan, symbolized + source lines via C:\HQbird\Firebird30\pluginsngine12.pdb
+(line = call site at the return address; order = stack position)
+
+engine12+0x3f2e73  Firebird::MemPool::releaseBlock+0x1b3  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:2447]
+engine12+0x72a0a0  None
+engine12+0x3f3b83  Firebird::MemPool::alloc+0x43  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:2217]
+engine12+0x20aed4  EDS::Connection::~Connection+0xa4  [h:\snapshots\hqbird\src\jrd\extds\extds.cpp:554]
+engine12+0x3f3d52  Firebird::MemPool::allocate2+0x32  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:2277]
+engine12+0x3f3d99  Firebird::MemPool::allocate+0x19  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:2310]
+engine12+0x3f3f92  Firebird::MemoryPool::calloc+0x12  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:2660]
+engine12+0x28afbd  Jrd::vec<Jrd::Lock * __ptr64>::newVector+0x2d  [h:\snapshots\hqbird\src\jrd\database.h:151]
+engine12+0x28b036  hash_allocate+0x26  [h:\snapshots\hqbird\src\jrd\lck.cpp:1010]
+engine12+0x28b09a  hash_get_lock+0x4a  [h:\snapshots\hqbird\src\jrd\lck.cpp:1041]
+engine12+0x28b201  hash_remove_lock+0x21  [h:\snapshots\hqbird\src\jrd\lck.cpp:1133]
+engine12+0x28c862  internal_dequeue+0x52  [h:\snapshots\hqbird\src\jrd\lck.cpp:1284]
+engine12+0x4b30a0  Firebird::LocalStatus::`vftable'+0x0
+engine12+0x724830  None
+engine12+0x3f3161  Firebird::FreeObjects<Firebird::LinkedList,Firebird::LowLimits>::allocateBlock+0xf1  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:1662]
+engine12+0x329f97  Jrd::jrd_rel::delPages+0x37  [h:\snapshots\hqbird\src\jrd\relation.cpp:157]
+engine12+0x28cae2  LCK_release+0x32  [h:\snapshots\hqbird\src\jrd\lck.cpp:802]
+engine12+0x367a27  TRA_release_transaction+0x227  [h:\snapshots\hqbird\src\jrd\tra.cpp:1280]
+engine12+0x269c93  purge_transactions+0x93  [h:\snapshots\hqbird\src\jrd\jrd.cpp:7199]
+engine12+0x26a157  purge_attachment+0x3a7  [h:\snapshots\hqbird\src\jrd\jrd.cpp:7385]
+engine12+0x1b4d00  write_page+0x420  [h:\snapshots\hqbird\src\jrd\cch.cpp:5110]
+engine12+0x1b51ff  Jrd::BufferDesc::unLockIO+0x4f  [h:\snapshots\hqbird\src\jrd\cch.cpp:5343]
+engine12+0x1b79b9  write_buffer+0x379  [h:\snapshots\hqbird\src\jrd\cch.cpp:4907]
+engine12+0x410000  Firebird::SharedMemoryBase::mapObject+0x50  [h:\snapshots\hqbird\src\common\isc_sync.cpp:2061]
+engine12+0x35771c  Jrd::TipCache::setState+0x11c  [h:\snapshots\hqbird\src\jrd\tpc.cpp:292]
+engine12+0x36065a  TRA_set_state+0x1ba  [h:\snapshots\hqbird\src\jrd\tra.cpp:1583]
+engine12+0x366d10  TRA_prepare+0x2a0  [h:\snapshots\hqbird\src\jrd\tra.cpp:1115]
+engine12+0x2025f5  EXE_execute_db_triggers+0xc5  [h:\snapshots\hqbird\src\jrd\exe.cpp:536]
+engine12+0x3f6f52  Firebird::ThreadData::getSpecific+0x12  [h:\snapshots\hqbird\src\common\threaddata.cpp:71]
+engine12+0x411362  Firebird::ThreadSync::findThread+0x12  [h:\snapshots\hqbird\src\common\classes\synchronize.cpp:238]
+engine12+0x396a1e  Jrd::AutoSavePoint::~AutoSavePoint+0xe  [h:\snapshots\hqbird\src\jrd\vio.cpp:7103]
+engine12+0x4baf58  `string'+0x0
+engine12+0x4118a7  Firebird::ThreadSync::getThread+0x17  [h:\snapshots\hqbird\src\common\classes\synchronize.cpp:245]
+engine12+0x9a534  Jrd::thread_db::thread_db+0xa4  [h:\snapshots\hqbird\src\jrd\jrd.h:423]
+engine12+0x26e588  Jrd::JAttachment::freeEngineData+0x208  [h:\snapshots\hqbird\src\jrd\jrd.cpp:3062]
+engine12+0x508240  `string'+0x0
+engine12+0x26ce11  Jrd::JAttachment::cancelOperation+0x391  [h:\snapshots\hqbird\src\jrd\jrd.cpp:2229]
+engine12+0x507fc0  `string'+0x0
+engine12+0x72a3a0  None
+engine12+0x3f2fd8  Firebird::MemPool::releaseMemory+0x28  [h:\snapshots\hqbird\src\common\classes\alloc.cpp:2380]
+engine12+0x4b26c0  Firebird::CheckStatusWrapper::`vftable'+0x0
+engine12+0x7247c0  None
+engine12+0x27a582  Jrd::JAttachment::release+0x192  [h:\snapshots\hqbird\src\jrd\jrd.cpp:318]
+engine12+0x279f15  Jrd::JTransaction::release+0x1a5  [h:\snapshots\hqbird\src\jrd\jrd.cpp:211]
+engine12+0x27a5c7  Jrd::JAttachment::detach+0x17  [h:\snapshots\hqbird\src\jrd\jrd.cpp:3021]
+engine12+0x27ac3f  Firebird::IAttachmentBaseImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x9f  [h:\snapshots\hqbird\src\include\firebird\idlfbinterfaces.h:9140]
+engine12+0x4ad448  Jrd::Printable::`vftable'+0x0
+engine12+0x4f2200  Jrd::MessageNode::`vftable'+0x0
+engine12+0x4f2260  Jrd::ReceiveNode::`vftable'+0x0
+engine12+0x4afc40  Jrd::CompoundStmtNode::`vftable'+0x0
+engine12+0x41dd97  Firebird::SyncObject::unlock+0x7  [h:\snapshots\hqbird\src\common\classes\syncobject.cpp:217]
+engine12+0x41ddc6  Firebird::SyncObject::unlock+0x36  [h:\snapshots\hqbird\src\common\classes\syncobject.cpp:232]
+engine12+0x41dc05  Firebird::SyncObject::lock+0x35  [h:\snapshots\hqbird\src\common\classes\syncobject.cpp:51]
+engine12+0x41dc21  Firebird::SyncObject::lock+0x51  [h:\snapshots\hqbird\src\common\classes\syncobject.cpp:58]
+engine12+0x1b2f5c  adjust_scan_count+0x7c  [h:\snapshots\hqbird\src\jrd\cch.cpp:2493]
+engine12+0x41ddb3  Firebird::SyncObject::unlock+0x23  [h:\snapshots\hqbird\src\common\classes\syncobject.cpp:228]
+engine12+0x1b5e85  Jrd::BufferDesc::addRef+0x95  [h:\snapshots\hqbird\src\jrd\cch.cpp:5249]
+engine12+0x33955e  Jrd::Compressor::unpack+0xbe  [h:\snapshots\hqbird\src\jrd\sqz.cpp:274]
+engine12+0x1bc2b4  CCH_fetch_lock+0xd4  [h:\snapshots\hqbird\src\jrd\cch.cpp:812]
+engine12+0x10b0d8  Jrd::VariableNode::execute+0x68  [h:\snapshots\hqbird\src\dsql\exprnodes.cpp:12006]

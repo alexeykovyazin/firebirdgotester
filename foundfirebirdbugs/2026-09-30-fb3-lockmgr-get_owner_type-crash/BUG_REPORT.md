@@ -159,16 +159,37 @@ engine12!Jrd::JAttachment::detach+0x17
     user_status = 0x225326a0
 ```
 
+Номеров строк… — поправка: **строки исходников в PDB есть** (HQbird собирает
+с line info). Первый прогон WinDbg их не показал из-за порядка опций:
+`SYMOPT_LOAD_LINES` выставлялся после уже загруженных символов — dbghelp
+молча пропускает строки («Line number information will not be loaded»).
+Рабочий способ: опция до `SymInitialize`/загрузки модуля
+(`evidence/crash_stack_lines_hq3015.txt` — весь скан с файлами и строками).
+Ключевые фреймы с исходниками:
+
+```
+engine12!Firebird::MemPool::releaseBlock+0x1b3   alloc.cpp:2447      <- место AV
+engine12!Firebird::MemPool::alloc+0x43           alloc.cpp:2217
+engine12!Firebird::MemPool::allocate2+0x32       alloc.cpp:2277
+engine12!Firebird::MemPool::allocate+0x19        alloc.cpp:2310
+engine12!Firebird::MemoryPool::calloc+0x12       alloc.cpp:2660
+engine12!Jrd::vec<Jrd::Lock *>::newVector+0x2d   database.h:151
+engine12!hash_allocate+0x26                      lck.cpp:1010
+engine12!hash_get_lock+0x4a                      lck.cpp:1041
+engine12!hash_remove_lock+0x21                   lck.cpp:1133
+engine12!internal_dequeue+0x52                   lck.cpp:1284
+engine12!LCK_release+0x32                        lck.cpp:802
+engine12!TRA_release_transaction+0x227           tra.cpp:1280
+engine12!purge_transactions+0x93                 jrd.cpp:7199
+engine12!purge_attachment+0x3a7                  jrd.cpp:7385
+```
+
 **Вывод по значениям: классический use-after-free объекта `Lock`.**
 К моменту `internal_dequeue` указатель `lock` уже не указывает на объект
 (`0xa9`), в `hash_remove_lock` под видом `Lock*` лежит адрес стека потока,
 `MemPool::alloc` получает отрицательную длину. Тот же затёртый объект читает
 `get_owner_type()` — отсюда «Invalid lock type in get_owner_type()» и запись
 `DEBUG_LCK_LIST: found not detached lock in deleting pool`.
-
-Номеров строк исходников в PDB нет (release-сборка, line info отсутствует —
-WinDbg: «Line number information will not be loaded»); функции и
-аргументы/локалы — есть.
 
 Читается так: клиент отключается (`rem_port::disconnect → YAttachment::detach
 → freeEngineData → purge_attachment → purge_transactions →
