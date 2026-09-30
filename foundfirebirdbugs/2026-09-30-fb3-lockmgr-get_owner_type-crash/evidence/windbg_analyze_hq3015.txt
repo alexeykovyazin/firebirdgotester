@@ -1,0 +1,1208 @@
+Opened log file 'E:\Projects_2026\fb3-lockmgr-crash\evidence\windbg_analyze_hq3015_d160_2026-09-30_17-12-35-521.txt'
+Symbol options are 0xB0367:
+  0x00000001 - SYMOPT_CASE_INSENSITIVE
+  0x00000002 - SYMOPT_UNDNAME
+  0x00000004 - SYMOPT_DEFERRED_LOADS
+  0x00000020 - SYMOPT_OMAP_FIND_NEAREST
+  0x00000040 - SYMOPT_LOAD_ANYTHING
+  0x00000100 - SYMOPT_NO_UNQUALIFIED_LOADS
+  0x00000200 - SYMOPT_FAIL_CRITICAL_ERRORS
+  0x00010000 - SYMOPT_AUTO_PUBLICS
+  0x00020000 - SYMOPT_NO_IMAGE_SEARCH
+  0x00080000 - SYMOPT_NO_PROMPTS
+...........................................................
+Loading unloaded module list
+.............
+*******************************************************************************
+*                                                                             *
+*                        Exception Analysis                                   *
+*                                                                             *
+*******************************************************************************
+
+
+KEY_VALUES_STRING: 1
+
+    Key  : AV.Type
+    Value: Read
+
+    Key  : Analysis.CPU.mSec
+    Value: 1515
+
+    Key  : Analysis.Elapsed.mSec
+    Value: 24063
+
+    Key  : Analysis.IO.Other.Mb
+    Value: 21
+
+    Key  : Analysis.IO.Read.Mb
+    Value: 1
+
+    Key  : Analysis.IO.Write.Mb
+    Value: 45
+
+    Key  : Analysis.Init.CPU.mSec
+    Value: 250
+
+    Key  : Analysis.Init.Elapsed.mSec
+    Value: 4332
+
+    Key  : Analysis.Memory.CommitPeak.Mb
+    Value: 145
+
+    Key  : Analysis.Version.DbgEng
+    Value: 10.0.29617.1000
+
+    Key  : Analysis.Version.Description
+    Value: 10.2604.29.1 amd64fre
+
+    Key  : Analysis.Version.Ext
+    Value: 1.2604.29.1
+
+    Key  : Failure.Bucket
+    Value: INVALID_POINTER_READ_c0000005_engine12.dll!Firebird::MemPool::alloc
+
+    Key  : Failure.Exception.Code
+    Value: 0xc0000005
+
+    Key  : Failure.Exception.IP.Address
+    Value: 0x7ffaf8d31801
+
+    Key  : Failure.Exception.IP.Module
+    Value: ntdll
+
+    Key  : Failure.Exception.IP.Offset
+    Value: 0x11801
+
+    Key  : Failure.Hash
+    Value: {b4f06059-3442-89dd-14e3-b74b3cd86847}
+
+    Key  : Failure.ProblemClass.Primary
+    Value: INVALID_POINTER_READ
+
+    Key  : Faulting.IP.Type
+    Value: Paged
+
+    Key  : Timeline.OS.Boot.DeltaSec
+    Value: 109790
+
+    Key  : Timeline.Process.Start.DeltaSec
+    Value: 893
+
+    Key  : WER.OS.Branch
+    Value: ge_release
+
+    Key  : WER.OS.Version
+    Value: 10.0.26100.1
+
+    Key  : WER.Process.Version
+    Value: 3.0.15.33884
+
+
+FILE_IN_CAB:  firebird.exe_260930_154838.dmp
+
+COMMENT:  
+*** E:\Projects_2026\fb3-lockmgr-crash\tools\procdump64.exe -accepteula -ma -e -f C0000005 -x E:\Projects_2026\fb3-lockmgr-crash\dumps firebird.exe -a
+*** Unhandled exception: C0000005.ACCESS_VIOLATION
+
+NTGLOBALFLAG:  70
+
+APPLICATION_VERIFIER_FLAGS:  0
+
+CONTEXT:  (.ecxr)
+.ecxr
+rax=0000000000000003 rbx=0000000000010490 rcx=000000002a1c8d48
+rdx=0000000027eb69b0 rsi=000000002a1c8d48 rdi=000000002a1c8d48
+rip=00007ffaf8d31801 rsp=000000002599eb40 rbp=000000002599ec90
+ r8=0000000000010480  r9=0000000000395000 r10=000000002f4a8050
+r11=000000002f445900 r12=00000000ff000000 r13=000000002599efb8
+r14=000000002a1c8d48 r15=0000000000000000
+iopl=0         nv up ei pl nz ac po cy
+cs=0033  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010211
+ntdll!RtlpEnterCriticalSectionContended+0x381:
+00007ffa`f8d31801 4883781000      cmp     qword ptr [rax+10h],0 ds:00000000`00000013=????????????????
+.cxr
+Resetting default scope
+
+EXCEPTION_RECORD:  (.exr -1)
+.exr -1
+ExceptionAddress: 00007ffaf8d31801 (ntdll!RtlpEnterCriticalSectionContended+0x0000000000000381)
+   ExceptionCode: c0000005 (Access violation)
+  ExceptionFlags: 00000000
+NumberParameters: 2
+   Parameter[0]: 0000000000000000
+   Parameter[1]: 0000000000000013
+Attempt to read from address 0000000000000013
+
+PROCESS_NAME:  firebird.exe
+
+READ_ADDRESS:  0000000000000013 
+
+ERROR_CODE: (NTSTATUS) 0xc0000005 - The instruction at 0x%p referenced memory at 0x%p. The memory could not be %s.
+
+EXCEPTION_CODE_STR:  c0000005
+
+EXCEPTION_PARAMETER1:  0000000000000000
+
+EXCEPTION_PARAMETER2:  0000000000000013
+
+STACK_TEXT:  
+00000000`2599eb40 00007ffa`f8d328e2     : 00000000`2a1c8d48 00000000`00010490 00000000`00000000 00007ff9`d3042e73 : ntdll!RtlpEnterCriticalSectionContended+0x381
+00000000`2599ebc0 00007ff9`d3043b83     : 00000000`00000000 00000000`00a72448 00007ff9`d337a0a0 00000000`2b5a3960 : ntdll!RtlEnterCriticalSection+0xf2
+00000000`2599ec00 00007ff9`d3043d52     : 00000000`2599ecc8 00000000`00000000 ffffffff`ffffff01 00000000`00000001 : engine12!Firebird::MemPool::alloc+0x43
+00000000`2599ec60 00007ff9`d3043d99     : 00000000`00000020 00000000`2a1c8ab0 00000000`2b5a3970 00000000`00000000 : engine12!Firebird::MemPool::allocate2+0x32
+00000000`2599ec90 00007ff9`d3043f92     : 00000000`2599f6e0 00000000`00000020 00000000`00000000 00000000`0018d2c0 : engine12!Firebird::MemPool::allocate+0x19
+00000000`2599ecc0 00007ff9`d2edafbd     : 00000000`00000013 ffffffff`fffffffe 00000000`2002fb90 00000000`00000000 : engine12!Firebird::MemoryPool::calloc+0x12
+00000000`2599ecf0 00007ff9`d2edb036     : 00000000`1edee058 00000000`00000000 00000000`2599f6e0 00000000`2599edc0 : engine12!Jrd::vec<Jrd::Lock * __ptr64>::newVector+0x2d
+00000000`2599ed30 00007ff9`d2edb09a     : 00000000`00a723d8 00000000`2599f6e0 00000000`00000000 00000000`307ca040 : engine12!hash_allocate+0x26
+00000000`2599ed60 00007ff9`d2edb201     : 00000000`212dc000 00000000`1edee048 00000000`00000000 00000000`2599ede0 : engine12!hash_get_lock+0x4a
+00000000`2599ed90 00007ff9`d2edc862     : 00000000`2599ef00 00000000`1edee048 00000000`00c2cec0 ffffffff`fffffffe : engine12!hash_remove_lock+0x21
+00000000`2599edc0 00007ff9`d2edcae2     : 00000000`1f797970 00000000`000000a9 00000000`1edee048 00000000`2599f6e0 : engine12!internal_dequeue+0x52
+00000000`2599ef00 00007ff9`d2fb7a27     : 00000000`316c8b80 00000000`25ca7700 00000000`00000000 00000000`2599f6e0 : engine12!LCK_release+0x32
+00000000`2599ef30 00007ff9`d2eb9c93     : 00000000`2599f6e0 00000000`316c8b80 00000000`00000000 00000000`00000000 : engine12!TRA_release_transaction+0x227
+00000000`2599ef80 00007ff9`d2eba157     : 00000000`27414610 00000000`00000000 00000000`2599fab0 00000000`008a5920 : engine12!purge_transactions+0x93
+00000000`2599f010 00007ff9`d2ebe588     : 00000000`2f0d0bf0 00000000`2f0d0bf0 00000000`22537470 00000000`22537470 : engine12!purge_attachment+0x3a7
+00000000`2599f590 00007ff9`d2eca5c7     : 00000000`2599fab0 00007ffa`56d63dc6 00000000`2f0d0bf8 00007ffa`56ddefcb : engine12!Jrd::JAttachment::freeEngineData+0x208
+00000000`2599f860 00007ff9`d2ecac3f     : ffffffff`fffffffe 00000000`225326a0 00000000`22537470 00007ffa`56dccfa7 : engine12!Jrd::JAttachment::detach+0x17
+00000000`2599f890 00007ffa`56de0770     : 00000000`225374a8 00000000`22537478 00000000`22537470 00000000`2599f978 : engine12!Firebird::IAttachmentBaseImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x9f
+00000000`2599f8f0 00007ffa`56de56df     : 00000000`22537478 00000000`2599f978 00000000`22537478 00000000`20d1f3c0 : fbclient!Why::YAttachment::detach+0xb0
+00000000`2599f950 00000001`4002a66c     : 00000000`22537478 00000000`22537478 00000000`20d1f3c0 00000000`22537478 : fbclient!Firebird::IAttachmentBaseImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x9f
+00000000`2599f9b0 00000001`40038890     : 00000000`23deb540 00000000`20d1a840 00000000`20d1a840 00000000`20d1a840 : firebird!rem_port::disconnect+0x32c
+00000000`2599fb30 00000001`4003916a     : 00000000`23deb540 00000000`23deb540 00000000`00000000 00000000`23deb540 : firebird!process_packet+0x210
+00000000`2599fde0 00000001`4005f947     : 00000000`059b1730 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`2599fec0 00000000`703d1d9f     : 00000000`001bcc70 00000000`059b1730 00000000`00000000 00000000`059b1730 : firebird!threadStart+0x67
+00000000`2599ff00 00000000`703d1e3b     : 00000000`70462ac0 00000000`059b1730 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00000000`2599ff30 00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00000000`2599ff60 00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`2599ff90 00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+
+IP_IN_PAGED_CODE: 
+ntdll!RtlpEnterCriticalSectionContended+381
+00007ffa`f8d31801 4883781000      cmp     qword ptr [rax+10h],0
+
+FAULTING_SOURCE_LINE:  h:\snapshots\hqbird\src\common\classes\alloc.cpp
+
+FAULTING_SOURCE_FILE:  h:\snapshots\hqbird\src\common\classes\alloc.cpp
+
+FAULTING_SOURCE_LINE_NUMBER:  2217
+
+SYMBOL_NAME:  engine12!Firebird::MemPool::alloc+43
+
+MODULE_NAME: engine12
+
+IMAGE_NAME:  engine12.dll
+
+STACK_COMMAND: ~23s; .ecxr ; kb
+
+FAILURE_BUCKET_ID:  INVALID_POINTER_READ_c0000005_engine12.dll!Firebird::MemPool::alloc
+
+OS_VERSION:  10.0.26100.1
+
+BUILDLAB_STR:  ge_release
+
+OSPLATFORM_TYPE:  x64
+
+OSNAME:  Windows 10
+
+IMAGE_VERSION:  3.0.15.33884
+
+FAILURE_ID_HASH:  {b4f06059-3442-89dd-14e3-b74b3cd86847}
+
+Followup:     MachineOwner
+---------
+
+
+   0  Id: 4794.bdb0 Suspend: 0 Teb: 00000000`00267000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f80f26b8     : 00000000`0000000a 00000000`00000000 00000000`00000000 00000000`00000001 : win32u!NtUserGetMessage+0x14
+00000001`4001980c     : 00000000`00a41034 00000000`00000000 00000001`400b0318 00000001`40000000 : user32!GetMessageA+0x48
+00000001`40018e79     : 00007ffa`56f15900 00007ffa`56f15900 ffffffff`ffffffff 00000001`40000000 : firebird!WINDOW_main+0x24c
+00000001`4009b15b     : 00000000`0085931d 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!WinMain+0x359
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!__tmainCRTStartup+0x15f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   1  Id: 4794.7438 Suspend: 0 Teb: 00000000`0026f000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f51b951a     : 00000000`00000000 00000000`0088c0e0 00000000`00883c40 00000000`00000000 : ntdll!NtWaitForSingleObject+0x14
+00007ffa`f51b91f2     : 00000000`000002cc 00000000`00000000 00000000`0088d3f0 00000000`008b99b0 : mswsock!SockWaitForSingleObject+0x15a
+00007ffa`f84919b1     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : mswsock!WSPSelect+0xa12
+00000001`40085674     : 00000000`00000000 00000000`001c9bc0 00000000`001c0040 00000000`00000000 : ws2_32!select+0x201
+00000001`4008897c     : 00000000`00000000 00000000`001b0d40 00000000`0000003c 00000000`001b0d40 : firebird!select_wait+0x274
+00000001`4007b1a5     : 00000000`00000000 00000000`00000000 00000000`00800040 00000000`001c9bc0 : firebird!select_multi+0x1fc
+00000001`4003970e     : 00000000`00000000 00000000`001b04c0 00000000`00000000 00000000`001bb800 : firebird!rem_port::select_multi+0x15
+00000001`400180e7     : 00000000`00000020 00000000`001b30f0 00000000`00000000 00000000`001b30f0 : firebird!SRVR_multi_thread+0x1be
+00000001`4005f947     : 00000000`031e5780 00000000`031e5780 00000000`001c9bc0 00000000`00000000 : firebird!inet_connect_wait_thread+0x77
+00000000`703d1d9f     : 00000000`001b2860 00000000`031e5780 00000000`00000000 00000000`031e5780 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031e5780 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   2  Id: 4794.4388 Suspend: 0 Teb: 00000000`00271000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000103 00000000`00000103 00000000`039ef9f0 00000000`00000042 : ntdll!NtWaitForSingleObject+0x14
+00000001`4008af0b     : 00000000`000003e5 00000000`00000000 00000000`00000000 00000000`00000280 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4008c5f9     : 00000000`001c40c0 00000000`00000080 00000000`001c40c0 00000000`00000033 : firebird!connect_client+0x6b
+00000001`400183ab     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!WNET_connect+0x239
+00000001`4005f947     : 00000000`031e5a80 00000000`031e5a80 00000000`031e5a80 00000000`00000000 : firebird!wnet_connect_wait_thread+0x5b
+00000000`703d1d9f     : 00000000`001b3150 00000000`031e5a80 00000000`00000000 00000000`031e5a80 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031e5a80 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   3  Id: 4794.8e20 Suspend: 0 Teb: 00000000`00273000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00544e00`50414d5f 00000000`00000000 00000000`00000000 00007ffa`f8db1e43 : ntdll!NtWaitForSingleObject+0x14
+00000001`4009066c     : 00000000`001b11a0 00000000`001b11a0 00000000`00000000 00000000`00000290 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`40090929     : 00000000`001b11a0 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Remote::XnetServerEndPoint::connect_server+0x6c
+00000001`40018473     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!XNET_connect+0xf9
+00000001`4005f947     : 00000000`031e5d80 00000000`031e5d80 00000000`031e5d80 00000000`00000000 : firebird!xnet_connect_wait_thread+0x53
+00000000`703d1d9f     : 00000000`001b31c0 00000000`031e5d80 00000000`00000000 00000000`031e5d80 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031e5d80 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   4  Id: 4794.ab7c Suspend: 0 Teb: 00000000`00275000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8df3924     : 00000001`400e5bf0 00000000`001b48c0 00000000`0000000a 00000001`400422a2 : ntdll!NtDelayExecution+0x14
+00007ffa`f66bbb01     : 00000000`00000000 00000000`00000000 00000000`0000000a 00000000`001b48c0 : ntdll!RtlDelayExecution+0x34
+00000001`4003f466     : 00000000`001b48a0 00000000`00000000 ffffffff`fa0a1f00 00000000`001b48c0 : KERNELBASE!SleepEx+0x91
+00000001`4005f947     : 00000000`001b48c0 00000000`001b48a0 00000001`400e5ef0 00000000`001b48c0 : firebird!`anonymous namespace'::process_thread+0xa6
+00000000`703d1d9f     : 00000000`001b4dd0 00000000`031e5d80 00000000`00000000 00000000`031e5d80 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031e5d80 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   5  Id: 4794.138c Suspend: 0 Teb: 00000000`00277000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8df3924     : 00000001`400e5bf0 00000000`001b4b10 00000000`0000000a 00000001`400422a2 : ntdll!NtDelayExecution+0x14
+00007ffa`f66bbb01     : 00000000`00000000 00000000`00000000 00000000`0000000a 00000000`001b4b10 : ntdll!RtlDelayExecution+0x34
+00000001`4003f466     : 00000000`001b30f0 00000000`00000000 ffffffff`fa0a1f00 00000000`001b4b10 : KERNELBASE!SleepEx+0x91
+00000001`4005f947     : 00000000`001b4b10 00000000`001b30f0 00000001`400e5ef0 00000000`001b4b10 : firebird!`anonymous namespace'::process_thread+0xa6
+00000000`703d1d9f     : 00000000`001b4e90 00000000`031e6380 00000000`00000000 00000000`031e6380 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031e6380 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   6  Id: 4794.89e0 Suspend: 0 Teb: 00000000`0027b000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 0624dd2f`1a9fbe01 00007ffa`f8d3166f 00000000`00000001 00000000`00000000 : ntdll!NtWaitForSingleObject+0x14
+00007ffa`56e2e501     : 00000000`0049441a 00000000`009622a2 ffffffff`00000000 00000000`000001e8 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00007ffa`56da3056     : 00000000`00000000 00000000`00000000 00000000`001999e0 00000019`8e67c7a9 : fbclient!Firebird::Semaphore::tryEnter+0x21
+00007ffa`56e14277     : 00000000`00000000 00000000`00000000 00000000`001999e0 00000000`00000000 : fbclient!Why::`anonymous namespace'::TimerEntry::timeThread+0x186
+00000000`703d1d9f     : 00000000`00199c10 00000000`031e75f0 00000000`00000000 00000000`031e75f0 : fbclient!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031e75f0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   7  Id: 4794.d038 Suspend: 0 Teb: 00000000`002af000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8d3a65e     : 00000000`00000000 00000000`00000000 00007ffa`f8d38d70 00000000`00880720 : ntdll!NtWaitForWorkViaWorkerFactory+0x14
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!TppWorkerThread+0x37e
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   8  Id: 4794.c110 Suspend: 0 Teb: 00000000`002b1000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8d3a65e     : 00000000`00000000 00000000`00000000 00007ffa`f8d38d70 00000000`00880720 : ntdll!NtWaitForWorkViaWorkerFactory+0x14
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!TppWorkerThread+0x37e
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+   9  Id: 4794.99a0 Suspend: 0 Teb: 00000000`003d3000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8d3a65e     : 00000000`0001000f 00000000`00000001 00000000`008d1c50 00000000`00851b40 : ntdll!NtWaitForWorkViaWorkerFactory+0x14
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!TppWorkerThread+0x37e
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  10  Id: 4794.dcb8 Suspend: 0 Teb: 00000000`003d5000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8d3a65e     : 00000000`00000000 00000000`00000000 00007ffa`f8d38d70 00000000`00851b40 : ntdll!NtWaitForWorkViaWorkerFactory+0x14
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!TppWorkerThread+0x37e
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  11  Id: 4794.3a18 Suspend: 0 Teb: 00000000`002c9000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000001 00000000`00000000 00000000`27491430 00000000`25d45a60 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`2b3bfe50 00000000`00000000 00000000`00000000 00000000`00000ba4 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`27491430 00000000`25d45a60 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`059e2890 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`001b9c20 00000000`059e2890 00000000`00000000 00000000`059e2890 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059e2890 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  12  Id: 4794.c224 Suspend: 0 Teb: 00000000`00345000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8d3a65e     : 00000000`00851b40 00000000`00266000 00000000`00000000 00000000`00851b40 : ntdll!NtWaitForWorkViaWorkerFactory+0x14
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!TppWorkerThread+0x37e
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  13  Id: 4794.1018 Suspend: 0 Teb: 00000000`00373000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`012558c0 00007ff9`d305c591 00000000`0121f7d0 00000000`00000000 : ntdll!NtWaitForSingleObject+0x14
+00007ff9`d3070b71     : 00000000`00bac130 00007ff9`d317c790 00000000`00000000 00000000`00000598 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00007ff9`d2feb3a5     : 00000000`00bac130 00000000`00000001 00000000`00000001 00000000`00bac130 : engine12!Firebird::Semaphore::tryEnter+0x21
+00007ff9`d2fe6acd     : 00000000`00000000 00000000`00a638f8 00000000`00bac230 00000000`00bac230 : engine12!Jrd::Database::garbage_collector+0xb75
+00007ff9`d2feb879     : 00000000`00a638f8 00000000`00000000 ffffffff`ffffff01 00000000`00bac230 : engine12!ThreadFinishSync<Jrd::Database * __ptr64,EmptyThreadSyncCleanup<Jrd::Database * __ptr64> >::internalRun+0x1d
+00007ff9`d305c7d7     : 00000000`031ee8a0 00000000`031ee8a0 00000000`031ee8a0 00000000`00000000 : engine12!ThreadFinishSync<Jrd::Database * __ptr64,EmptyThreadSyncCleanup<Jrd::Database * __ptr64> >::internalRun+0x9
+00000000`703d1d9f     : 00000000`00bac250 00000000`031ee8a0 00000000`00000000 00000000`031ee8a0 : engine12!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031ee8a0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  14  Id: 4794.a744 Suspend: 0 Teb: 00000000`00375000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!NtWaitForSingleObject+0x14
+00007ff9`d305fd0c     : 00000000`04b30458 00000000`00000000 00000000`00000000 00000000`00000850 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00007ff9`d2ee449f     : 00000000`00a70a00 00000000`00a70a50 00000000`00000000 00007ffa`f66ea6fb : engine12!Firebird::SharedMemoryBase::eventWait+0x6c
+00007ff9`d2edecbd     : 00000000`00000000 00007ff9`d3042e73 00000000`00a70a50 00000000`00bac230 : engine12!`anonymous namespace'::MappingIpc::clearDeliveryThread+0x10f
+00007ff9`d2edfef9     : 00000000`00a70a50 00000000`00000000 ffffffff`ffffff01 00000000`00bac230 : engine12!ThreadFinishSync<`anonymous namespace'::MappingIpc * __ptr64,EmptyThreadSyncCleanup<`anonymous namespace'::MappingIpc * __ptr64> >::internalRun+0x1d
+00007ff9`d305c7d7     : 00000000`031ee8a0 00000000`031ee8a0 00000000`031ee8a0 00000000`00000000 : engine12!ThreadFinishSync<`anonymous namespace'::MappingIpc * __ptr64,EmptyThreadSyncCleanup<`anonymous namespace'::MappingIpc * __ptr64> >::internalRun+0x9
+00000000`703d1d9f     : 00000000`00bad330 00000000`031ee8a0 00000000`00000000 00000000`031ee8a0 : engine12!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031ee8a0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  15  Id: 4794.8b14 Suspend: 0 Teb: 00000000`00379000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`01443600 00007ff9`d305c591 00000000`00c2cf20 00007ff9`d306dcd5 : ntdll!NtWaitForSingleObject+0x14
+00007ff9`d3070b71     : 00000000`00bad9c0 00000000`1dbc2140 00000000`00000000 00000000`00000b50 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00007ff9`d2e0cd02     : 00007ff9`d3147128 00000000`00000001 00000000`00bad9c0 00000000`00bad9c0 : engine12!Firebird::Semaphore::tryEnter+0x21
+00007ff9`d2e0ab3d     : 00000000`00000000 00000000`1dc4d130 00000000`00badfc0 00000000`00badfc0 : engine12!Jrd::BufferControl::cache_writer+0x582
+00007ff9`d2e0abd9     : 00000000`1dc4d130 00000000`00000000 ffffffff`ffffff01 00000000`00badfc0 : engine12!ThreadFinishSync<Jrd::BufferControl * __ptr64,EmptyThreadSyncCleanup<Jrd::BufferControl * __ptr64> >::internalRun+0x1d
+00007ff9`d305c7d7     : 00000000`031ee8a0 00000000`031ee8a0 00000000`031ee8a0 00000000`00000000 : engine12!ThreadFinishSync<Jrd::BufferControl * __ptr64,EmptyThreadSyncCleanup<Jrd::BufferControl * __ptr64> >::internalRun+0x9
+00000000`703d1d9f     : 00000000`00bae800 00000000`031ee8a0 00000000`00000000 00000000`031ee8a0 : engine12!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031ee8a0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  16  Id: 4794.d84 Suspend: 0 Teb: 00000000`0037b000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`2c5b0298 00000000`2c5b0298 00000000`00000000 00000000`2c5b0240 : ntdll!NtWaitForSingleObject+0x14
+00007ff9`d3070b71     : 00000000`00bae6e0 00007ff9`d317c790 00000000`00000000 00000000`00000758 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00007ff9`d2feb3a5     : 00000000`00000000 00000000`1dbc7ba0 00000000`00000001 00000000`00bae6e0 : engine12!Firebird::Semaphore::tryEnter+0x21
+00007ff9`d2fe6acd     : 00000000`00000000 00000000`00c2d5f8 00000000`00badfc0 00000000`00badfc0 : engine12!Jrd::Database::garbage_collector+0xb75
+00007ff9`d2feb879     : 00000000`00c2d5f8 00000000`00000000 ffffffff`ffffff01 00000000`00badfc0 : engine12!ThreadFinishSync<Jrd::Database * __ptr64,EmptyThreadSyncCleanup<Jrd::Database * __ptr64> >::internalRun+0x1d
+00007ff9`d305c7d7     : 00000000`031ee8a0 00000000`031ee8a0 00000000`031ee8a0 00000000`00000000 : engine12!ThreadFinishSync<Jrd::Database * __ptr64,EmptyThreadSyncCleanup<Jrd::Database * __ptr64> >::internalRun+0x9
+00000000`703d1d9f     : 00000000`00baecf0 00000000`031ee8a0 00000000`00000000 00000000`031ee8a0 : engine12!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031ee8a0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  17  Id: 4794.3f24 Suspend: 0 Teb: 00000000`00383000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2fb14af     : 00000000`0000230b 00000000`00c2cec0 00000000`0000230b 00000000`00000002 : engine12!Firebird::SyncObject::unlock+0x7
+00007ff9`d2fb1508     : 00000000`1d9925d0 00000000`0000230b 00000000`1f1ed4a0 00007ff9`d2e074b3 : engine12!TRA_precommited+0x19f
+00007ff9`d2fe2b36     : 00000000`00000001 00000000`00004ccf 00000000`00000001 00007ff9`d2e0b0d8 : engine12!TRA_snapshot_state+0x38
+00007ff9`d2fe46d2     : 00000000`00000000 00000000`2a8b8b90 00000000`2e9b0003 00000000`00000000 : engine12!VIO_chase_record_version+0xb6
+00007ff9`d2f37a38     : 00000000`2e9b6f80 00000000`00000001 00000000`2e9b5290 00000000`1f1edf60 : engine12!VIO_next_record+0xa2
+00007ff9`d2f35103     : 00000000`2e9b5e40 00000000`1f1edf60 00000000`1f1edf60 00000000`00000000 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2e9b4f00 00000000`00000000 00000000`1f1edf60 00000000`00000001 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f35103     : 00000000`2e9b5e40 00000000`1f1edf60 00000000`00000000 00007ff9`00000000 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f35456     : 00000000`26c731c0 00000000`2e9b5e40 00000000`1f1edf60 00000000`1f1ed840 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f4823c     : 00000000`2e83fb40 00000000`2df9cbf0 00000000`1f1edf60 00000000`1f1edf60 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`2559d240 00000000`2df9cbf0 00000000`2df9cbf0 00000000`2e83fb40 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2d22dca     : 00000000`2e9b5e40 ffff0000`00fffffe ffff0000`00fffffe 00000000`00000000 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2d1fade     : ffff0000`00fffffe 00000000`2e9b5e40 00000000`2e9b5d00 00000000`1f1edf60 : engine12!Jrd::RseBoolNode::execute+0x9a
+00007ff9`d2d1faaa     : 00000000`2e9b5e40 00000000`2e9b4440 00000000`1f1edf60 00000000`1f1edf60 : engine12!Jrd::BinaryBoolNode::executeAnd+0x5e
+00007ff9`d2f350e3     : 00000000`2e9b5e40 00000000`00000001 00000000`1f1edf60 00000000`00000000 : engine12!Jrd::BinaryBoolNode::executeAnd+0x2a
+00007ff9`d2f35456     : 00000000`00000000 00000000`270a9a40 00000000`1f1edf60 00000000`1f1edf60 : engine12!Jrd::FilteredStream::evaluateBoolean+0x2e3
+00007ff9`d2f330f8     : 00000000`2e9b5db0 00000000`2e9b5e40 00000000`1f1edf60 00007ffa`f66ea6fb : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2dbd572     : 00000000`20abac00 00000000`00000000 00000000`26c731c0 00000000`2df991a0 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`2559d240 00000000`1ed56940 00000000`2df991a0 00000000`2df99150 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`1f1edf60 00000000`2e9b5e40 00000000`2df991a0 00000000`0000020b : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 0000501d`4791ca87 00000000`00000000 00000000`00000000 00000000`2ce2c078 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`1f1edf60 00000000`1f1edd79 00000000`00000001 00000000`00000010 : engine12!execute_looper+0xa6
+00007ff9`d2eaab14     : 00000000`1f1edd50 00000000`2e9b5e40 000000ff`9f49e587 ffffffff`00000010 : engine12!EXE_receive+0x115
+00007ff9`d2d38c79     : 00000000`270a9570 00007ff9`d2cd15ca 00000000`1ebfb970 00007ff9`d3042399 : engine12!JRD_receive+0x24
+00007ff9`d2d3f768     : 00000000`1f1ef5e0 00000000`27414978 00000000`1f1ee1f0 00000000`2df96ef0 : engine12!Jrd::DsqlDmlRequest::fetch+0x2a9
+00007ff9`d2ec3c87     : 00000000`29fa36b0 00000000`29fa36b0 00000000`1f1ef5e0 00000000`1f1ef5e0 : engine12!Jrd::DsqlCursor::fetchNext+0x18
+00007ff9`d2e67bb7     : 00000000`1f1ee130 00000000`226d8320 00000000`226d8368 00000000`274146f0 : engine12!Jrd::JResultSet::fetchNext+0x187
+00007ff9`d2e6223d     : 00007ff9`d31030a0 69207463`656c6573 00000000`274146f0 00000000`2aabbd70 : engine12!EDS::InternalStatement::doFetch+0xb7
+00007ff9`d2dcdcab     : 00000000`20b30bf0 00000000`1f1ee4b0 00000000`274146f0 00000000`2c658b80 : engine12!EDS::Statement::fetch+0xdd
+00007ff9`d2e5031d     : 00000000`2aabbd70 00000000`1ed56940 00000000`20b30b50 00000000`2aabbd70 : engine12!Jrd::ExecStatementNode::execute+0x35b
+00007ff9`d2e50602     : 00000000`1f1ef5e0 00000000`2c658b80 00000000`20b30bf0 00000000`000001e5 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`20abaf30 00000000`00000000 00000000`2c6428c0 00000000`2c6426e0 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2c658b80 00000000`1f1ef5e0 00000000`00000001 00000000`0000000c : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`2c658b80 00000000`2c658b80 00000000`00000001 00000000`0000000c : engine12!EXE_receive+0x115
+00007ff9`d2f330f8     : 00000000`2e4e6950 00000000`1f1ef5e0 00000000`2c662200 00000000`27036ec0 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2db510b     : 00000000`27036ec0 00000000`2c662200 00000000`00000000 00000000`1f1ef5e0 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`1f1ef5e0 00000000`2e27d240 00000000`1ed56940 00000000`2c642b20 : engine12!Jrd::CursorStmtNode::execute+0x7b
+00007ff9`d2e50602     : 00000000`1f1ef5e0 00000000`27036ec0 00000000`2c642b20 00000000`000000c7 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`1f1ef5e0 00000000`27036ec0 00000000`20abac00 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`20abac00 00000000`1ed56940 00000000`00000001 00000000`00000014 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2f4895d0 00000000`27036ec0 00000000`20abac00 00000000`00000014 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000001a 00000000`1f1ef5e0 00000000`2f47b6c0 00000000`00000014 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2e4e6950 00000000`1ed56940 00000000`2f488180 00000000`2f47b6c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`1f1ef5e0 00000000`2f47b6c0 00000000`2f4892a0 00000000`00000043 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`1f1ef5e0 00000000`2f47b6c0 00000000`20abac00 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`20abac00 00000000`1ed56940 00000000`00000001 00000000`0000008c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`215d7fd0 00000000`2f47b6c0 00000000`20abac00 00000000`0000008c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000016 00000000`1f1ef5e0 00000000`215dfb40 00000000`0000008c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2e36ab10 00000000`1ed56940 00000000`215d7bf0 00000000`215dfb40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`1f1ef5e0 00000000`215dfb40 00000000`215d7ca0 00000000`00000040 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`2e95c170 00000000`1f1ef160 00000000`1f1ef5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2cd7c340 00000000`20abac00 00000000`215dfb40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ec6a50`0000ef81 00000000`00bae330 00000000`20abac00 00000000`1f1ef5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`1f7fd978 00000000`1f1ef6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`2aab0790 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`1f7fd970 00000000`1f7fd970 00000000`1f1efa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`1f1ef750 00007ffa`56f17970 0000501d`c3604acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`32561ab0 00000000`22530448 00000000`00000030 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`22530448 00000000`1f1ef8e8 00000000`22539688 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`1f8314a8 00000000`1f1efa20 00000000`00000030 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`1f830c40 00000000`1f831640 00000000`1f831640 00000000`1f831640 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`1f830c40 00000000`1f830c40 00000000`00000000 00000000`1f830c40 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059e3f10 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`27493000 00000000`059e3f10 00000000`00000000 00000000`059e3f10 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059e3f10 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  18  Id: 4794.593c Suspend: 0 Teb: 00000000`00385000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2e0747d     : 00000000`00010000 00007ff9`d2fe3cb9 00000000`00000001 00000000`1f5edf60 : engine12!Firebird::SyncObject::unlock+0x36
+00007ff9`d2e0b0d8     : 00000000`1d964db0 00000000`1f5ed489 00000000`00001541 00000000`1dc4cef0 : engine12!latch_buffer+0x7d
+00007ff9`d2e0c255     : 00000000`00000000 ffff0001`00001541 00000000`00000002 00007ff9`00000001 : engine12!get_buffer+0x118
+00007ff9`d2e0d2e0     : 00000000`00000000 00000001`00001541 00000000`2f0f5680 00000000`0000004d : engine12!CCH_fetch_lock+0x75
+00007ff9`d2ce0e67     : 00000000`225a8b90 00000000`0000004d 00000000`2f0f5610 00000000`00000129 : engine12!CCH_fetch+0x50
+00007ff9`d2fe46a2     : 00000000`00000000 00000000`225a8b90 00000000`2ebf0003 00000000`00000000 : engine12!DPM_next+0x1c7
+00007ff9`d2f37a38     : 00000000`2f0f5610 00000000`00000001 00000000`2ebffc90 00000000`1f5edf60 : engine12!VIO_next_record+0x72
+00007ff9`d2f35103     : 00000000`2f0f5e40 00000000`1f5edf60 00000000`1f5edf60 00007ff9`d2e4bbd0 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2f0f4598 00000000`2f0f5e40 00000000`1f5edf60 00000000`1f5ed840 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f350c1     : 00000000`2f0f5e40 00000000`1f5edf60 00000000`1f5edf60 00007ff9`d2e4bbd0 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f35456     : 00000000`2f0f4598 00000000`2f0f5e40 00000000`1f5edf60 00000000`1f5ed840 : engine12!Jrd::FilteredStream::evaluateBoolean+0x2c1
+00007ff9`d2f483f9     : 00000000`2f0f4598 00000000`2ebfe970 00000000`1f5ed840 00000000`1f5ed828 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`30c6fe78 00000000`2ebfe970 00000000`2ebfe970 00000000`2908ab80 : engine12!Jrd::SortedStream::init+0x2a9
+00007ff9`d2d22dca     : 00000000`2f0f5e40 ffff0000`00fffffe ffff0000`00fffffe 00000000`00000000 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2d1fade     : ffff0000`00fffffe 00000000`2f0f5e40 00000000`2f0f4a90 00000000`1f5edf60 : engine12!Jrd::RseBoolNode::execute+0x9a
+00007ff9`d2d1faaa     : 00000000`2f0f5e40 00000000`2ebfee40 00000000`1f5edf60 00000000`1f5edf60 : engine12!Jrd::BinaryBoolNode::executeAnd+0x5e
+00007ff9`d2f350e3     : 00000000`2f0f5e40 00000000`00000001 00000000`1f5edf60 00000000`00000000 : engine12!Jrd::BinaryBoolNode::executeAnd+0x2a
+00007ff9`d2f35456     : 00000000`00000000 00000000`2eaac8c0 00000000`1f5edf60 00000000`1f5edf60 : engine12!Jrd::FilteredStream::evaluateBoolean+0x2e3
+00007ff9`d2f330f8     : 00000000`2f0f4b40 00000000`2f0f5e40 00000000`1f5edf60 00007ffa`f66ea6fb : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2dbd572     : 00000000`2cfc1880 00000000`00000000 00000000`2eafb4c0 00000000`2ebfaf20 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`2eb06640 00000000`28d7cec0 00000000`2ebfaf20 00000000`2ebfaed0 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`1f5edf60 00000000`2f0f5e40 00000000`2ebfaf20 00000000`000001fa : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 0000501d`47d1ca87 00000000`00000000 00000000`00000000 00000000`2ce2c8d8 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`1f5edf60 00000000`1f5edd79 00000000`00000001 00000000`00000010 : engine12!execute_looper+0xa6
+00007ff9`d2eaab14     : 00000000`1f5edd50 00000000`2f0f5e40 000000ff`9f2c6769 ffffffff`00000010 : engine12!EXE_receive+0x115
+00007ff9`d2d38c79     : 00000000`2eaac3f0 00007ff9`d2cd15ca 00000000`231758f0 00007ff9`d3042399 : engine12!JRD_receive+0x24
+00007ff9`d2d3f768     : 00000000`1f5ef5e0 00000000`325f4a28 00000000`1f5ee1f0 00000000`2ebf8c70 : engine12!Jrd::DsqlDmlRequest::fetch+0x2a9
+00007ff9`d2ec3c87     : 00000000`307c5ce0 00000000`307c5ce0 00000000`1f5ef5e0 00000000`1f5ef5e0 : engine12!Jrd::DsqlCursor::fetchNext+0x18
+00007ff9`d2e67bb7     : 00000000`1f5ee130 00000000`2ce2b490 00000000`2ce2b4d8 00000000`325f47a0 : engine12!Jrd::JResultSet::fetchNext+0x187
+00007ff9`d2e6223d     : 00007ff9`d31030a0 69207463`656c6573 00000000`325f47a0 00000000`2f78cd30 : engine12!EDS::InternalStatement::doFetch+0xb7
+00007ff9`d2dcdcab     : 00000000`2897f7f0 00000000`1f5ee4b0 00000000`325f47a0 00000000`2940a1c0 : engine12!EDS::Statement::fetch+0xdd
+00007ff9`d2e5031d     : 00000000`2f78cd30 00000000`28d7cec0 00000000`2897f750 00000000`2f78cd30 : engine12!Jrd::ExecStatementNode::execute+0x35b
+00007ff9`d2e50602     : 00000000`1f5ef5e0 00000000`2940a1c0 00000000`2897f7f0 00000000`000001de : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2cfc1bb0 00000000`00000000 00000000`28d39e50 00000000`28d39c70 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2940a1c0 00000000`1f5ef5e0 00000000`00000001 00000000`0000000c : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`2940a1c0 00000000`2940a1c0 00000000`00000001 00000000`0000000c : engine12!EXE_receive+0x115
+00007ff9`d2f330f8     : 00000000`2c652f60 00000000`1f5ef5e0 00000000`28d4a500 00000000`2ea893c0 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2db510b     : 00000000`2ea893c0 00000000`28d4a500 00000000`00000000 00000000`1f5ef5e0 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`1f5ef5e0 00000000`2f8a1ce0 00000000`28d7cec0 00000000`28d3a0b0 : engine12!Jrd::CursorStmtNode::execute+0x7b
+00007ff9`d2e50602     : 00000000`1f5ef5e0 00000000`2ea893c0 00000000`28d3a0b0 00000000`000000c7 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`1f5ef5e0 00000000`2ea893c0 00000000`2cfc1880 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2cfc1880 00000000`28d7cec0 00000000`00000001 00000000`00000014 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`288a6050 00000000`2ea893c0 00000000`2cfc1880 00000000`00000014 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000001a 00000000`1f5ef5e0 00000000`253df7c0 00000000`00000014 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2c652f60 00000000`28d7cec0 00000000`253e1b80 00000000`253df7c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`1f5ef5e0 00000000`253df7c0 00000000`288a5d20 00000000`00000043 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`1f5ef5e0 00000000`253df7c0 00000000`2cfc1880 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2cfc1880 00000000`28d7cec0 00000000`00000001 00000000`0000008c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`253d4b50 00000000`253df7c0 00000000`2cfc1880 00000000`0000008c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000016 00000000`1f5ef5e0 00000000`2927fb40 00000000`0000008c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`28f4c710 00000000`28d7cec0 00000000`253d4770 00000000`2927fb40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`1f5ef5e0 00000000`2927fb40 00000000`253d4820 00000000`00000040 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`23d500f0 00000000`1f5ef160 00000000`1f5ef5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`293b6ac0 00000000`2cfc1880 00000000`2927fb40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ec5998`0000ef81 00000000`00bae330 00000000`2cfc1880 00000000`1f5ef5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`20c8db78 00000000`1f5ef6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`28f4b4c0 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`20c8db70 00000000`20c8db70 00000000`1f5efa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`1f5ef750 00007ffa`56f17970 0000501d`c3204acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`001b8220 00000000`2253be98 00000000`00000030 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`2253be98 00000000`1f5ef8e8 00000000`0019ec78 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`2614f228 00000000`1f5efa20 00000000`00000030 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`2614e9c0 00000000`261446c0 00000000`261446c0 00000000`261446c0 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`2614e9c0 00000000`2614e9c0 00000000`00000000 00000000`2614e9c0 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`031ed880 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`21c17e90 00000000`031ed880 00000000`00000000 00000000`031ed880 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`031ed880 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  19  Id: 4794.9f0c Suspend: 0 Teb: 00000000`00387000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000001 00000000`00000000 00000000`001b5f80 00000000`274990d0 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`1fc3fe50 00000000`00000000 00000000`00000000 00000000`00000568 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`001b5f80 00000000`274990d0 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`059d9640 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`2749f030 00000000`059d9640 00000000`00000000 00000000`059d9640 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059d9640 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  20  Id: 4794.8b4c Suspend: 0 Teb: 00000000`0038b000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2fb138a     : 00000000`00004238 00000000`00c2cec0 00000000`00004238 00000000`00000002 : engine12!Firebird::SyncObject::lock+0x35
+00007ff9`d2fb1508     : 00000000`1d98a490 00000000`00004238 00000000`22d3dc90 00007ff9`d2e074b3 : engine12!TRA_precommited+0x7a
+00007ff9`d2fe2b36     : 00000000`00000001 00000000`00004ccf 00000000`00000001 00007ff9`d2e0b0d8 : engine12!TRA_snapshot_state+0x38
+00007ff9`d2fe46d2     : 00000000`00000000 00000000`209c8b90 00000000`00000003 00000000`00000000 : engine12!VIO_chase_record_version+0xb6
+00007ff9`d2f37a38     : 00000000`29f9a430 00000000`00000001 00000000`29f8a900 00000000`22d3f5e0 : engine12!VIO_next_record+0xa2
+00007ff9`d2f35103     : 00000000`29f8cf80 00000000`22d3f5e0 00000000`22d3f5e0 00007ff9`d2d1faaa : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`29f8cf80 00000000`29f8ad90 00000000`22d3f5e0 00000000`00000001 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f35103     : 00000000`29f8cf80 00000000`22d3f5e0 00000000`22d3f5e0 00000000`29f8cf80 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f35456     : 00000000`22d3f5e0 00007ff9`d2e4bbd0 00000000`22d3f5e0 00000000`29f8a810 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f40514     : 00000000`2e911758 00000000`22d3f5e0 00000000`29f7f450 00000000`00000000 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f483f9     : 00000000`00000000 00000000`22d3f5e0 00000000`29f7f450 00000000`00000002 : engine12!Jrd::NestedLoopJoin::getRecord+0xf4
+00007ff9`d2f486ba     : 00000000`2e20e7e0 00000000`29f97550 00000000`29f97550 00000000`2e911760 : engine12!Jrd::SortedStream::init+0x2a9
+00007ff9`d2f40498     : 00000000`2e911830 00000000`29f8a7c0 00000000`22d3f5e0 00000000`29f8ee50 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2f4823c     : 00000000`00000000 00000000`22d3f5e0 00000000`2e911838 00000000`22d3f5e0 : engine12!Jrd::NestedLoopJoin::getRecord+0x78
+00007ff9`d2f486ba     : 00000000`20bc2140 00000000`2e920350 00000000`2e920350 00000000`2e911838 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2db522f     : 00000000`29f8cf80 00000000`29f8e090 00000000`22d3f5e0 00000000`29f67b20 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2e5031d     : 00000000`20bc2140 00000000`20bc2140 00000000`3175cec0 00000000`29f67b20 : engine12!Jrd::CursorStmtNode::execute+0x19f
+00007ff9`d2e50602     : 00000000`22d3f5e0 00000000`29f8cf80 00000000`29f67b20 00000000`0000074a : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`22d3f5e0 00000000`29f8cf80 00000000`20657100 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`20657100 00000000`3175cec0 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`20dc7de0 00000000`29f8cf80 00000000`20657100 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000001e 00000000`22d3f5e0 00000000`2e907740 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`26d11970 00000000`3175cec0 00000000`20dc7ab0 00000000`2e907740 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`22d3f5e0 00000000`2e907740 00000000`20dc7ab0 00000000`0000073a : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2eb8d570 00000000`22d3f5e0 00000000`22d3f5e0 21eb9ed6`0000ef81 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`20dddc40 00000000`20657100 00000000`2e907740 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2e5205c     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`20cf40c0 : engine12!EXE_start+0x20e
+00007ff9`d2dcedda     : 00000000`22d3f5e0 00000000`00000000 00000000`20cfcde0 00000000`20cfce70 : engine12!EXE_execute_triggers+0x3bc
+00007ff9`d2dd1811     : 00000000`2e269b20 00000000`3175cec0 00000000`00000321 00000000`00000000 : engine12!Jrd::ModifyNode::modify+0x23a
+00007ff9`d2e5031d     : 00000000`303c5cb0 00000000`2e19b520 00000000`2e19b620 00000000`20cf40c0 : engine12!Jrd::ModifyNode::execute+0xd1
+00007ff9`d2e50602     : 00000000`22d3f5e0 00000000`20cf40c0 00000000`2e19b520 00000000`00000321 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`22d3f5e0 00000000`20cf40c0 00000000`20657100 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`20657100 00000000`3175cec0 00000000`00000001 00000000`0000000c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2ff260e8 00000000`20cf40c0 00000000`20657100 00000000`0000000c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`00000052 00000000`22d3f5e0 00000000`233b9940 00000000`0000000c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2ff103c0 00000000`3175cec0 00000000`2ff23660 00000000`233b9940 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`22d3f5e0 00000000`233b9940 00000000`2ff25c20 00000000`00000047 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`22d3f5e0 00000000`233b9940 00000000`20657100 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`20657100 00000000`3175cec0 00000000`00000001 00000000`0000009c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2fee0c30 00000000`233b9940 00000000`20657100 00000000`0000009c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000016 00000000`22d3f5e0 00000000`2538ba40 00000000`0000009c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2ebe1230 00000000`3175cec0 00000000`2fee0850 00000000`2538ba40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`22d3f5e0 00000000`2538ba40 00000000`2fee0900 00000000`00000044 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`27a7d7f0 00000000`22d3f160 00000000`22d3f5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2ff2c3b0 00000000`20657100 00000000`2538ba40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21eb9ed6`0000ef81 00000000`00bae330 00000000`20657100 00000000`22d3f5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`28be8278 00000000`22d3f6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`2ebe10f0 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`28be8270 00000000`28be8270 00000000`22d3fa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`22d3f750 00007ffa`56f17970 0000501d`fead4acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`2749e7e0 00000000`22536ed8 00000000`00000034 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`22536ed8 00000000`22d3f8e8 00000000`22537c28 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`2b3c08a8 00000000`22d3fa20 00000000`00000034 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`2b3c0040 00000000`1f83d740 00000000`1f83d740 00000000`1f83d740 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`2b3c0040 00000000`2b3c0040 00000000`00000000 00000000`2b3c0040 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059450e0 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`27491070 00000000`059450e0 00000000`00000000 00000000`059450e0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059450e0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  21  Id: 4794.86e4 Suspend: 0 Teb: 00000000`0038d000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2fb138a     : 00000000`00003e19 00000000`00c2cec0 00000000`00003e19 00000000`00000002 : engine12!Firebird::SyncObject::lock+0x51
+00007ff9`d2fa8932     : 00000000`238cf5e0 00000000`00000001 00000000`238cdf20 00000000`238cf5e0 : engine12!TRA_precommited+0x7a
+00007ff9`d2fe2b36     : 00000000`00000001 00000000`00004ccf 00000000`00000001 00000000`00000001 : engine12!Jrd::TipCache::snapshotState+0x52
+00007ff9`d2fe46d2     : 00000000`00000001 00000000`28a525d0 00000000`00000003 00007ff9`00000000 : engine12!VIO_chase_record_version+0xb6
+00007ff9`d2f37a38     : 00000000`24fc5f60 00000000`00000001 00000000`24fcc670 00000000`238cf5e0 : engine12!VIO_next_record+0xa2
+00007ff9`d2f35103     : 00000000`28f24140 00000000`238cf5e0 00000000`00000000 00007ff9`00000000 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2606a7d0 00000000`28f24140 00000000`238cf5e0 00000000`238ce460 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f4823c     : 00000000`28f24b10 00000000`24fce560 00000000`238cf5e0 00000000`238cf5e0 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`2606af90 00000000`24fce560 00000000`24fce560 00000000`28f24b10 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2f35f93     : 00000000`00000001 00000000`24fccc60 00000000`238cf5e0 00000000`24fccc60 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2dbd54d     : 00000000`24fc7dc0 00000000`28aa7100 00000000`00000000 00000000`24fc7fa0 : engine12!Jrd::FirstRowsStream::open+0xb3
+00007ff9`d2e5031d     : 00000000`2606af90 00000000`28e7cec0 00000000`24fc7fa0 00000000`28f24140 : engine12!Jrd::ForNode::execute+0x12d
+00007ff9`d2e50602     : 00000000`238cf5e0 00000000`28f24140 00000000`24fc7fa0 00000000`0000004b : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`24ff15b8 00000000`00000090 00000000`24fc3e90 00000000`00000020 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`28f24140 00000000`238cf5e0 00000000`00000001 00000000`00000020 : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`28f24140 00000000`28f24140 00000000`238cf500 00000000`00000020 : engine12!EXE_receive+0x115
+00007ff9`d2f46b47     : 00000000`00000000 00007ff9`d2d25f00 00000000`238cf5e0 00000000`27a3e2c0 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2f330f8     : 00000000`25010780 00007ff9`d2f32fde 00000000`22d54830 00000000`238cf5e0 : engine12!Jrd::SingularStream::getRecord+0x47
+00007ff9`d2dbd572     : 00000000`28aa7100 00000000`00000000 00000000`28aa7100 00000000`24fc5050 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`2606a7d0 00000000`28e7cec0 00000000`24fc5050 00000000`27a3e2c0 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`238cf5e0 00000000`27a3e2c0 00000000`24fc5050 00000000`00000046 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`238cf5e0 00000000`00000001 00000000`00000000 ffffffff`fffffffe : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`28aa7100 00000000`28e7cec0 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`28aa7100 00000000`27a3e2c0 00000000`28aa7100 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`00000000 00000000`238cf5e0 00000000`2ebde040 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`22d54830 00000000`28e7cec0 00000000`2e9ac980 00000000`2ebde040 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`238cf5e0 00000000`2ebde040 00000000`2e9ac9e0 00000000`00000043 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`238cf5e0 00000000`2ebde040 00000000`28aa7100 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`28aa7100 00000000`28e7cec0 00000000`00000001 00000000`0000008c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`25d2d750 00000000`2ebde040 00000000`28aa7100 00000000`0000008c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000016 00000000`238cf5e0 00000000`25d35e40 00000000`0000008c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`22d54a60 00000000`28e7cec0 00000000`25d2d370 00000000`25d35e40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`238cf5e0 00000000`25d35e40 00000000`25d2d420 00000000`00000040 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`2fb2cdf0 00000000`238cf160 00000000`238cf5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2fb23bc0 00000000`28aa7100 00000000`25d35e40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ecea7a`0000ef81 00000000`00bae330 00000000`28aa7100 00000000`238cf5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`31471488 00000000`238cf6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`2fcee780 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`31471480 00000000`31471480 00000000`238cfa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`238cf750 00007ffa`56f17970 0000501d`fff24acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`25d47a00 00000000`00195428 00000000`00000030 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`00195428 00000000`238cf8e8 00000000`225384b8 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`1f83bfa8 00000000`238cfa20 00000000`00000030 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`1f83b740 00000000`28cc4cc0 00000000`28cc4cc0 00000000`28cc4cc0 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`1f83b740 00000000`1f83b740 00000000`00000000 00000000`1f83b740 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`05948cc0 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`21c10c00 00000000`05948cc0 00000000`00000000 00000000`05948cc0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`05948cc0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  22  Id: 4794.e2f8 Suspend: 0 Teb: 00000000`00391000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`21c13b20 00000000`21c13b10 00000001`400e5bf0 00000000`2749adb0 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`2496fe50 00000000`21c13b10 00000000`00000000 00000000`00000574 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`21c13b20 00000000`21c13b10 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`0594ddc0 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`274935c0 00000000`0594ddc0 00000000`00000000 00000000`0594ddc0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`0594ddc0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+# 23  Id: 4794.dfb8 Suspend: 0 Teb: 00000000`00395000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f8d328e2     : 00000000`2a1c8d48 00000000`00010490 00000000`00000000 00007ff9`d3042e73 : ntdll!RtlpEnterCriticalSectionContended+0x381
+00007ff9`d3043b83     : 00000000`00000000 00000000`00a72448 00007ff9`d337a0a0 00000000`2b5a3960 : ntdll!RtlEnterCriticalSection+0xf2
+00007ff9`d3043d52     : 00000000`2599ecc8 00000000`00000000 ffffffff`ffffff01 00000000`00000001 : engine12!Firebird::MemPool::alloc+0x43
+00007ff9`d3043d99     : 00000000`00000020 00000000`2a1c8ab0 00000000`2b5a3970 00000000`00000000 : engine12!Firebird::MemPool::allocate2+0x32
+00007ff9`d3043f92     : 00000000`2599f6e0 00000000`00000020 00000000`00000000 00000000`0018d2c0 : engine12!Firebird::MemPool::allocate+0x19
+00007ff9`d2edafbd     : 00000000`00000013 ffffffff`fffffffe 00000000`2002fb90 00000000`00000000 : engine12!Firebird::MemoryPool::calloc+0x12
+00007ff9`d2edb036     : 00000000`1edee058 00000000`00000000 00000000`2599f6e0 00000000`2599edc0 : engine12!Jrd::vec<Jrd::Lock * __ptr64>::newVector+0x2d
+00007ff9`d2edb09a     : 00000000`00a723d8 00000000`2599f6e0 00000000`00000000 00000000`307ca040 : engine12!hash_allocate+0x26
+00007ff9`d2edb201     : 00000000`212dc000 00000000`1edee048 00000000`00000000 00000000`2599ede0 : engine12!hash_get_lock+0x4a
+00007ff9`d2edc862     : 00000000`2599ef00 00000000`1edee048 00000000`00c2cec0 ffffffff`fffffffe : engine12!hash_remove_lock+0x21
+00007ff9`d2edcae2     : 00000000`1f797970 00000000`000000a9 00000000`1edee048 00000000`2599f6e0 : engine12!internal_dequeue+0x52
+00007ff9`d2fb7a27     : 00000000`316c8b80 00000000`25ca7700 00000000`00000000 00000000`2599f6e0 : engine12!LCK_release+0x32
+00007ff9`d2eb9c93     : 00000000`2599f6e0 00000000`316c8b80 00000000`00000000 00000000`00000000 : engine12!TRA_release_transaction+0x227
+00007ff9`d2eba157     : 00000000`27414610 00000000`00000000 00000000`2599fab0 00000000`008a5920 : engine12!purge_transactions+0x93
+00007ff9`d2ebe588     : 00000000`2f0d0bf0 00000000`2f0d0bf0 00000000`22537470 00000000`22537470 : engine12!purge_attachment+0x3a7
+00007ff9`d2eca5c7     : 00000000`2599fab0 00007ffa`56d63dc6 00000000`2f0d0bf8 00007ffa`56ddefcb : engine12!Jrd::JAttachment::freeEngineData+0x208
+00007ff9`d2ecac3f     : ffffffff`fffffffe 00000000`225326a0 00000000`22537470 00007ffa`56dccfa7 : engine12!Jrd::JAttachment::detach+0x17
+00007ffa`56de0770     : 00000000`225374a8 00000000`22537478 00000000`22537470 00000000`2599f978 : engine12!Firebird::IAttachmentBaseImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x9f
+00007ffa`56de56df     : 00000000`22537478 00000000`2599f978 00000000`22537478 00000000`20d1f3c0 : fbclient!Why::YAttachment::detach+0xb0
+00000001`4002a66c     : 00000000`22537478 00000000`22537478 00000000`20d1f3c0 00000000`22537478 : fbclient!Firebird::IAttachmentBaseImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher+0x9f
+00000001`40038890     : 00000000`23deb540 00000000`20d1a840 00000000`20d1a840 00000000`20d1a840 : firebird!rem_port::disconnect+0x32c
+00000001`4003916a     : 00000000`23deb540 00000000`23deb540 00000000`00000000 00000000`23deb540 : firebird!process_packet+0x210
+00000001`4005f947     : 00000000`059b1730 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`001bcc70 00000000`059b1730 00000000`00000000 00000000`059b1730 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059b1730 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  24  Id: 4794.1dc8 Suspend: 0 Teb: 00000000`00399000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f51bc414     : 00000000`1db33670 00007ff9`d2e0515d 00000000`00000001 00000000`2698f730 : ntdll!NtDeviceIoControlFile+0x14
+00007ffa`f849045d     : 00000000`00000bf0 00000000`008c1c90 00000000`00000000 00000000`2698f044 : mswsock!WSPSend+0x204
+00000001`40087d10     : 00000000`00000040 00000000`27494270 00000000`20d14cc0 00000000`04a90636 : ws2_32!send+0x15d
+00000001`40087f08     : 0000501d`fae67ccb 00000000`001bbf10 00000000`20d14c01 00000000`20d14cc0 : firebird!packet_send+0x2d0
+00000001`40087f8c     : 00000000`20d14cc0 00000000`2698f410 00000000`2698f368 00000000`00000000 : firebird!inet_write+0x58
+00000001`40025afc     : 00000000`001bbf10 00000000`001bbf10 00000000`2698f368 00007ff9`d3042e00 : firebird!send_full+0x3c
+00000001`400263dd     : 00000000`00000000 00000000`2698f9e8 00000000`2698f9e8 00000000`00000000 : firebird!rem_port::send_response+0x64c
+00000001`4002ba98     : 00000000`2698fab0 00000000`00000000 00000000`274918f0 00000000`2698fab0 : firebird!rem_port::send_response+0xad
+00000001`40038991     : 00000000`28cc9e40 00000000`20d14cc0 00000000`20d14cc0 00000000`20d14cc0 : firebird!rem_port::end_transaction+0x278
+00000001`4003916a     : 00000000`28cc9e40 00000000`28cc9e40 00000000`00000000 00000000`28cc9e40 : firebird!process_packet+0x311
+00000001`4005f947     : 00000000`0595f310 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`001b94e0 00000000`0595f310 00000000`00000000 00000000`0595f310 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`0595f310 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  25  Id: 4794.c368 Suspend: 0 Teb: 00000000`0039b000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2e0d331     : 00000000`00000000 00000001`000010ee 00000000`25ab8720 00000000`00000039 : engine12!adjust_scan_count+0x7c
+00007ff9`d2ce0e67     : 00000000`244a8b90 00000000`00000039 00000000`25ab86b0 00000000`000000be : engine12!CCH_fetch+0xa1
+00007ff9`d2fe46a2     : 00000000`00000000 00000000`244a8b90 00000000`00000003 00000000`00000000 : engine12!DPM_next+0x1c7
+00007ff9`d2f37a38     : 00000000`25ab86b0 00000000`00000001 00000000`25a96c30 00000000`2789f5e0 : engine12!VIO_next_record+0x72
+00007ff9`d2f35103     : 00000000`25a9ac80 00000000`2789f5e0 00000000`2789f5e0 00007ff9`d2d1faaa : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`25a9ac80 00000000`25a97100 00000000`2789f5e0 00000000`00000001 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f35103     : 00000000`25a9ac80 00000000`2789f5e0 00000000`2789f5e0 00000000`25a9ac80 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f35456     : 00000000`2789f5e0 00007ff9`d2e4bbd0 00000000`2789f5e0 00000000`25a96b40 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f40514     : 00000000`1eaf1758 00000000`2789f5e0 00000000`25a946d0 00000000`00000000 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f483f9     : 00000000`00000000 00000000`2789f5e0 00000000`25a946d0 00000000`00000002 : engine12!Jrd::NestedLoopJoin::getRecord+0xf4
+00007ff9`d2f486ba     : 00000000`25e5f750 00000000`1ea62530 00000000`1ea62530 00000000`1eaf1760 : engine12!Jrd::SortedStream::init+0x2a9
+00007ff9`d2f40498     : 00000000`1eaf1830 00000000`25a96af0 00000000`2789f5e0 00000000`25a9cea0 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2f4823c     : 00000000`00000000 00000000`2789f5e0 00000000`1eaf1838 00000000`2789f5e0 : engine12!Jrd::NestedLoopJoin::getRecord+0x78
+00007ff9`d2f486ba     : 00000000`307ab4c0 00000000`1ea62450 00000000`1ea62450 00000000`1eaf1838 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2db522f     : 00000000`25a9ac80 00000000`25a9c0e0 00000000`2789f5e0 00000000`25aa4b30 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2e5031d     : 00000000`307ab4c0 00000000`307ab4c0 00000000`2a91e3c0 00000000`25aa4b30 : engine12!Jrd::CursorStmtNode::execute+0x19f
+00007ff9`d2e50602     : 00000000`2789f5e0 00000000`25a9ac80 00000000`25aa4b30 00000000`0000036b : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2789f5e0 00000000`25a9ac80 00000000`221f1880 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`221f1880 00000000`2a91e3c0 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`25bd4de0 00000000`25a9ac80 00000000`221f1880 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000001e 00000000`2789f5e0 00000000`1e278c40 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`21919740 00000000`2a91e3c0 00000000`25bd4a50 00000000`1e278c40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2789f5e0 00000000`1e278c40 00000000`25bd4ab0 00000000`0000035b : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`24cc17a0 00000000`2789f5e0 00000000`2789f5e0 21ecdf8a`0000ef81 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`25beac50 00000000`221f1880 00000000`1e278c40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2e5205c     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`20f61dc0 : engine12!EXE_start+0x20e
+00007ff9`d2dcedda     : 00000000`2789f5e0 00000000`00000000 00000000`242c36a0 00000000`242c3730 : engine12!EXE_execute_triggers+0x3bc
+00007ff9`d2dd1811     : 00000000`25bf2ce8 00000000`2a91e3c0 00000000`00000047 00000000`00000000 : engine12!Jrd::ModifyNode::modify+0x23a
+00007ff9`d2e5031d     : 00000000`2c328e40 00000000`242a3ca0 00000000`242a3da0 00000000`20f61dc0 : engine12!Jrd::ModifyNode::execute+0xd1
+00007ff9`d2e50602     : 00000000`2789f5e0 00000000`20f61dc0 00000000`242a3ca0 00000000`00000047 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2789f5e0 00000000`20f61dc0 00000000`221f1880 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`221f1880 00000000`2a91e3c0 00000000`00000001 00000000`0000009c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`20f56930 00000000`20f61dc0 00000000`221f1880 00000000`0000009c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000016 00000000`2789f5e0 00000000`21c8fb40 00000000`0000009c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`24c65110 00000000`2a91e3c0 00000000`20f56550 00000000`21c8fb40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2789f5e0 00000000`21c8fb40 00000000`20f56600 00000000`00000044 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`20f400f0 00000000`2789f160 00000000`2789f5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`242c4cb0 00000000`221f1880 00000000`21c8fb40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ecdf8a`0000ef81 00000000`00bae330 00000000`221f1880 00000000`2789f5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`21b708f8 00000000`2789f6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`24c63ec0 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`21b708f0 00000000`21b708f0 00000000`2789fa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`2789f750 00007ffa`56f17970 0000501d`fbf74acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`2749cdd0 00000000`22533698 00000000`00000034 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`22533698 00000000`2789f8e8 00000000`22533ad8 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`00808ca8 00000000`2789fa20 00000000`00000034 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`00808440 00000000`26149840 00000000`26149840 00000000`26149840 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`00808440 00000000`00808440 00000000`00000000 00000000`00808440 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059b2210 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`001b5c20 00000000`059b2210 00000000`00000000 00000000`059b2210 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059b2210 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  26  Id: 4794.5568 Suspend: 0 Teb: 00000000`0039d000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000001 00000000`00000000 00000000`001b5f80 00000000`25d46690 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`2838fe50 00000000`00000000 00000000`00000000 00000000`000008b0 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`001b5f80 00000000`25d46690 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`059ba9e0 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`21c161d0 00000000`059ba9e0 00000000`00000000 00000000`059ba9e0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059ba9e0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  27  Id: 4794.d75c Suspend: 0 Teb: 00000000`0039f000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2e0747d     : 00000000`00010000 00007ff9`d2fe3cb9 00000000`00000001 00000000`2878f5e0 : engine12!Firebird::SyncObject::unlock+0x23
+00007ff9`d2e0b0d8     : 00000000`1d9aabb0 00000000`2878e129 00000000`00001517 00000000`1dc4cef0 : engine12!latch_buffer+0x7d
+00007ff9`d2e0c255     : 00000000`00000000 00000001`00001517 00000000`00000002 00000000`00000001 : engine12!get_buffer+0x118
+00007ff9`d2e0d2e0     : 00000000`00000000 00000001`00001517 00000000`21900750 00000000`0000001d : engine12!CCH_fetch_lock+0x75
+00007ff9`d2ce0e67     : 00000000`303c9bd0 00000000`0000001d 00000000`219006e0 00000000`00000917 : engine12!CCH_fetch+0x50
+00007ff9`d2fe46a2     : 00000000`00000001 00000000`303c9bd0 00000000`00000003 00007ff9`00000000 : engine12!DPM_next+0x1c7
+00007ff9`d2f37a38     : 00000000`219006e0 00000000`00000001 00000000`21906df0 00000000`2878f5e0 : engine12!VIO_next_record+0x72
+00007ff9`d2f35103     : 00000000`25a58040 00000000`2878f5e0 00000000`00000000 00007ff9`00000000 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`31ba4e40 00000000`25a58040 00000000`2878f5e0 00000000`2878e460 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f4823c     : 00000000`25a58a10 00000000`21908ce0 00000000`2878f5e0 00000000`2878f5e0 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`31ba5630 00000000`21908ce0 00000000`21908ce0 00000000`25a58a10 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2f35f93     : 00000000`00000001 00000000`219073e0 00000000`2878f5e0 00000000`219073e0 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2dbd54d     : 00000000`21902540 00000000`25f45380 00000000`00000000 00000000`21902720 : engine12!Jrd::FirstRowsStream::open+0xb3
+00007ff9`d2e5031d     : 00000000`31ba5630 00000000`274293c0 00000000`21902720 00000000`25a58040 : engine12!Jrd::ForNode::execute+0x12d
+00007ff9`d2e50602     : 00000000`2878f5e0 00000000`25a58040 00000000`21902720 00000000`00000033 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2190a938 00000000`00000090 00000000`2174db10 00000000`00000020 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`25a58040 00000000`2878f5e0 00000000`00000001 00000000`00000020 : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`25a58040 00000000`25a58040 00000000`2878f500 00000000`00000020 : engine12!EXE_receive+0x115
+00007ff9`d2f46b47     : 00000000`00000000 00007ff9`d2d25f00 00000000`2878f5e0 00000000`23ce3b40 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2f330f8     : 00000000`2193a200 00007ff9`d2f32fde 00000000`31ba4910 00000000`2878f5e0 : engine12!Jrd::SingularStream::getRecord+0x47
+00007ff9`d2dbd572     : 00000000`25f45380 00000000`00000000 00000000`25f45380 00000000`2174ecd0 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`31ba4e40 00000000`274293c0 00000000`2174ecd0 00000000`23ce3b40 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`2878f5e0 00000000`23ce3b40 00000000`2174ecd0 00000000`0000002e : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2878f5e0 00000000`00000001 00000000`00000000 ffffffff`fffffffe : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`25f45380 00000000`274293c0 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`25f45380 00000000`23ce3b40 00000000`25f45380 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`00000000 00000000`2878f5e0 00000000`206893c0 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`31ba4910 00000000`274293c0 00000000`2174c990 00000000`206893c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2878f5e0 00000000`206893c0 00000000`2174c9f0 00000000`0000002b : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2878f5e0 00000000`206893c0 00000000`25f45380 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`25f45380 00000000`274293c0 00000000`00000001 00000000`0000003c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`21742b10 00000000`206893c0 00000000`25f45380 00000000`0000003c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000022 00000000`2878f5e0 00000000`2174d340 00000000`0000003c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`217c1660 00000000`274293c0 00000000`21742730 00000000`2174d340 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2878f5e0 00000000`2174d340 00000000`217427e0 00000000`00000028 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`216c00f0 00000000`2878f160 00000000`2878f5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`23aa3b70 00000000`25f45380 00000000`2174d340 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ecdec2`0000ef81 00000000`00bae330 00000000`25f45380 00000000`2878f5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`23188a88 00000000`2878f6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`217c03c0 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`23188a80 00000000`23188a80 00000000`2878fa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`2878f750 00007ffa`56f17970 0000501d`f4064acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`27493190 00000000`225342e8 00000000`00000018 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`225342e8 00000000`2878f8e8 00000000`22535408 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`2b3cc028 00000000`2878fa20 00000000`00000018 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`2b3cb7c0 00000000`2b3c61c0 00000000`2b3c61c0 00000000`2b3c61c0 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`2b3cb7c0 00000000`2b3cb7c0 00000000`00000000 00000000`2b3cb7c0 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059bb190 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`2749a980 00000000`059bb190 00000000`00000000 00000000`059bb190 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059bb190 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  28  Id: 4794.6fcc Suspend: 0 Teb: 00000000`003a5000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2ff906f     : 00000000`2a7dddf0 00000000`07295ff0 00000000`00000002 00000000`00000000 : ntdll!RtlTryEnterCriticalSection+0x27
+00007ff9`d2eda2f2     : 00000000`2a7dddf0 00000000`2a7df5e0 00000000`2a7ddc00 00000000`2a7ddc20 : engine12!Jrd::LockManager::enqueue+0x4f
+00007ff9`d2edc528     : 00000000`2a7df5e0 00000000`00000000 00000000`00000000 00000000`00000000 : engine12!enqueue+0x92
+00007ff9`d2fa8b3f     : 00000000`2a7ddcf0 00000000`00000000 00000000`00c2e3f0 00000000`00c2e3f0 : engine12!LCK_lock+0x158
+00007ff9`d2fe2b36     : 00000000`00000001 00000000`00004ccf 00000000`00000001 00000000`00000001 : engine12!Jrd::TipCache::snapshotState+0x25f
+00007ff9`d2fe46d2     : 00000000`00000000 00000000`31ab8b90 00000000`00000003 00000000`00000000 : engine12!VIO_chase_record_version+0xb6
+00007ff9`d2f37a38     : 00000000`2ba510b0 00000000`00000001 00000000`2ba22230 00000000`2a7df5e0 : engine12!VIO_next_record+0xa2
+00007ff9`d2f35103     : 00000000`2ba21380 00000000`2a7df5e0 00000000`2a7df5e0 00007ff9`d2d1faaa : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2ba21380 00000000`2ba22700 00000000`2a7df5e0 00000000`00000001 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f35103     : 00000000`2ba21380 00000000`2a7df5e0 00000000`2a7df5e0 00007ff9`d2f377f4 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f35456     : 00000000`2ba06480 00000000`2ba21380 00000000`2a7df5e0 00000000`2ba22140 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f40514     : 00000000`23011758 00000000`2a7df5e0 00000000`2a7df5e0 00000000`00000000 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f483f9     : 00000000`00000000 00000000`2a7df5e0 00000000`2ba06480 00000000`00000002 : engine12!Jrd::NestedLoopJoin::getRecord+0xf4
+00007ff9`d2f486ba     : 00000000`2b72fd40 00000000`2ba2c720 00000000`2ba2c720 00000000`23011760 : engine12!Jrd::SortedStream::init+0x2a9
+00007ff9`d2f40498     : 00000000`23011830 00000000`2ba220f0 00000000`2a7df5e0 00000000`2ba24c80 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2f4823c     : 00000000`00000000 00000000`2a7df5e0 00000000`23011838 00000000`2a7df5e0 : engine12!Jrd::NestedLoopJoin::getRecord+0x78
+00007ff9`d2f486ba     : 00000000`2a9d7d60 00000000`2ba2c800 00000000`2ba2c800 00000000`23011838 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2db522f     : 00000000`2ba21380 00000000`2ba23ec0 00000000`2a7df5e0 00000000`2b9f98a0 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2e5031d     : 00000000`2a9d7d60 00000000`2a9d7d60 00000000`3111cec0 00000000`2b9f98a0 : engine12!Jrd::CursorStmtNode::execute+0x19f
+00007ff9`d2e50602     : 00000000`2a7df5e0 00000000`2ba21380 00000000`2b9f98a0 00000000`000001ac : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2a7df5e0 00000000`2ba21380 00000000`3297ed80 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`3297ed80 00000000`3111cec0 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2d6bb8e0 00000000`2ba21380 00000000`3297ed80 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000001e 00000000`2a7df5e0 00000000`21b964c0 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2ba96670 00000000`3111cec0 00000000`2d6bb550 00000000`21b964c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2a7df5e0 00000000`21b964c0 00000000`2d6bb5b0 00000000`0000019c : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2b90fc10 00000000`2a7df5e0 00000000`2a7df5e0 21ecb0dc`0000ef81 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2d6e1670 00000000`3297ed80 00000000`21b964c0 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2e5205c     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`213f5940 : engine12!EXE_start+0x20e
+00007ff9`d2dcedda     : 00000000`2a7df5e0 00000000`00000000 00000000`213f6120 00000000`213f61b0 : engine12!EXE_execute_triggers+0x3bc
+00007ff9`d2dd1811     : 00000000`213f9e90 00000000`3111cec0 00000000`00000005 00000000`00000000 : engine12!Jrd::ModifyNode::modify+0x23a
+00007ff9`d2e5031d     : 00000000`261771a0 00000000`272d4240 00000000`272d4340 00000000`213f5940 : engine12!Jrd::ModifyNode::execute+0xd1
+00007ff9`d2e50602     : 00000000`2a7df5e0 00000000`213f5940 00000000`272d4240 00000000`00000005 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2a7df5e0 00000000`213f5940 00000000`3297ed80 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`3297ed80 00000000`3111cec0 00000000`00000001 00000000`000000a4 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`1fe88878 00000000`213f5940 00000000`3297ed80 00000000`000000a4 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`0000001a 00000000`2a7df5e0 00000000`1f7c5e40 00000000`000000a4 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`29d10f80 00000000`3111cec0 00000000`1fe88400 00000000`1f7c5e40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2a7df5e0 00000000`1f7c5e40 00000000`1fe884b0 00000000`00000002 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`1f6800f0 00000000`2a7df160 00000000`2a7df5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`29136680 00000000`3297ed80 00000000`1f7c5e40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ecb0dc`0000ef81 00000000`00bae330 00000000`3297ed80 00000000`2a7df5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`20c8f208 00000000`2a7df6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`26176020 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`20c8f200 00000000`20c8f200 00000000`2a7dfa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`2a7df750 00007ffa`56f17970 0000501d`f6034acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`25d447a0 00000000`2253c468 00000000`0000003c : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`2253c468 00000000`2a7df8e8 00000000`0019d5c8 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`23de5828 00000000`2a7dfa20 00000000`0000003c 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`23de4fc0 00000000`23de0a40 00000000`23de0a40 00000000`23de0a40 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`23de4fc0 00000000`23de4fc0 00000000`00000000 00000000`23de4fc0 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059df9f0 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`2749bf00 00000000`059df9f0 00000000`00000000 00000000`059df9f0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059df9f0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  29  Id: 4794.d048 Suspend: 0 Teb: 00000000`003a7000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2e074b3     : 00000000`1d961370 00000000`00001600 00000000`00000001 00000000`2bfff5e0 : engine12!Jrd::BufferDesc::addRef+0x95
+00007ff9`d2e0b0d8     : 00000000`1d961370 00000000`2bffe029 00000000`00001601 00000000`1dc4cef0 : engine12!latch_buffer+0xb3
+00007ff9`d2e0c255     : 00000000`00000000 00000001`00001601 00000000`00000002 00000000`00000001 : engine12!get_buffer+0x118
+00007ff9`d2e0d2e0     : 00000000`00000000 00000001`00001601 00000000`2c05d240 00000000`0000003a : engine12!CCH_fetch_lock+0x75
+00007ff9`d2ce0e67     : 00000000`21fb8b90 00000000`0000003a 00000000`2c05d1d0 00000000`00000149 : engine12!CCH_fetch+0x50
+00007ff9`d2fe46a2     : 00000000`00000000 00000000`21fb8b90 00000000`00000003 00000000`00000000 : engine12!DPM_next+0x1c7
+00007ff9`d2f37a38     : 00000000`2c05d1d0 00000000`00000001 00000000`2c04be50 00000000`2bfff5e0 : engine12!VIO_next_record+0x72
+00007ff9`d2f35103     : 00000000`2c0540c0 00000000`2bfff5e0 00000000`2bfff5e0 00007ff9`d3043d52 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2d7414d0 00000000`2c0540c0 00000000`2bfff5e0 00000000`2bffe360 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f4823c     : 00000000`25cf1fa0 00000000`2b6ec670 00000000`2bfff5e0 00000000`2bfff5e0 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`2cd69bf0 00000000`2b6ec670 00000000`2b6ec670 00000000`25cf1fa0 : engine12!Jrd::SortedStream::init+0xec
+00007ff9`d2db522f     : 00000000`2c0540c0 00000000`2c049e20 00000000`2bfff5e0 00000000`00000000 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2e5031d     : 00000000`2cd69bf0 00000000`2cd69bf0 00000000`292a1dc0 00000000`2b61d440 : engine12!Jrd::CursorStmtNode::execute+0x19f
+00007ff9`d2e50602     : 00000000`2bfff5e0 00000000`2c0540c0 00000000`2b61d440 00000000`00000415 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2bfff5e0 00000000`2c0540c0 00000000`1ffa1880 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`1ffa1880 00000000`292a1dc0 00000000`00000001 00000000`0000000c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2b5ca008 00000000`2c0540c0 00000000`1ffa1880 00000000`0000000c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`00000052 00000000`2bfff5e0 00000000`21501dc0 00000000`0000000c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2d7414d0 00000000`292a1dc0 00000000`2b5c9ab0 00000000`21501dc0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2bfff5e0 00000000`21501dc0 00000000`2b5c9b10 00000000`000003a5 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`1ffa1bb0 00007ff9`d2e4e7d1 00000000`2c0a63f0 00000000`00000060 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`21501dc0 00000000`2bfff5e0 00000000`00000001 00000000`0000009c : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`21501dc0 00000000`21501dc0 00000000`2c0a5940 00000000`0000009c : engine12!EXE_receive+0x115
+00007ff9`d2f2e615     : 00000000`2c07b2a0 00000000`000003a4 00000000`2c07b2a8 00000000`2c0a5940 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2f2eb4d     : 00000000`2c09b4e0 00000000`2bfff5e0 00000000`2b740b10 00000000`2c0a5940 : engine12!Jrd::AggregatedStream::evaluateGroup+0xe5
+00007ff9`d2f46b47     : 00000000`2c0a5940 00007ff9`d2cb9f00 00000000`2c0a6360 00000000`2bfff5e0 : engine12!Jrd::AggregatedStream::getRecord+0x2bd
+00007ff9`d2f330f8     : 00000000`2c099ef0 00007ff9`d2f2db7f 00000000`2b816500 00000000`2bfff5e0 : engine12!Jrd::SingularStream::getRecord+0x47
+00007ff9`d2dbd572     : 00000000`1ffa1880 00000000`00000000 00000000`1ffa1880 00000000`2c3ba610 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`2b7cba40 00000000`292a1dc0 00000000`2c3ba610 00000000`2c0a5940 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`2bfff5e0 00000000`2c0a5940 00000000`2c3ba610 00000000`00000005 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2bfff5e0 00000000`2c0a5940 00000000`1ffa1880 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`1ffa1880 00000000`292a1dc0 00000000`00000001 00000000`000000a4 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2b8bd8f8 00000000`2c0a5940 00000000`1ffa1880 00000000`000000a4 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`0000001a 00000000`2bfff5e0 00000000`2d60d7c0 00000000`000000a4 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2b816500 00000000`292a1dc0 00000000`2b8bd480 00000000`2d60d7c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2bfff5e0 00000000`2d60d7c0 00000000`2b8bd530 00000000`00000002 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`2d6044f0 00000000`2bfff160 00000000`2bfff5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2b897e80 00000000`1ffa1880 00000000`2d60d7c0 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ec2586`0000ef81 00000000`00bae330 00000000`1ffa1880 00000000`2bfff5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`28be6cb8 00000000`2bfff6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`2e1d7e50 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`28be6cb0 00000000`28be6cb0 00000000`2bfffa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`2bfff750 00007ffa`56f17970 0000501d`f7814acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`001bd720 00000000`2253ad38 00000000`0000003c : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`2253ad38 00000000`2bfff8e8 00000000`22530888 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`23de08a8 00000000`2bfffa20 00000000`0000003c 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`23de0040 00000000`23dec540 00000000`23dec540 00000000`23dec540 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`23de0040 00000000`23de0040 00000000`00000000 00000000`23de0040 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059ca100 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`2749ff10 00000000`059ca100 00000000`00000000 00000000`059ca100 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059ca100 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  30  Id: 4794.4570 Suspend: 0 Teb: 00000000`003a9000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000001 00000000`00000000 00000000`27498ff0 00000000`27496540 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`2cbafe50 00000000`00000000 00000000`00000000 00000000`000003c0 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`27498ff0 00000000`27496540 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`059cded0 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`27496c00 00000000`059cded0 00000000`00000000 00000000`059cded0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059cded0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  31  Id: 4794.240c Suspend: 0 Teb: 00000000`003ad000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`00000001 00000000`00000000 00000000`001b8b40 00000000`25d457b0 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`2df8fe50 00000000`00000000 00000000`00000000 00000000`000009ec : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`001b8b40 00000000`25d457b0 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`05961b40 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`2749c3a0 00000000`05961b40 00000000`00000000 00000000`05961b40 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`05961b40 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  32  Id: 4794.7d60 Suspend: 0 Teb: 00000000`003af000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2fdc667     : 00000000`1ec532c0 00000000`2f06f5e0 00000000`278efce0 00000000`26062f10 : engine12!Jrd::Compressor::unpack+0xbe
+00007ff9`d2fe478f     : 00000000`00000000 00000000`22848b90 00000000`2f060003 00000000`1ec532c0 : engine12!VIO_data+0xd7
+00007ff9`d2f37a38     : 00000000`1ec532c0 00000000`00000001 00000000`278ed210 00000000`2f06f5e0 : engine12!VIO_next_record+0x15f
+00007ff9`d2f35103     : 00000000`1edb75c0 00000000`2f06f5e0 00000000`2f06f5e0 00000000`00000000 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2fa5c980 00007ff9`d2dc5cd6 00000000`2f06f5e0 00000000`2f06f5e0 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f330f8     : 00000000`278ed0d0 00000000`1edb75c0 ffffffff`fffffffe 00000000`2f06f5e0 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2db510b     : 00000000`1edb75c0 00000000`278ed0d0 00000000`1edb75c0 00000000`2f06f5e0 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`2f06f5e0 00000000`26062f10 00000000`2558b140 00000000`27316990 : engine12!Jrd::CursorStmtNode::execute+0x7b
+00007ff9`d2e50602     : 00000000`2f06f5e0 00000000`1edb75c0 00000000`27316990 00000000`00000152 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2f06f5e0 00000000`1edb75c0 00000000`2fa5c980 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2fa5c980 00000000`2558b140 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`27291510 00000000`1edb75c0 00000000`2fa5c980 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000002a 00000000`2f06f5e0 00000000`1edb47c0 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`26062140 00000000`2558b140 00000000`27291180 00000000`1edb47c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2f06f5e0 00000000`1edb47c0 00000000`272911e0 00000000`00000135 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2f06f5e0 00000000`1edb47c0 00000000`2fa5c980 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2fa5c980 00000000`2558b140 00000000`00000001 00000000`00000002 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2e60d9e0 00000000`1edb47c0 00000000`2fa5c980 00000000`00000002 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`00000032 00000000`2f06f5e0 00000000`1ed4b7c0 00000000`00000002 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`2210f6a0 00000000`2558b140 00000000`2e604bb0 00000000`1ed4b7c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2f06f5e0 00000000`1ed4b7c0 00000000`2e60d720 00000000`00000109 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`20c91a90 00000000`2f06f5e0 00000000`2f06f5e0 21ecee94`0000ef81 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2e6171e0 00000000`2fa5c980 00000000`1ed4b7c0 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2e5205c     : 0000501d`7789f657 00000000`00000000 00000000`00000000 00000000`204324c0 : engine12!EXE_start+0x20e
+00007ff9`d2dcc5b3     : 00000000`2f06f5e0 00000000`00000000 00000000`200d8140 00000000`200d81d0 : engine12!EXE_execute_triggers+0x3bc
+00007ff9`d2dced06     : 00000000`2f06f5e0 00000000`00000000 ffffffff`fffffffe 00000000`200d8140 : engine12!Jrd::preModifyEraseTriggers+0xf3
+00007ff9`d2dd1811     : 00000000`2e58e478 00000000`2558b140 00000000`00000043 00000000`00000000 : engine12!Jrd::ModifyNode::modify+0x166
+00007ff9`d2e5031d     : 00000000`28e71a20 00000000`203f2280 00000000`203f2380 00000000`204324c0 : engine12!Jrd::ModifyNode::execute+0xd1
+00007ff9`d2e50602     : 00000000`2f06f5e0 00000000`204324c0 00000000`203f2280 00000000`00000043 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2f06f5e0 00000000`204324c0 00000000`2fa5c980 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2fa5c980 00000000`2558b140 00000000`00000001 00000000`0000009c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`200d2948 00000000`204324c0 00000000`2fa5c980 00000000`0000009c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000012 00000000`2f06f5e0 00000000`24e76fc0 00000000`0000009c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`28e703c0 00000000`2558b140 00000000`200d25d0 00000000`24e76fc0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`2f06f5e0 00000000`24e76fc0 00000000`200d2680 00000000`00000040 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`24e7cd70 00000000`2f06f160 00000000`2f06f5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`20431360 00000000`2fa5c980 00000000`24e76fc0 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ecee94`0000ef81 00000000`00bae330 00000000`2fa5c980 00000000`2f06f5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`2b5a58d8 00000000`2f06f6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`2c6bad80 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`2b5a58d0 00000000`2b5a58d0 00000000`2f06fa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`2f06f750 00007ffa`56f17970 0000501d`f3784acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`001bd0e0 00000000`22536ad8 00000000`00000034 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`22536ad8 00000000`2f06f8e8 00000000`22538a28 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`2ec65528 00000000`2f06fa20 00000000`00000034 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`2ec64cc0 00000000`28cca840 00000000`28cca840 00000000`28cca840 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`2ec64cc0 00000000`2ec64cc0 00000000`00000000 00000000`2ec64cc0 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`05952cf0 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`21c1d3c0 00000000`05952cf0 00000000`00000000 00000000`05952cf0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`05952cf0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  33  Id: 4794.7de4 Suspend: 0 Teb: 00000000`003b3000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2e0d2e0     : 00000000`00000000 00000001`0000090b 00000000`2eadf160 00000000`00000007 : engine12!CCH_fetch_lock+0xd4
+00007ff9`d2ce0e67     : 00000000`26d08b90 00000000`00000007 00000000`2eadf0f0 00000000`0000002b : engine12!CCH_fetch+0x50
+00007ff9`d2fe46a2     : 00000000`00000000 00000000`26d08b90 00000000`2e490003 00000000`00000000 : engine12!DPM_next+0x1c7
+00007ff9`d2f37a38     : 00000000`2eadf0f0 00000000`00000001 00000000`2e49f7a0 00000000`3034df60 : engine12!VIO_next_record+0x72
+00007ff9`d2f35103     : 00000000`21da5ec0 00000000`3034df60 00000000`3034df60 00000000`00000000 : engine12!Jrd::FullTableScan::getRecord+0x78
+00007ff9`d2f35456     : 00000000`2e49f300 00000000`00000000 00000000`3034df60 00000000`00000001 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f35103     : 00000000`21da5ec0 00000000`3034df60 00000000`00000000 00007ff9`00000000 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f35456     : 00000000`2e49fd18 00000000`21da5ec0 00000000`3034df60 00000000`3034d750 : engine12!Jrd::FilteredStream::evaluateBoolean+0x303
+00007ff9`d2f483f9     : 00000000`2e49fd18 00000000`2e49fee0 00000000`3034d750 00000000`3034d738 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`2b7eff38 00000000`2e49fee0 00000000`2e49fee0 00000000`2e072900 : engine12!Jrd::SortedStream::init+0x2a9
+00007ff9`d2d22dca     : 00000000`21da5ec0 00000000`24b64130 00000000`24b64130 00007ff9`d2f3c0de : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2f350e3     : 00000000`24b64130 00000000`21da5ec0 00000000`00000001 00000000`3034df60 : engine12!Jrd::RseBoolNode::execute+0x9a
+00007ff9`d2f35456     : 00000000`00000000 00000000`2262f1c0 00000000`3034df60 00000000`3034df60 : engine12!Jrd::FilteredStream::evaluateBoolean+0x2e3
+00007ff9`d2f2e615     : 00000000`2262f2f8 00000000`21da5ec0 00000000`2cfc3718 00000000`2cfc3480 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f2eb4d     : 00000000`2262fb40 00000000`3034df60 0000501d`68bbca47 00000000`21da5ec0 : engine12!Jrd::AggregatedStream::evaluateGroup+0xe5
+00007ff9`d2f330f8     : 00000000`21da5ec0 00000000`24b64960 00000000`2eadef40 00000000`2e07ef80 : engine12!Jrd::AggregatedStream::getRecord+0x2bd
+00007ff9`d2dbd572     : 00000000`2f4ae700 00000000`00000000 00000000`00000000 00000000`2262ec00 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`2a10c730 00000000`228d7640 00000000`2262ec00 00007ff9`d306d5f7 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`3034df60 00000000`21da5ec0 00000000`2262ec00 00000000`0000016c : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 0000501d`68bbca87 00000000`00000000 00000000`00000000 00000000`20c80788 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`3034df60 00000000`3034dd79 00000000`00000001 00000000`00000010 : engine12!execute_looper+0xa6
+00007ff9`d2eaab14     : 00000000`3034dd50 00000000`21da5ec0 000000ff`9f4983b7 ffffffff`00000010 : engine12!EXE_receive+0x115
+00007ff9`d2d38c79     : 00000000`24b64320 00007ff9`d3043d09 00000000`31510070 00007ff9`d3042399 : engine12!JRD_receive+0x24
+00007ff9`d2d3f768     : 00000000`3034f5e0 00000000`00a7d948 00000000`3034e1f0 00000000`24b64b60 : engine12!Jrd::DsqlDmlRequest::fetch+0x2a9
+00007ff9`d2ec3c87     : 00000000`231877e0 00000000`231877e0 00000000`3034f5e0 00000000`3034f5e0 : engine12!Jrd::DsqlCursor::fetchNext+0x18
+00007ff9`d2e67bb7     : 00000000`3034e130 00000000`2ce2eef0 00000000`2ce2ef38 00000000`00a7d6c0 : engine12!Jrd::JResultSet::fetchNext+0x187
+00007ff9`d2e6223d     : 00007ff9`d31030a0 00007ff9`d337a0a0 00000000`00a7d6c0 00000000`26c61da0 : engine12!EDS::InternalStatement::doFetch+0xb7
+00007ff9`d2dcdcab     : 00000000`25dfa9b0 00000000`3034e4b0 00000000`00a7d6c0 00000000`2c0b0ca0 : engine12!EDS::Statement::fetch+0xdd
+00007ff9`d2e5031d     : 00000000`26c61da0 00000000`228d7640 00000000`25dfa910 00000000`26c61da0 : engine12!Jrd::ExecStatementNode::execute+0x35b
+00007ff9`d2e50602     : 00000000`3034f5e0 00000000`26afa1c0 00000000`25dfa9b0 00000000`00000122 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`2f4aea30 00007ff9`d2e4e7d1 00000000`21da1dc0 00000000`00000010 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`26afa1c0 00000000`3034f5e0 00000000`00000001 00000000`0000000c : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`26afa1c0 00000000`26afa1c0 00000000`00000001 00000000`0000000c : engine12!EXE_receive+0x115
+00007ff9`d2f330f8     : 00000000`20c9efc0 00000000`3034f5e0 00000000`25f5c280 00000000`2260ec40 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2db510b     : 00000000`2260ec40 00000000`25f5c280 00000000`00000000 00000000`3034f5e0 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`3034f5e0 00000000`31ba7a50 00000000`228d7640 00000000`25f3d130 : engine12!Jrd::CursorStmtNode::execute+0x7b
+00007ff9`d2e50602     : 00000000`3034f5e0 00000000`2260ec40 00000000`25f3d130 00000000`000000bc : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`3034f5e0 00000000`2260ec40 00000000`2f4ae700 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2f4ae700 00000000`228d7640 00000000`00000001 00000000`00000014 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`2ead52d0 00000000`2260ec40 00000000`2f4ae700 00000000`00000014 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`0000001a 00000000`3034f5e0 00000000`2ead5e40 00000000`00000014 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`20c9efc0 00000000`228d7640 00000000`2e49e880 00000000`2ead5e40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`3034f5e0 00000000`2ead5e40 00000000`2ead4fa0 00000000`00000043 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`3034f5e0 00000000`2ead5e40 00000000`2f4ae700 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`2f4ae700 00000000`228d7640 00000000`00000001 00000000`0000008c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`24216a50 00000000`2ead5e40 00000000`2f4ae700 00000000`0000008c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`00000016 00000000`3034f5e0 00000000`2421f7c0 00000000`0000008c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`32b1b550 00000000`228d7640 00000000`24216670 00000000`2421f7c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`3034f5e0 00000000`2421f7c0 00000000`24216720 00000000`00000040 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`21c522f0 00000000`3034f160 00000000`3034f5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`2262b340 00000000`2f4ae700 00000000`2421f7c0 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ecda76`0000ef81 00000000`00bae330 00000000`2f4ae700 00000000`3034f5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`2f0dfb18 00000000`3034f6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`3124a5f0 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`2f0dfb10 00000000`2f0dfb10 00000000`3034fa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`3034f750 00007ffa`56f17970 0000501d`ec4a4acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`21c19f60 00000000`2253af18 00000000`00000030 : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`2253af18 00000000`3034f8e8 00000000`22534148 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`2c7a5f28 00000000`3034fa20 00000000`00000030 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`2c7a56c0 00000000`2b3c1040 00000000`2b3c1040 00000000`2b3c1040 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`2c7a56c0 00000000`2c7a56c0 00000000`00000000 00000000`2c7a56c0 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`059615e0 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`25d47c80 00000000`059615e0 00000000`00000000 00000000`059615e0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`059615e0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  34  Id: 4794.c8c4 Suspend: 0 Teb: 00000000`003b7000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ff9`d2cb9f48     : 00000000`310bf5e0 00000000`310bf5e0 00000000`2342e400 00000000`230ef700 : engine12!Jrd::VariableNode::execute+0x68
+00007ff9`d2d25e29     : 00000000`234340c0 00000000`00000000 0000501d`6984f2f7 00000000`00000000 : engine12!Jrd::EVL_expr+0x68
+00007ff9`d2d1faaa     : 00000000`2343d100 00000000`234340c0 00000000`00000000 00000000`00000000 : engine12!Jrd::ComparativeBoolNode::execute+0x159
+00007ff9`d2d1faaa     : 00000000`234340c0 00000000`2342e550 00000000`310bf5e0 00007ff9`d2f37a38 : engine12!Jrd::BinaryBoolNode::executeAnd+0x2a
+00007ff9`d2d1faaa     : 00000000`234340c0 00000000`23440740 00000000`310bf5e0 00000000`00000000 : engine12!Jrd::BinaryBoolNode::executeAnd+0x2a
+00007ff9`d2f350e3     : 00000000`234340c0 00000000`00000001 00000000`310bf5e0 00007ff9`d2e4bbd0 : engine12!Jrd::BinaryBoolNode::executeAnd+0x2a
+00007ff9`d2f35456     : 00000000`23440dc8 00000000`00000000 00000000`310bf5e0 00000000`310be360 : engine12!Jrd::FilteredStream::evaluateBoolean+0x2e3
+00007ff9`d2f483f9     : 00000000`23440dc8 00000000`234b00e0 00000000`00a5fff0 00000000`00000008 : engine12!Jrd::FilteredStream::getRecord+0x46
+00007ff9`d2f486ba     : 00000000`2738fd98 00000000`234b00e0 00000000`234b00e0 00000000`26d21fa0 : engine12!Jrd::SortedStream::init+0x2a9
+00007ff9`d2db522f     : 00000000`234340c0 00000000`2342dcd0 00000000`310bf5e0 00000000`00000000 : engine12!Jrd::SortedStream::open+0x5a
+00007ff9`d2e5031d     : 00000000`2f36adf0 00000000`2f36adf0 00000000`2a36b140 00000000`231dd940 : engine12!Jrd::CursorStmtNode::execute+0x19f
+00007ff9`d2e50602     : 00000000`310bf5e0 00000000`234340c0 00000000`231dd940 00000000`00000801 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`310bf5e0 00000000`234340c0 00000000`23143600 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`23143600 00000000`2a36b140 00000000`00000001 00000000`0000000c : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`230c9848 00000000`234340c0 00000000`23143600 00000000`0000000c : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00000000`00000052 00000000`310bf5e0 00000000`217282c0 00000000`0000000c : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`28ae70b0 00000000`2a36b140 00000000`230c92f0 00000000`217282c0 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`310bf5e0 00000000`217282c0 00000000`230c9350 00000000`00000793 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`23143930 00007ff9`d2e4e7d1 00000000`238e63f0 00000000`00000060 : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`217282c0 00000000`310bf5e0 00000000`00000001 00000000`0000009c : engine12!execute_looper+0xa6
+00007ff9`d2f42d1b     : 00000000`217282c0 00000000`217282c0 00000000`238e5940 00000000`0000009c : engine12!EXE_receive+0x115
+00007ff9`d2f2e615     : 00000000`2189ca50 00000000`00000792 00000000`2189ca58 00000000`238e5940 : engine12!Jrd::ProcedureScan::getRecord+0x10b
+00007ff9`d2f2eb4d     : 00000000`234adb00 00000000`310bf5e0 00000000`21cc3590 00000000`238e5940 : engine12!Jrd::AggregatedStream::evaluateGroup+0xe5
+00007ff9`d2f46b47     : 00000000`238e5940 00007ff9`d2cb9f00 00000000`238e6360 00000000`310bf5e0 : engine12!Jrd::AggregatedStream::getRecord+0x2bd
+00007ff9`d2f330f8     : 00000000`234ac4e0 00007ff9`d2f2db7f 00000000`262ce500 00000000`310bf5e0 : engine12!Jrd::SingularStream::getRecord+0x47
+00007ff9`d2dbd572     : 00000000`23143600 00000000`00000000 00000000`23143600 00000000`2189ba70 : engine12!Jrd::Cursor::fetchNext+0xd8
+00007ff9`d2e5031d     : 00000000`217c7230 00000000`2a36b140 00000000`2189ba70 00000000`238e5940 : engine12!Jrd::ForNode::execute+0x152
+00007ff9`d2e50602     : 00000000`310bf5e0 00000000`238e5940 00000000`2189ba70 00000000`00000053 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`310bf5e0 00000000`238e5940 00000000`23143600 00007ff9`d2e5084b : engine12!looper_seh+0x32
+00007ff9`d2e51055     : 00000000`23143600 00000000`2a36b140 00000000`00000001 00000000`000000a4 : engine12!execute_looper+0xa6
+00007ff9`d2ddcf5e     : 00000000`211a6678 00000000`238e5940 00000000`23143600 00000000`000000a4 : engine12!EXE_receive+0x115
+00007ff9`d2ddd05f     : 00007ff9`0000001a 00000000`310bf5e0 00000000`2144fb40 00000000`000000a4 : engine12!Jrd::ExecProcedureNode::executeProcedure+0x2fe
+00007ff9`d2e5031d     : 00000000`262ce500 00000000`2a36b140 00000000`211a6200 00000000`2144fb40 : engine12!Jrd::ExecProcedureNode::execute+0x1f
+00007ff9`d2e50602     : 00000000`310bf5e0 00000000`2144fb40 00000000`211a62b0 00000000`00000050 : engine12!EXE_looper+0x1dd
+00007ff9`d2e50806     : 00000000`00000001 00000000`211900f0 00000000`310bf160 00000000`310bf5e0 : engine12!looper_seh+0x32
+00007ff9`d2e50e8e     : 00000000`234b2200 00000000`23143600 00000000`2144fb40 00000000`00000000 : engine12!execute_looper+0xa6
+00007ff9`d2eaabcb     : 21ebd3c4`0000ef81 00000000`00bae330 00000000`23143600 00000000`310bf5e0 : engine12!EXE_start+0x20e
+00007ff9`d2d37d2b     : 00000000`00000000 00000000`20c84108 00000000`310bf6a0 00000001`00000002 : engine12!JRD_start+0x2b
+00007ff9`d2d2b12b     : 00000000`262cd240 00007ff9`d2e61545 00007ff9`d315acc0 00007ff9`d3042326 : engine12!Jrd::DsqlDmlRequest::execute+0x19b
+00007ff9`d2eceefa     : 00000000`20c84100 00000000`20c84100 00000000`310bfa20 00000000`00000000 : engine12!DSQL_execute+0x38b
+00007ff9`d2ecfc06     : 00000000`310bf750 00007ffa`56f17970 0000501d`ed754acd 00000000`00000000 : engine12!Jrd::JStatement::execute+0x10a
+00007ffa`56df7f42     : 00000000`00000000 00000000`001bd200 00000000`2253c1b8 00000000`0000003c : engine12!Firebird::IStatementBaseImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00007ffa`56df84d6     : 00000000`2253c1b8 00000000`310bf8e8 00000000`0019f038 00007ffa`56de54af : fbclient!Why::YStatement::execute+0xc2
+00000001`4002c4b9     : 00000000`1f83c9a8 00000000`310bfa20 00000000`0000003c 00000000`00000000 : fbclient!Firebird::IStatementBaseImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YStatement,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IStatement> > > > >::cloopexecuteDispatcher+0xc6
+00000001`40038b49     : 00000000`1f83c140 00000000`23de5fc0 00000000`23de5fc0 00000000`23de5fc0 : firebird!rem_port::execute_statement+0x499
+00000001`4003916a     : 00000000`1f83c140 00000000`1f83c140 00000000`00000000 00000000`1f83c140 : firebird!process_packet+0x4c9
+00000001`4005f947     : 00000000`0595bdb0 00000000`00000000 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x1aa
+00000000`703d1d9f     : 00000000`001bb9f0 00000000`0595bdb0 00000000`00000000 00000000`0595bdb0 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`0595bdb0 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+
+  35  Id: 4794.1268 Suspend: 0 Teb: 00000000`003bb000 Unfrozen
+RetAddr               : Args to Child                                                           : Call Site
+00007ffa`f664be9f     : 00000000`21c1b950 00000000`21c1b940 00000001`400e5bf0 00000000`21c165c0 : ntdll!NtWaitForSingleObject+0x14
+00000001`4005fd51     : 00000000`3255fe50 00000000`21c1b940 00000000`00000000 00000000`00000b48 : KERNELBASE!WaitForSingleObjectEx+0xaf
+00000001`4001c8a3     : 00000000`00000000 00000001`4001c972 00000000`21c1b950 00000000`21c1b940 : firebird!Firebird::Semaphore::tryEnter+0x21
+00000001`40039470     : 00000000`001b0440 00000000`00000000 00000000`00000000 00000000`00000000 : firebird!Worker::wait+0x23
+00000001`4005f947     : 00000000`05a07590 00000000`001b04c0 00000000`001b04c0 00000000`00000000 : firebird!loopThread+0x4b0
+00000000`703d1d9f     : 00000000`25d48f50 00000000`05a07590 00000000`00000000 00000000`05a07590 : firebird!threadStart+0x67
+00000000`703d1e3b     : 00000000`70462ac0 00000000`05a07590 00000000`00000000 00000000`00000000 : msvcr100!_callthreadstartex+0x17
+00007ffa`f801cd87     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : msvcr100!_threadstartex+0x7f
+00007ffa`f8dccaec     : 00000000`00000000 00000000`00000000 000004f0`fffffb30 000004d0`fffffb30 : kernel32!BaseThreadInitThunk+0x17
+00000000`00000000     : 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000 : ntdll!RtlUserThreadStart+0x2c
+Closing open log file E:\Projects_2026\fb3-lockmgr-crash\evidence\windbg_analyze_hq3015_d160_2026-09-30_17-12-35-521.txt

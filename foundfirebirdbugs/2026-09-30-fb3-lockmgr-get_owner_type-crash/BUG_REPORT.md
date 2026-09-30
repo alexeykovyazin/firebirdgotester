@@ -83,53 +83,59 @@ EX_SNAPSHOT_ISOLATION_REQUIRED) классифицируются коррект�
 
 ```
 ExceptionCode   : 0xC0000005 (ACCESS_VIOLATION)
-ExceptionAddress: ntdll.dll (fast-fail/terminate path after the engine AV)
+ExceptionAddress: ntdll!RtlpEnterCriticalSectionContended+0x381
+                 (AV while entering a corrupted critical section)
 ThreadID        : 57272
 ```
 
-Символизированный стек падающего потока (B'; сырой скан стека, порядок —
-расположение на стеке; полный список из 60 адресов —
-`evidence/crash_stack_symbolized_hq3015.txt`, анализ дампа —
-`evidence/crash_dump_hq3015.txt`):
+**Стек падающего потока — WinDbg `!analyze -v` / `~*kb`**
+(`evidence/windbg_analyze_hq3015.txt`; символы — `engine12.pdb` HQbird;
+полный лог 142 КБ, здесь — STACK_TEXT):
 
 ```
-Firebird::MemPool::releaseBlock            <- crash site (AV inside pool release)
-Firebird::MemPool::alloc / allocate / allocate2 / Firebird::MemoryPool::calloc
-Firebird::FreeObjects<LinkedList,LowLimits>::allocateBlock
-Jrd::vec<Lock *>::newVector
-hash_allocate
-hash_get_lock
-hash_remove_lock
-internal_dequeue
-LCK_release
-TRA_release_transaction
-purge_transactions
-purge_attachment
-Jrd::JAttachment::freeEngineData
-Jrd::JAttachment::cancelOperation
-Jrd::TipCache::setState / TRA_set_state / TRA_prepare
-Jrd::jrd_rel::delPages / write_page / Jrd::BufferDesc::unLockIO
-EXE_execute_db_triggers
-Firebird::ThreadSync::getThread / Jrd::thread_db::thread_db
+ntdll!RtlpEnterCriticalSectionContended+0x381          <- AV: повреждённая критическая секция
+ntdll!RtlEnterCriticalSection+0xf2
+engine12!Firebird::MemPool::alloc+0x43
+engine12!Firebird::MemPool::allocate2+0x32
+engine12!Firebird::MemPool::allocate+0x19
+engine12!Firebird::MemoryPool::calloc+0x12
+engine12!Jrd::vec<Jrd::Lock *>::newVector+0x2d
+engine12!hash_allocate+0x26
+engine12!hash_get_lock+0x4a
+engine12!hash_remove_lock+0x21
+engine12!internal_dequeue+0x52
+engine12!LCK_release+0x32
+engine12!TRA_release_transaction+0x227
+engine12!purge_transactions+0x93
+engine12!purge_attachment+0x3a7
+engine12!Jrd::JAttachment::freeEngineData+0x208
+engine12!Jrd::JAttachment::detach+0x17
+engine12!Firebird::IAttachmentBaseImpl<...>::cloopdetachDispatcher+0x9f
+fbclient!Why::YAttachment::detach+0xb0
+firebird!rem_port::disconnect+0x32c
+firebird!process_packet+0x210
+firebird!loopThread+0x1aa
+firebird!threadStart+0x67
+msvcr100!_threadstartex / kernel32!BaseThreadInitThunk
 ```
 
-Читается так: при снятии лока (`LCK_release → internal_dequeue →
-hash_remove_lock`) lock-хеш перевыделяет вектор (`hash_allocate →
-vec<Lock*>::newVector → MemPool::alloc`), и падает `MemPool::releaseBlock` —
-повреждение lock-менеджера/пула памяти; вокруг — разборка транзакций и
-аттачмента (`TRA_release_transaction`, `purge_transactions`,
-`purge_attachment`, `freeEngineData`), а также 2PC-путь (`TRA_prepare`,
-`TipCache::setState`). Это согласуется с предсмертными записями сервера
-`DEBUG_LCK_LIST: found not detached lock ... in deleting pool`.
+`!analyze -v` сам назначает `SYMBOL_NAME: engine12!Firebird::MemPool::alloc+43`,
+`MODULE_NAME: engine12`.
 
-Установка B (3.0.13, только адреса): кластер возвратов
-`engine12.dll+0x18c4xx…0x18f2xx` — та же lock-область; сырой скан в
-`evidence/crash_dump_analysis.txt`.
+Читается так: клиент отключается (`rem_port::disconnect → YAttachment::detach
+→ freeEngineData → purge_attachment → purge_transactions →
+TRA_release_transaction → LCK_release`); при снятии лока хеш решает
+перевыделить вектор (`hash_get_lock → hash_allocate → vec<Lock*>::newVector
+→ MemoryPool::calloc → MemPool::alloc`) и падает **вход в критическую секцию
+аллокатора** — её структура повреждена. Это согласуется и с предсмертными
+записями `DEBUG_LCK_LIST: found not detached lock ... in deleting pool`, и с
+«Invalid lock type in get_owner_type()»: повреждение структур lock-менеджера.
 
-В момент снятия дампов procdump фиксирует серию first-chance
-`E06D7363 (AVStatus_exception@Firebird)` (C++ статусы Firebird),
-завершающуюся необработанным AV — фатальный путь
-«Invalid lock type in get_owner_type()» проливается через status_exception.
+Дополнительное подтверждение — независимый сырой скан стека того же дампа
+(`evidence/crash_stack_symbolized_hq3015.txt`, 60 адресов через
+dbghelp/SymFromAddrW) и скан дампа plain 3.0.13
+(`evidence/crash_dump_analysis.txt`, кластер lock-области
+`engine12.dll+0x18c4xx…0x18f2xx`).
 
 Условия для стеков с именами: нужны PDB — HQbird поставляет их в комплекте
 (`C:\HQbird\Firebird30\plugins\engine12.pdb`); plain-дистрибутив Firebird 3.0
@@ -214,7 +220,8 @@ reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\fire
 |---|---|
 | `dumps/firebird.exe_260930_154838.dmp` | полный дамп (661 МБ), HQbird 3.0.15, AV; **в репозиторий не включён** (размер), по запросу |
 | `dumps/firebird.exe_260930_141400.dmp` | полный дамп (259 МБ), plain 3.0.13, AV; не включён, по запросу |
-| `evidence/crash_stack_symbolized_hq3015.txt` | символизированный стек падающего потока (по `engine12.pdb` HQbird) |
+| `evidence/windbg_analyze_hq3015.txt` | полный лог WinDbg (cdb): `!analyze -v` + `~*kb` с символами HQbird PDB |
+| `evidence/crash_stack_symbolized_hq3015.txt` | независимый символизированный скан стека (dbghelp/SymFromAddrW) |
 | `evidence/crash_dump_hq3015.txt` | контекст исключения, регистры, скан стека — HQbird 3.0.15 |
 | `evidence/crash_dump_analysis.txt` | контекст исключения, регистры, скан стека — plain 3.0.13 |
 | `evidence/hqbird_fb3_firebird.log` | firebird.log сервисной установки: 4 × `Fatal lock interface error` в окне прогона |
