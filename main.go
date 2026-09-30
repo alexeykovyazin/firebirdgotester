@@ -27,6 +27,7 @@ import (
 	"fb-loadgen/ramp"
 	"fb-loadgen/schedule"
 	"fb-loadgen/session"
+	"fb-loadgen/summary"
 	"fb-loadgen/ui"
 	"fb-loadgen/worker"
 )
@@ -460,8 +461,9 @@ func runCLI(cfg *config.Config) {
 		log.Fatalf("Failed to start scheduler: %v", err)
 	}
 
+	var emulState *emul.EmulState
 	if emulDB != nil {
-		startEmulSidecars(ctx, cfg, scheduler, workerMetrics, emulDB)
+		emulState = startEmulSidecars(ctx, cfg, scheduler, workerMetrics, emulDB)
 	}
 
 	fmt.Println("Load tester started. Press Ctrl+C to stop.")
@@ -521,6 +523,17 @@ func runCLI(cfg *config.Config) {
 	finalReport := reporter.ReportFinal()
 	fmt.Print(finalReport)
 
+	// Detailed final summary (FOLLOWUP_PLAN_2026-09-29): in-memory reads
+	// only, safe to render right after the scheduler drain.
+	summaryText := (&summary.Builder{
+		Collector: metricsCollector,
+		Sched:     scheduler,
+		WM:        workerMetrics,
+		Emul:      emulState,
+		Cfg:       cfg,
+	}).Build().Text()
+	fmt.Print(summaryText)
+
 	if cfg.CSV != "" {
 		baseFilename := cfg.CSV
 		if len(baseFilename) > 4 && baseFilename[len(baseFilename)-4:] == ".txt" {
@@ -529,6 +542,12 @@ func runCLI(cfg *config.Config) {
 		fmt.Printf("Generating detailed reports to %s_*.txt...\n", baseFilename)
 		if err := reporter.ReportAllToFile(baseFilename); err != nil {
 			log.Printf("Error generating detailed reports: %v", err)
+		}
+		summaryFile := baseFilename + "_final_summary.txt"
+		if werr := os.WriteFile(summaryFile, []byte(summaryText), 0644); werr != nil {
+			log.Printf("Error writing final summary: %v", werr)
+		} else {
+			fmt.Printf("Final summary written to %s\n", summaryFile)
 		}
 	}
 
