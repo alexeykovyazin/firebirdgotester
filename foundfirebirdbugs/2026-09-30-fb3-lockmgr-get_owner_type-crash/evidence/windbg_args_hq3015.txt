@@ -1,0 +1,157 @@
+Opened log file 'E:\Projects_2026\fb3-lockmgr-crash\evidence\windbg_args_hq3015_0ff4_2026-09-30_17-28-29-772.txt'
+Symbol options are 0xB0337:
+  0x00000001 - SYMOPT_CASE_INSENSITIVE
+  0x00000002 - SYMOPT_UNDNAME
+  0x00000004 - SYMOPT_DEFERRED_LOADS
+  0x00000010 - SYMOPT_LOAD_LINES
+  0x00000020 - SYMOPT_OMAP_FIND_NEAREST
+  0x00000100 - SYMOPT_NO_UNQUALIFIED_LOADS
+  0x00000200 - SYMOPT_FAIL_CRITICAL_ERRORS
+  0x00010000 - SYMOPT_AUTO_PUBLICS
+  0x00020000 - SYMOPT_NO_IMAGE_SEARCH
+  0x00080000 - SYMOPT_NO_PROMPTS
+Line number information will not be loaded
+Child-SP          RetAddr               Call Site
+00000000`2599eb40 00007ffa`f8d328e2     ntdll!RtlpEnterCriticalSectionContended+0x381
+00000000`2599ebc0 00007ff9`d3043b83     ntdll!RtlEnterCriticalSection+0xf2
+00000000`2599ec00 00007ff9`d3043d52     engine12!Firebird::MemPool::alloc(
+			unsigned int64 from = 0, 
+			unsigned int64 * length = 0xffffffff`ffffff01, 
+			bool flagRedirect = true)+0x43
+00000000`2599ec60 00007ff9`d3043d99     engine12!Firebird::MemPool::allocate2(
+			unsigned int64 from = 0x2a1c8ab0, 
+			unsigned int64 * size = 0x00000000`2b5a3970)+0x32
+00000000`2599ec90 00007ff9`d3043f92     engine12!Firebird::MemPool::allocate(
+			unsigned int64 size = 0x20)+0x19
+00000000`2599ecc0 00007ff9`d2edafbd     engine12!Firebird::MemoryPool::calloc(
+			unsigned int64 size = 0xffffffff`fffffffe)+0x12
+00000000`2599ecf0 00007ff9`d2edb036     engine12!Jrd::vec<Jrd::Lock * __ptr64>::newVector(
+			class Firebird::MemoryPool * p = 0x00000000`1edee058, 
+			int len = 0n0)+0x2d
+00000000`2599ed30 00007ff9`d2edb09a     engine12!hash_allocate(
+			class Jrd::Lock * lock = 0x00000000`00a723d8)+0x26
+00000000`2599ed60 00007ff9`d2edb201     engine12!hash_get_lock(
+			class Jrd::Lock * lock = 0x00000000`212dc000, 
+			unsigned short * hash_slot = 0x00000000`1edee048, 
+			class Jrd::Lock *** prior = 0x00000000`00000000)+0x4a
+00000000`2599ed90 00007ff9`d2edc862     engine12!hash_remove_lock(
+			class Jrd::Lock * lock = 0x00000000`2599ef00, 
+			class Jrd::Lock ** match = 0x00000000`1edee048)+0x21
+00000000`2599edc0 00007ff9`d2edcae2     engine12!internal_dequeue(
+			class Jrd::thread_db * tdbb = 0x00000000`1f797970, 
+			class Jrd::Lock * lock = 0x00000000`000000a9)+0x52
+00000000`2599ef00 00007ff9`d2fb7a27     engine12!LCK_release(
+			class Jrd::thread_db * tdbb = 0x00000000`316c8b80, 
+			class Jrd::Lock * lock = 0x00000000`25ca7700)+0x32
+00000000`2599ef30 00007ff9`d2eb9c93     engine12!TRA_release_transaction(
+			class Jrd::thread_db * tdbb = 0x00000000`2599f6e0, 
+			class Jrd::jrd_tra * transaction = 0x00000000`316c8b80, 
+			class Jrd::TraceTransactionEnd * trace = 0x00000000`00000000)+0x227
+00000000`2599ef80 00007ff9`d2eba157     engine12!purge_transactions(
+			class Jrd::thread_db * tdbb = 0x00000000`27414610, 
+			class Jrd::Attachment * attachment = 0x00000000`00000000, 
+			bool force_flag = true)+0x93
+00000000`2599f010 00007ff9`d2ebe588     engine12!purge_attachment(
+			class Jrd::thread_db * tdbb = 0x00000000`2f0d0bf0, 
+			class Jrd::StableAttachmentPart * sAtt = 0x00000000`2f0d0bf0, 
+			unsigned int flags = 0x22537470)+0x3a7
+00000000`2599f590 00007ff9`d2eca5c7     engine12!Jrd::JAttachment::freeEngineData(
+			class Firebird::CheckStatusWrapper * user_status = 0x00007ffa`56d63dc6, 
+			bool forceFree = true)+0x208
+00000000`2599f860 00007ff9`d2ecac3f     engine12!Jrd::JAttachment::detach(
+			class Firebird::CheckStatusWrapper * user_status = 0x00000000`225326a0)+0x17
+00000000`2599f890 00007ffa`56de0770     engine12!Firebird::IAttachmentBaseImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Jrd::JAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher(
+			class Firebird::IAttachment * self = 0x00000000`225374a8, 
+			class Firebird::IStatus * status = 0x00000000`22537478)+0x9f
+00000000`2599f8f0 00007ffa`56de56df     fbclient!Why::YAttachment::detach(
+			class Firebird::CheckStatusWrapper * status = 0x00000000`2599f978)+0xb0
+00000000`2599f950 00000001`4002a66c     fbclient!Firebird::IAttachmentBaseImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::IReferenceCountedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IVersionedImpl<Why::YAttachment,Firebird::CheckStatusWrapper,Firebird::Inherit<Firebird::IAttachment> > > > >::cloopdetachDispatcher(
+			class Firebird::IAttachment * self = 0x00000000`22537478, 
+			class Firebird::IStatus * status = 0x00000000`22537478)+0x9f
+00000000`2599f9b0 00000001`40038890     firebird!rem_port::disconnect(
+			struct packet * sendL = 0x00000000`20d1a840, 
+			struct packet * receiveL = 0x00000000`20d1a840)+0x32c
+00000000`2599fb30 00000001`4003916a     firebird!process_packet(
+			struct rem_port * port = 0x00000000`23deb540, 
+			struct packet * sendL = 0x00000000`23deb540, 
+			struct packet * receive = 0x00000000`00000000, 
+			struct rem_port ** result = 0x00000000`23deb540)+0x210
+00000000`2599fde0 00000001`4005f947     firebird!loopThread(
+			void * __formal = 0x00000000`059b1730)+0x1aa
+00000000`2599fec0 00000000`703d1d9f     firebird!threadStart(
+			void * arg = 0x00000000`001bcc70)+0x67
+00000000`2599ff00 00000000`703d1e3b     msvcr100!_callthreadstartex(void)+0x17
+00000000`2599ff30 00007ffa`f801cd87     msvcr100!_threadstartex(
+			void * ptd = 0x00000000`00010490)+0x7f
+00000000`2599ff60 00007ffa`f8dccaec     kernel32!BaseThreadInitThunk+0x17
+00000000`2599ff90 00000000`00000000     ntdll!RtlUserThreadStart+0x2c
+02 00000000`2599ec00 00007ff9`d3043d52     engine12!Firebird::MemPool::alloc+0x43
+class Firebird::MemPool * this = 0x00000000`2599ecc8
+unsigned int64 from = 0
+unsigned int64 * length = 0xffffffff`ffffff01
+bool flagRedirect = true
+class Firebird::EnsureUnlock<Firebird::Mutex,Firebird::NotRefCounted> guard = class Firebird::EnsureUnlock<Firebird::Mutex,Firebird::NotRefCounted>
+07 00000000`2599ed30 00007ff9`d2edb09a     engine12!hash_allocate+0x26
+class Jrd::Lock * lock = 0x00000000`00a723d8
+08 00000000`2599ed60 00007ff9`d2edb201     engine12!hash_get_lock+0x4a
+class Jrd::Lock * lock = 0x00000000`212dc000
+unsigned short * hash_slot = 0x00000000`1edee048
+class Jrd::Lock *** prior = 0x00000000`00000000
+09 00000000`2599ed90 00007ff9`d2edc862     engine12!hash_remove_lock+0x21
+class Jrd::Lock * lock = 0x00000000`2599ef00
+class Jrd::Lock ** match = 0x00000000`1edee048
+class Jrd::Lock ** prior = 0x00000000`2599ef00
+0a 00000000`2599edc0 00007ff9`d2edcae2     engine12!internal_dequeue+0x52
+class Jrd::thread_db * tdbb = 0x00000000`1f797970
+class Jrd::Lock * lock = 0x00000000`000000a9
+class Jrd::FbLocalStatus statusVector = class Jrd::FbLocalStatus
+class Jrd::Lock * match = 0x00007ff9`d31030a0
+0b 00000000`2599ef00 00007ff9`d2fb7a27     engine12!LCK_release+0x32
+class Jrd::thread_db * tdbb = 0x00000000`316c8b80
+class Jrd::Lock * lock = 0x00000000`25ca7700
+0c 00000000`2599ef30 00007ff9`d2eb9c93     engine12!TRA_release_transaction+0x227
+class Jrd::thread_db * tdbb = 0x00000000`2599f6e0
+class Jrd::jrd_tra * transaction = 0x00000000`316c8b80
+class Jrd::TraceTransactionEnd * trace = 0x00000000`00000000
+unsigned long temp_id = 0x2599f6e0
+0d 00000000`2599ef80 00007ff9`d2eba157     engine12!purge_transactions+0x93
+class Jrd::thread_db * tdbb = 0x00000000`27414610
+class Jrd::Attachment * attachment = 0x00000000`00000000
+bool force_flag = true
+class Jrd::TraceTransactionEnd trace = class Jrd::TraceTransactionEnd
+0e 00000000`2599f010 00007ff9`d2ebe588     engine12!purge_attachment+0x3a7
+class Jrd::thread_db * tdbb = 0x00000000`2f0d0bf0
+class Jrd::StableAttachmentPart * sAtt = 0x00000000`2f0d0bf0
+unsigned int flags = 0x22537470
+class Jrd::Attachment * attachment = 0x00000000`26173b40
+bool forcedPurge = false
+class Firebird::EnsureUnlock<Jrd::StableAttachmentPart::Sync,Firebird::NotRefCounted> asyncGuard = class Firebird::EnsureUnlock<Jrd::StableAttachmentPart::Sync,Firebird::NotRefCounted>
+class Firebird::RaiiUnlockGuard<Firebird::Mutex> coutBlocking = class Firebird::RaiiUnlockGuard<Firebird::Mutex>
+class Jrd::Database * dbb = 0x00000000`00c2cec0
+bool nocheckPurge = false
+class Jrd::StableAttachmentPart::Sync * attSync = 0x00000000`27414610
+class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync> cout = class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync>
+class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync> cout = class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync>
+class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync> cout = class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync>
+unsigned long save_flags = 0x20d1ad40
+class Jrd::jrd_tra * transaction = 0x00000001`40087e93
+class Jrd::ThreadStatusGuard temp_status = class Jrd::ThreadStatusGuard
+class Firebird::Exception * ex = 0x00000001`40099286
+class Firebird::StringBase<Firebird::StringComparator> s = class Firebird::StringBase<Firebird::StringComparator>
+class Jrd::TraceConnectionImpl conn = class Jrd::TraceConnectionImpl
+class Jrd::TraceStatusVectorImpl traceStatus = class Jrd::TraceStatusVectorImpl
+class Jrd::FbLocalStatus status = class Jrd::FbLocalStatus
+class Firebird::Exception * ex = 0x00000000`1dc4d008
+class Jrd::TraceConnectionImpl conn = class Jrd::TraceConnectionImpl
+class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync> cout = class Firebird::RaiiUnlockGuard<Jrd::StableAttachmentPart::Sync>
+0f 00000000`2599f590 00007ff9`d2eca5c7     engine12!Jrd::JAttachment::freeEngineData+0x208
+class Jrd::JAttachment * this = 0x00000000`2599fab0
+class Firebird::CheckStatusWrapper * user_status = 0x00007ffa`56d63dc6
+bool forceFree = true
+class `anonymous-namespace'::EngineContextHolder tdbb = class `anonymous-namespace'::EngineContextHolder
+class Firebird::Exception * ex = 0x00000000`27412e90
+class Firebird::Exception * ex = 0x00007ff9`d3157fc0
+10 00000000`2599f860 00007ff9`d2ecac3f     engine12!Jrd::JAttachment::detach+0x17
+class Jrd::JAttachment * this = 0xffffffff`fffffffe
+class Firebird::CheckStatusWrapper * user_status = 0x00000000`225326a0
+Closing open log file E:\Projects_2026\fb3-lockmgr-crash\evidence\windbg_args_hq3015_0ff4_2026-09-30_17-28-29-772.txt

@@ -122,6 +122,54 @@ msvcr100!_threadstartex / kernel32!BaseThreadInitThunk
 `!analyze -v` сам назначает `SYMBOL_NAME: engine12!Firebird::MemPool::alloc+43`,
 `MODULE_NAME: engine12`.
 
+### Аргументы и локалы фреймов (WinDbg `kP` + `dv /t`)
+
+Полный дамп: `evidence/windbg_args_hq3015.txt`. Ключевые значения:
+
+```
+engine12!Firebird::MemPool::alloc+0x43
+    this = 0x2599ecc8 (ВНУТРИ СТЕКА потока — повреждён/подменён this)
+    from = 0
+    length = 0xffffffff`ffffff01        (= −255: отрицательная длина аллокации!)
+    flagRedirect = true
+
+engine12!MemoryPool::calloc+0x12
+    size = 0xffffffff`fffffffe          (= −2)
+
+engine12!internal_dequeue+0x52
+    tdbb = 0x1f797970
+    lock = 0x00000000000000a9           (мусор, не указатель)
+    match = 0x7ff9d31030a0              (адрес внутри engine12 — vtable)
+
+engine12!hash_remove_lock+0x21
+    lock = 0x2599ef00                   (адрес ВНУТРИ СТЕКА потока!)
+    match = 0x1edee048
+    prior = 0x2599ef00
+
+engine12!hash_get_lock+0x4a
+    lock = 0x212dc000, hash_slot = 0x1edee048, prior = NULL
+
+engine12!LCK_release+0x32
+    tdbb = 0x316c8b80, lock = 0x25ca7700
+
+engine12!purge_attachment+0x3a7
+    tdbb = 0x2f0d0bf0, sAtt = 0x2f0d0bf0, dbb = 0x00c2cec0, forcedPurge = false
+
+engine12!Jrd::JAttachment::detach+0x17
+    user_status = 0x225326a0
+```
+
+**Вывод по значениям: классический use-after-free объекта `Lock`.**
+К моменту `internal_dequeue` указатель `lock` уже не указывает на объект
+(`0xa9`), в `hash_remove_lock` под видом `Lock*` лежит адрес стека потока,
+`MemPool::alloc` получает отрицательную длину. Тот же затёртый объект читает
+`get_owner_type()` — отсюда «Invalid lock type in get_owner_type()» и запись
+`DEBUG_LCK_LIST: found not detached lock in deleting pool`.
+
+Номеров строк исходников в PDB нет (release-сборка, line info отсутствует —
+WinDbg: «Line number information will not be loaded»); функции и
+аргументы/локалы — есть.
+
 Читается так: клиент отключается (`rem_port::disconnect → YAttachment::detach
 → freeEngineData → purge_attachment → purge_transactions →
 TRA_release_transaction → LCK_release`); при снятии лока хеш решает
