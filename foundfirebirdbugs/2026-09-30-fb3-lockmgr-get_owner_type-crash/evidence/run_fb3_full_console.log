@@ -1,0 +1,344 @@
+oltp-emul: 20 units loaded from business_ops
+SQL/command errors → reports/d6_fb3_full_sql_errors.log
+Operations log → reports/d6_fb3_full_ops.log
+Load tester started. Press Ctrl+C to stop.
+Profile: oltp-emul
+Connection: 127.0.0.1/3053:C:/temp/fb-d6/OLTPEMUL_FB3_D6.FDB
+Connection string: SYSDBA:***@127.0.0.1:3053/C:/temp/fb-d6/OLTPEMUL_FB3_D6.FDB
+Warmup: 30s, Main: 600s, Cooldown: 20s
+Connections: 2 → 20 (random walk in main)
+Status: Total: 57, Success: 68.4%, TPS: 5.7, Lat: avg=432ms min=50ms max=5s p50=500ms p95=2s p99=5s, Workers: 7/7, Conns: 7, Profile: oltp-emul
+Status: Total: 105, Success: 68.6%, TPS: 5.2, Lat: avg=1.003s min=50ms max=10s p50=500ms p95=5s p99=10s, Workers: 13/13, Conns: 13, Profile: oltp-emul
+Status: Total: 172, Success: 69.2%, TPS: 5.7, Lat: avg=1.636s min=50ms max=30s p50=1s p95=10s p99=30s, Workers: 19/19, Conns: 19, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 242, Success: 66.5%, TPS: 6.0, Lat: avg=2.094s min=50ms max=30s p50=1s p95=10s p99=30s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+Status: Total: 531, Success: 36.3%, TPS: 10.6, Lat: avg=1.484s min=50ms max=30s p50=500ms p95=10s p99=30s, Workers: 18/20, Conns: 18, Profile: oltp-emul
+[emul-mon] sampling stopped: driver: bad connection
+Status: Total: 609, Success: 39.9%, TPS: 10.1, Lat: avg=1.589s min=50ms max=30s p50=1s p95=10s p99=30s, Workers: 17/20, Conns: 16, Profile: oltp-emul
+[emul-inv] BeginTx failed, will keep retrying: read tcp 127.0.0.1:50804->127.0.0.1:3053: wsarecv: An existing connection was forcibly closed by the remote host.
+Failed to remove worker 26: worker 26 stop timed out
+Status: Total: 701, Success: 40.2%, TPS: 10.0, Lat: avg=1.661s min=50ms max=30s p50=1s p95=10s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Status: Total: 763, Success: 42.5%, TPS: 9.5, Lat: avg=1.701s min=50ms max=30s p50=1s p95=10s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Status: Total: 931, Success: 39.0%, TPS: 10.3, Lat: avg=1.528s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 991, Success: 41.1%, TPS: 9.9, Lat: avg=1.656s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 18/20, Conns: 18, Profile: oltp-emul
+Status: Total: 1054, Success: 42.7%, TPS: 9.6, Lat: avg=1.754s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+Status: Total: 1117, Success: 44.4%, TPS: 9.3, Lat: avg=1.808s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 15/20, Conns: 15, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 1176, Success: 45.0%, TPS: 9.0, Lat: avg=1.89s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 10/20, Conns: 10, Profile: oltp-emul
+Status: Total: 1231, Success: 45.8%, TPS: 8.8, Lat: avg=1.908s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Status: Total: 1299, Success: 46.4%, TPS: 8.7, Lat: avg=1.941s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 8/20, Conns: 8, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 1337, Success: 46.8%, TPS: 8.4, Lat: avg=1.969s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 11/20, Conns: 11, Profile: oltp-emul
+Status: Total: 1382, Success: 47.8%, TPS: 8.1, Lat: avg=1.985s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 12/20, Conns: 12, Profile: oltp-emul
+Status: Total: 1435, Success: 48.2%, TPS: 8.0, Lat: avg=2.025s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 1513, Success: 47.6%, TPS: 8.0, Lat: avg=2.069s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 15/20, Conns: 15, Profile: oltp-emul
+Status: Total: 1597, Success: 48.5%, TPS: 8.0, Lat: avg=2.018s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Status: Total: 1653, Success: 48.8%, TPS: 7.9, Lat: avg=2.084s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 11/20, Conns: 11, Profile: oltp-emul
+Status: Total: 1736, Success: 49.9%, TPS: 7.9, Lat: avg=2.03s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 7/20, Conns: 7, Profile: oltp-emul
+Status: Total: 1771, Success: 50.3%, TPS: 7.7, Lat: avg=2.053s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 8/20, Conns: 8, Profile: oltp-emul
+Status: Total: 1817, Success: 50.7%, TPS: 7.6, Lat: avg=2.042s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 10/20, Conns: 10, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 1889, Success: 50.9%, TPS: 7.6, Lat: avg=2.054s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 8/20, Conns: 8, Profile: oltp-emul
+Status: Total: 1946, Success: 51.2%, TPS: 7.5, Lat: avg=2.05s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 12/20, Conns: 12, Profile: oltp-emul
+Status: Total: 1998, Success: 51.7%, TPS: 7.4, Lat: avg=2.07s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 11/20, Conns: 11, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 2050, Success: 52.3%, TPS: 7.3, Lat: avg=2.076s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 13/20, Conns: 13, Profile: oltp-emul
+Status: Total: 2103, Success: 52.2%, TPS: 7.3, Lat: avg=2.126s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 13/20, Conns: 13, Profile: oltp-emul
+Status: Total: 2149, Success: 52.5%, TPS: 7.2, Lat: avg=2.166s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 2206, Success: 52.8%, TPS: 7.1, Lat: avg=2.191s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Status: Total: 2263, Success: 53.0%, TPS: 7.1, Lat: avg=2.238s min=25ms max=30s p50=1s p95=10s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Status: Total: 2315, Success: 53.3%, TPS: 7.0, Lat: avg=2.257s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 20/20, Conns: 20, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 2371, Success: 53.2%, TPS: 7.0, Lat: avg=2.324s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 2424, Success: 53.2%, TPS: 6.9, Lat: avg=2.375s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 2487, Success: 53.4%, TPS: 6.9, Lat: avg=2.416s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 2579, Success: 53.3%, TPS: 7.0, Lat: avg=2.423s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 18/20, Conns: 18, Profile: oltp-emul
+Status: Total: 2649, Success: 53.2%, TPS: 7.0, Lat: avg=2.444s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 18/20, Conns: 18, Profile: oltp-emul
+Status: Total: 2707, Success: 53.2%, TPS: 6.9, Lat: avg=2.481s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 18/20, Conns: 18, Profile: oltp-emul
+Status: Total: 2770, Success: 53.5%, TPS: 6.9, Lat: avg=2.488s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Status: Total: 2820, Success: 53.9%, TPS: 6.9, Lat: avg=2.496s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 2879, Success: 53.9%, TPS: 6.9, Lat: avg=2.544s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 20/20, Conns: 20, Profile: oltp-emul
+[emul-inv] failed (attempt 1 of 3, will retry): emul: invariant SRV_MAKE_MONEY_SALDO failed: firebirdsql: reading fetch response header: read tcp 127.0.0.1:58667->127.0.0.1:3053: wsarecv: An existing connection was forcibly closed by the remote host.
+driver: bad connection
+Status: Total: 3016, Success: 52.9%, TPS: 7.0, Lat: avg=2.495s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 20/20, Conns: 20, Profile: oltp-emul
+Failed to add worker: worker 168 failed to open database connection: failed to ping database: read tcp 127.0.0.1:58826->127.0.0.1:3053: wsarecv: An existing connection was forcibly closed by the remote host.
+Status: Total: 3097, Success: 52.9%, TPS: 7.0, Lat: avg=2.487s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Failed to remove worker 169: worker 169 stop timed out
+Status: Total: 3157, Success: 53.1%, TPS: 7.0, Lat: avg=2.501s min=25ms max=30s p50=2s p95=10s p99=30s, Workers: 17/20, Conns: 16, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 3206, Success: 53.1%, TPS: 7.0, Lat: avg=2.54s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 15/20, Conns: 15, Profile: oltp-emul
+Status: Total: 3243, Success: 53.3%, TPS: 6.9, Lat: avg=2.555s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 3299, Success: 53.3%, TPS: 6.9, Lat: avg=2.585s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 3358, Success: 53.6%, TPS: 6.9, Lat: avg=2.607s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 3426, Success: 53.5%, TPS: 6.9, Lat: avg=2.637s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 3484, Success: 53.6%, TPS: 6.8, Lat: avg=2.659s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 3538, Success: 53.7%, TPS: 6.8, Lat: avg=2.689s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 19/20, Conns: 19, Profile: oltp-emul
+Status: Total: 3595, Success: 53.6%, TPS: 6.8, Lat: avg=2.723s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Status: Total: 3759, Success: 52.5%, TPS: 7.0, Lat: avg=2.661s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Status: Total: 3881, Success: 51.7%, TPS: 7.1, Lat: avg=2.612s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Failed to remove worker 208: worker 208 stop timed out
+Status: Total: 3920, Success: 51.8%, TPS: 7.0, Lat: avg=2.62s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 15/20, Conns: 15, Profile: oltp-emul
+Status: Total: 3952, Success: 51.8%, TPS: 6.9, Lat: avg=2.666s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Failed to remove worker 211: worker 211 stop timed out
+[emul-inv] stock and money invariants OK
+Status: Total: 3995, Success: 51.9%, TPS: 6.9, Lat: avg=2.684s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+Status: Total: 4048, Success: 52.1%, TPS: 6.9, Lat: avg=2.693s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 11/20, Conns: 11, Profile: oltp-emul
+Status: Total: 4079, Success: 52.3%, TPS: 6.8, Lat: avg=2.709s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 12/20, Conns: 12, Profile: oltp-emul
+[emul-inv] failed (attempt 1 of 3, will retry): emul: invariant SRV_MAKE_MONEY_SALDO failed: firebirdsql: reading fetch response header: read tcp 127.0.0.1:53290->127.0.0.1:3053: wsarecv: An existing connection was forcibly closed by the remote host.
+driver: bad connection
+Status: Total: 4244, Success: 50.8%, TPS: 7.0, Lat: avg=2.636s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 14/20, Conns: 14, Profile: oltp-emul
+Status: Total: 4293, Success: 51.0%, TPS: 6.9, Lat: avg=2.646s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 16/20, Conns: 16, Profile: oltp-emul
+Status: Total: 4328, Success: 50.9%, TPS: 6.9, Lat: avg=2.678s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 15/20, Conns: 14, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Failed to remove worker 230: worker 230 stop timed out
+Status: Total: 4377, Success: 50.9%, TPS: 6.8, Lat: avg=2.699s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 6/20, Conns: 6, Profile: oltp-emul
+Status: Total: 4391, Success: 51.0%, TPS: 6.8, Lat: avg=2.696s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 0/20, Conns: 0, Profile: oltp-emul
+
+Scheduler completed all phases, initiating shutdown...
+Waiting for active operations to complete...
+[emul] final: score=208 ops/min ok=2241/4391 invariants=ok workingMode=
+[emul] memory peaks: db=350MB att=1MB trn=0MB stmt=0MB
+[extended] heavy rounds=9 (fail: 121), bulk ins/upd/del=1/0/0 rows=120 (fail: 20), ddl cols +/~/-=0/0/0 tables=0/0, limbo resolved=13
+[variants] snapshot/nowait                                attempts=529 ok=295
+[variants] RC/no_rec_version/nowait                       attempts=453 ok=1
+[variants] RC/rec_version/wait; lock_timeout=10           attempts=723 ok=426
+[variants] RC/rec_version/wait; lock_timeout=5            attempts=726 ok=420
+[variants] RC/rec_version/wait; lock_timeout=1            attempts=708 ok=423
+[variants] RC/rec_version/nowait                          attempts=518 ok=253
+[variants] RC/rec_version/wait; lock_timeout=3            attempts=734 ok=423
+[completions] rollback                                   attempts=418 ok=418
+[completions] commitRetaining                            attempts=144 ok=144
+[completions] rollbackRetaining                          attempts=63 ok=63
+[completions] connDrop                                   attempts=14 ok=14
+[completions] limbo                                      attempts=13 ok=13
+[completions] commit                                     attempts=1589 ok=1589
+Stopping scheduler...
+
+Generating final report...
+
+=== FINAL LOAD TEST REPORT ===
+
+Summary:
+Total: 4391, Success: 51.0%, TPS: 6.7, Lat: avg=2.696s min=25ms max=30s p50=2s p95=30s p99=30s, Workers: 0/20, Conns: 0, Profile: oltp-emul
+
+Operation Distribution:
+  sp_cancel_supplier_order: 52
+  sp_add_invoice_to_stock: 301
+  srv_make_money_saldo: 166
+  srv_make_invnt_saldo: 179
+  sp_reserve_write_off: 476
+  sp_customer_reserve: 123
+  srv_recalc_idx_stat: 529
+  sp_cancel_client_order: 166
+  sp_cancel_customer_reserve: 82
+  sp_cancel_adding_invoice: 64
+  sp_pay_from_customer: 395
+  srv_aggregate_perf_data: 36
+  sp_cancel_supplier_invoice: 46
+  sp_cancel_write_off: 95
+  sp_pay_to_supplier: 352
+  sp_client_order: 507
+  sp_supplier_invoice: 318
+  sp_supplier_order: 374
+  sp_cancel_pay_from_customer: 78
+  sp_cancel_pay_to_supplier: 52
+
+
+Error Distribution:
+  deadlock: 455
+  connection_error: 522
+  unknown_error: 1312
+
+
+Latency Distribution:
+  <5ms: 0 (0.0%)
+  <10ms: 0 (0.0%)
+  <25ms: 0 (0.0%)
+  <50ms: 5 (0.1%)
+  <100ms: 68 (1.5%)
+  <250ms: 529 (12.0%)
+  <500ms: 381 (8.7%)
+  <1000ms: 973 (22.2%)
+  <2000ms: 1332 (30.3%)
+  <5000ms: 610 (13.9%)
+  <10000ms: 250 (5.7%)
+  <30000ms: 243 (5.5%)
+  <60000ms: 0 (0.0%)
+  >=60000ms: 0 (0.0%)
+
+
+System Configuration:
+  Profile: oltp-emul
+  Scheduler: Phase: cooldown (100.0%), Workers: 0, Elapsed: 10m50.1438707s
+  Cache: 
+
+Test Duration: 10m52.1448635s
+=== FINAL DETAILED SUMMARY ===
+Generated: 2026-09-30T12:53:30+02:00  Version: -
+Config: dsn=SYSDBA:***@127.0.0.1:3053/C:/temp/fb-d6/OLTPEMUL_FB3_D6.FDB profile=oltp-emul conns=2..20 tx-timeout=10s extended=true noLimbo=false hardDrop=false(3000ms)
+
+Totals:
+  Elapsed: 10m52.152607s  Units: 4391 total, 2241 OK (51.0%), 2150 err  TPS: 6.7
+  Score (main phase): 208 ops/min
+
+Latency:
+  avg=2.696s min=25ms max=30s p50=2s p95=30s p99=30s
+  <50ms: 5
+  <100ms: 68
+  <250ms: 529
+  <500ms: 381
+  <1000ms: 973
+  <2000ms: 1332
+  <5000ms: 610
+  <10000ms: 250
+  <30000ms: 243
+
+Concurrency:
+  Workers cur/max: 0/20  Conns cur/min/max: 0/1/20  Pool rebuilds ok/failed: 0/0
+
+Phases (actual):
+  warmup   12:42:37 -> 12:43:08 (30.1432858s)
+  main     12:43:08 -> 12:53:08 (10m0.0000461s)
+  cooldown 12:53:08 -> 12:53:28 (20.0005388s)
+
+Teardown:
+  stopFailures=5 reaped=0 drain=0s
+
+Errors:
+  taxonomy: total=2289 expected=1692 UNEXPECTED=597 retryable=1175
+  kind connection_error:        522
+  kind deadlock:                455
+  kind unknown_error:           1312
+  top messages:
+     128x unit srv_make_invnt_saldo: rejected: unit srv_make_invnt_saldo: exception 20 EX_SNAPSHOT_ISOLATION_REQUIRED operation must run only in TIL = SNAPSHOT. At procedure 'SRV_MAKE_INVNT_SALDO' line: 64, col…
+         first=12:42:41 last=12:53:17
+     109x unit srv_make_money_saldo: rejected: unit srv_make_money_saldo: exception 20 EX_SNAPSHOT_ISOLATION_REQUIRED operation must run only in TIL = SNAPSHOT. At procedure 'SRV_MAKE_MONEY_SALDO' line: 41, col…
+         first=12:42:42 last=12:53:14
+      32x unit sp_client_order: conflict: unit sp_client_order: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK' line: 19,…
+         first=12:43:25 last=12:43:27
+      27x unit srv_recalc_idx_stat: conflict: unit srv_recalc_idx_stat: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK' l…
+         first=12:43:25 last=12:43:27
+      26x unit sp_reserve_write_off: rejected: unit sp_reserve_write_off: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR…
+         first=12:43:19 last=12:53:13
+      26x unit srv_aggregate_perf_data: rejected: unit srv_aggregate_perf_data: exception 20 EX_SNAPSHOT_ISOLATION_REQUIRED operation must run only in TIL = SNAPSHOT. At procedure 'SRV_AGGREGATE_PERF_DATA' line…
+         first=12:43:14 last=12:53:13
+      26x worker 4 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      25x unit srv_recalc_idx_stat: rejected: unit srv_recalc_idx_stat: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR_T…
+         first=12:42:58 last=12:52:58
+      24x unit sp_client_order: rejected: unit sp_client_order: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR_TIMEOUT' …
+         first=12:42:46 last=12:53:01
+      24x worker 1 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      24x worker 2 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      24x worker 3 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      24x worker 6 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      23x worker 0 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      22x unit sp_pay_from_customer: conflict: unit sp_pay_from_customer: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK'…
+         first=12:43:25 last=12:43:28
+      22x unit sp_supplier_invoice: conflict: unit sp_supplier_invoice: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK' l…
+         first=12:43:25 last=12:43:27
+      22x worker 5 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:52:39
+      18x unit sp_reserve_write_off: conflict: unit sp_reserve_write_off: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK'…
+         first=12:43:25 last=12:43:27
+      18x unit sp_supplier_order: conflict: unit sp_supplier_order: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK' line:…
+         first=12:43:25 last=12:43:27
+      17x unit sp_pay_to_supplier: rejected: unit sp_pay_to_supplier: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR_TIM…
+         first=12:42:38 last=12:51:20
+      16x unit sp_supplier_invoice: rejected: unit sp_supplier_invoice: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR_T…
+         first=12:43:04 last=12:53:23
+      15x unit sp_pay_from_customer: rejected: unit sp_pay_from_customer: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR…
+         first=12:43:34 last=12:51:49
+      13x unit sp_add_invoice_to_stock: conflict: unit sp_add_invoice_to_stock: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP…
+         first=12:43:25 last=12:43:27
+      13x unit sp_pay_to_supplier: conflict: unit sp_pay_to_supplier: record from transaction 8255 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK' lin…
+         first=12:43:25 last=12:43:27
+      13x unit sp_supplier_order: rejected: unit sp_supplier_order: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOWAIT_OR_TIMEO…
+         first=12:42:51 last=12:52:16
+      12x unit sp_add_invoice_to_stock: rejected: unit sp_add_invoice_to_stock: exception 22 EX_NOWAIT_OR_TIMEOUT_REQUIRED transaction must start in NO WAIT mode or with LOCK_TIMEOUT. At procedure 'SP_CHECK_NOW…
+         first=12:42:40 last=12:52:35
+      11x unit srv_recalc_idx_stat: conflict: unit srv_recalc_idx_stat: record from transaction 8841 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK' l…
+         first=12:43:59 last=12:43:59
+      10x unit sp_add_invoice_to_stock: conflict: unit sp_add_invoice_to_stock: record from transaction 8841 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP…
+         first=12:43:59 last=12:43:59
+      10x worker 7 failed to begin transaction: dial tcp 127.0.0.1:3053: connectex: No connection could be made because the target machine actively refused it.
+         first=12:43:24 last=12:46:11
+       9x unit sp_reserve_write_off: conflict: unit sp_reserve_write_off: record from transaction 8841 is stuck in limbo At procedure 'SP_GET_TEST_TIME_DTS' line: 19, col: 9 At procedure 'SP_CHECK_TO_STOP_WORK'…
+         first=12:43:59 last=12:43:59
+
+Units (top 20 by failure):
+  unit                               attempts       ok  conflict  rejected  failure    avgMs    maxMs
+  sp_supplier_order                       374      143        91        14      126     4359    10275
+  sp_add_invoice_to_stock                 301       39       131        12      119     4714    10410
+  sp_supplier_invoice                     318      142        73        18       85     3900    10108
+  sp_cancel_supplier_order                 52        9        15         3       25     5946    10236
+  sp_customer_reserve                     123       55        42         3       23     4072    10222
+  sp_cancel_adding_invoice                 64       23        16         5       20     3899    10172
+  sp_pay_to_supplier                      352      240        81        17       14     1127     8211
+  sp_pay_from_customer                    395      272        97        15       11     1082     2656
+  sp_reserve_write_off                    476      316       124        26       10     1296    10003
+  srv_recalc_idx_stat                     529      281       124       117        7      977     5635
+  sp_client_order                         507      348       129        24        6     1187     5283
+  sp_cancel_client_order                  166      113        35        15        3     1843     5207
+  sp_cancel_pay_from_customer              78       55        18         2        3     1095     2339
+  sp_cancel_customer_reserve               82       53        22         5        2     1309    10074
+  sp_cancel_supplier_invoice               46       17        25         2        2     1900    10007
+  srv_make_money_saldo                    166       14        36       115        1      615     1539
+  sp_cancel_write_off                      95       59        30         5        1     1137     4154
+  srv_make_invnt_saldo                    179       21        28       130        0      659     1891
+  sp_cancel_pay_to_supplier                52       38        11         3        0     1124     3849
+  srv_aggregate_perf_data                  36        3         7        26        0      684     1606
+
+Transaction variants:
+  RC/no_rec_version/nowait                       attempts=453 ok=1
+  RC/rec_version/nowait                          attempts=518 ok=253
+  RC/rec_version/wait; lock_timeout=1            attempts=708 ok=423
+  RC/rec_version/wait; lock_timeout=10           attempts=723 ok=426
+  RC/rec_version/wait; lock_timeout=3            attempts=734 ok=423
+  RC/rec_version/wait; lock_timeout=5            attempts=726 ok=420
+  snapshot/nowait                                attempts=529 ok=295
+Completion methods:
+  commit                                         attempts=1589 ok=1589
+  commitRetaining                                attempts=144 ok=144
+  connDrop                                       attempts=14 ok=14
+  limbo                                          attempts=13 ok=13
+  rollback                                       attempts=418 ok=418
+  rollbackRetaining                              attempts=63 ok=63
+
+Extended load:
+  heavy rounds=9 (fail: 121), bulk ins/upd/del=1/0/0 rows=120 (fail: 20)
+  ddl cols +/~/-=0/0/0 tables=0/0
+  limbo: resolved=13 (commit=8 rollback=5 two_phase=0) peakUnresolved=1 maxAgeSec=2
+
+Emul:
+  units ok=2241/4391  score=208/min  workingMode=-
+  invariants: verdict=ok disabled=false checks=21 ok=15 transient=6 hard=0
+  invariants last reason: failed (attempt 1 of 3, will retry): emul: invariant SRV_MAKE_MONEY_SALDO failed: firebirdsql: reading fetch response header: read tcp 127.0.0.1:53290->127.0.0.1:3053: wsarecv: An existing connection …
+  memory peaks: db=350MB att=1MB trn=0MB stmt=0MB
+
+Timeline (per-minute OK/err, avg ms):
+  m1   ok=236    err=363    avg=1531ms
+  m2   ok=496    err=621    avg=1808ms
+  m3   ok=689    err=743    avg=2027ms
+  m4   ok=919    err=896    avg=2040ms
+  m5   ok=1124   err=1019   avg=2158ms
+  m6   ok=1325   err=1160   avg=2416ms
+  m7   ok=1548   err=1324   avg=2542ms
+  m8   ok=1756   err=1538   avg=2586ms
+  m9   ok=1969   err=1784   avg=2662ms
+  m10  ok=2129   err=1947   avg=2709ms
+  m11  ok=2241   err=2150   avg=2696ms
+Generating detailed reports to reports/d6_fb3_full.csv_*.txt...
+Final summary written to reports/d6_fb3_full.csv_final_summary.txt
+Shutdown complete.

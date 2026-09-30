@@ -1,0 +1,2 @@
+C:\HQbird\Firebird30\firebird.exe => WI-V3.0.15.33884 3.0.15.33884
+C:\temp\fb-d6\fb3app\firebird.exe => WI-V3.0.13.33818 3.0.13.33818

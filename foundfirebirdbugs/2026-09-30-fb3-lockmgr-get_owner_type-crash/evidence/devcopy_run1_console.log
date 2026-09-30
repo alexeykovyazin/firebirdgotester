@@ -1,0 +1,122 @@
+oltp-emul: 20 units loaded from business_ops
+SQL/command errors → reports/d6_fb3_sql_errors.log
+Operations log → reports/d6_fb3_ops.log
+Load tester started. Press Ctrl+C to stop.
+Profile: oltp-emul
+Connection: 127.0.0.1/3160:C:/temp/fb-d6/OLTPEMUL_FB3_D6.FDB
+Connection string: SYSDBA:***@127.0.0.1:3160/C:/temp/fb-d6/OLTPEMUL_FB3_D6.FDB
+Warmup: 30s, Main: 600s, Cooldown: 20s
+Connections: 2 → 20 (random walk in main)
+Status: Total: 147, Success: 74.8%, TPS: 14.7, Lat: avg=272ms min=10ms max=5s p50=100ms p95=2s p99=5s, Workers: 7/7, Conns: 7, Profile: oltp-emul
+Status: Total: 303, Success: 71.9%, TPS: 15.1, Lat: avg=446ms min=10ms max=10s p50=250ms p95=2s p99=10s, Workers: 13/13, Conns: 13, Profile: oltp-emul
+Status: Total: 520, Success: 68.8%, TPS: 17.3, Lat: avg=534ms min=10ms max=10s p50=250ms p95=5s p99=5s, Workers: 19/19, Conns: 19, Profile: oltp-emul
+[emul-inv] stock and money invariants OK
+Status: Total: 625, Success: 69.6%, TPS: 15.6, Lat: avg=789ms min=10ms max=30s p50=250ms p95=5s p99=10s, Workers: 17/20, Conns: 17, Profile: oltp-emul
+Failed to add worker: worker 22 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 23 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 24 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 25 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 26 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 27 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 28 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 29 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 30 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 31 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 32 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 33 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 34 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 35 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 36 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 37 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Status: Total: 644, Success: 68.0%, TPS: 12.9, Lat: avg=839ms min=10ms max=30s p50=250ms p95=5s p99=10s, Workers: 16/20, Conns: 0, Profile: oltp-emul
+[emul-mon] sampling stopped: driver: bad connection
+Failed to add worker: worker 38 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 39 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 40 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 41 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 42 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 43 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 44 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 45 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 46 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 47 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 48 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 49 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 50 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 51 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 52 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 53 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 54 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 55 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 56 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 57 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Status: Total: 644, Success: 68.0%, TPS: 10.7, Lat: avg=839ms min=10ms max=30s p50=250ms p95=5s p99=10s, Workers: 16/20, Conns: 0, Profile: oltp-emul
+[emul-inv] BeginTx failed, will keep retrying: read tcp 127.0.0.1:62495->127.0.0.1:3160: wsarecv: An existing connection was forcibly closed by the remote host.
+Failed to add worker: worker 58 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 59 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 60 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 61 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 62 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 63 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 64 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 65 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 66 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 67 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 68 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 69 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 70 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 71 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 72 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 73 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 74 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 75 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 76 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 77 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Status: Total: 644, Success: 68.0%, TPS: 9.2, Lat: avg=839ms min=10ms max=30s p50=250ms p95=5s p99=10s, Workers: 16/20, Conns: 0, Profile: oltp-emul
+Failed to add worker: worker 78 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 79 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 80 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 81 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 82 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 83 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 84 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 85 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 86 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 87 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 88 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 89 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 90 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 91 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 92 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Status: Total: 644, Success: 68.0%, TPS: 8.0, Lat: avg=839ms min=10ms max=30s p50=250ms p95=5s p99=10s, Workers: 15/20, Conns: 0, Profile: oltp-emul
+Failed to add worker: worker 93 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 94 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 95 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 96 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 97 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 98 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 99 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 100 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 101 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 102 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 103 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 104 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 105 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 106 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 107 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Status: Total: 644, Success: 68.0%, TPS: 7.2, Lat: avg=839ms min=10ms max=30s p50=250ms p95=5s p99=10s, Workers: 14/20, Conns: 0, Profile: oltp-emul
+Failed to add worker: worker 108 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 109 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 110 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 111 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 112 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 113 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 114 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 115 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 116 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 117 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 118 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 119 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 120 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 121 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
+Failed to add worker: worker 122 failed to open database connection: failed to ping database: dial tcp 127.0.0.1:3160: connectex: No connection could be made because the target machine actively refused it.
