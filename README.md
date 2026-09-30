@@ -7,6 +7,17 @@
 
 Both roles are driven by one **web control plane**: a fleet of databases with Start / Stop / Pause per row, scheduled unattended runs, run history with webhooks, a Prometheus endpoint, and a dedicated **OLTPEMUL dashboard** tab with live score, per-unit truth and memory peaks.
 
+## What's new (v1.0.2 — soak follow-up round)
+
+Everything from the 2-hour soak fix round and the follow-up plan ([SOAK_FIX_PLAN_2026-09-29.md](SOAK_FIX_PLAN_2026-09-29.md), [FOLLOWUP_PLAN_2026-09-29.md](FOLLOWUP_PLAN_2026-09-29.md)):
+
+- **`--cancel-hard-drop`** (with the [IBSurgeon/firebirdsql-go](https://github.com/IBSurgeon/firebirdsql-go) fork v0.9.20-ib.2): after a per-op timeout the stuck statement's socket is closed at a configurable grace (`--cancel-hard-drop-grace`, default 3000 ms) instead of waiting out the OS deadline — server-side waits that `op_cancel` cannot interrupt no longer pin workers; the worker rebuilds its pool in place.
+- **Invariant classification fix**: lock-conflict families (`lock conflict`, `deadlock`, `no wait`, `lock semaphores`, `stuck in limbo`) no longer disable the invariant loop on a loaded database — a 2h soak now runs with 0 invariant self-disables (was: permanent mid-run disable on the first transient).
+- **Default run length is 1 hour**: without `--main` the main phase runs 3600 s (warmup 30 s + cooldown 20 s on top); the UI inherits the default.
+- **Detailed final summary** at shutdown — in the log and as `<csv>_final_summary.txt`: headline totals and main-phase score, latency percentiles + histogram, actual phase spans, teardown stats (stop failures / reaped / drain), pool min/max and in-place rebuilds, error taxonomy with top distinct messages (first/last seen), per-unit outcome table, transaction variant and completion tables, extended-load and limbo detail (resolution methods, peak unresolved, max age), oltp-emul invariant counters, and a per-minute OK/err timeline.
+- **UI "Summary" tab** (`GET /api/sessions/{id}/summary`): the same picture served from memory — safe to open mid-run, non-blocking; auto-refreshing with a per-minute bar timeline.
+- The status line now shows the real pool socket count (`Conns`) next to the bookkeeping worker count.
+
 ## What's new (September 2026 hardening round)
 
 A full code review (report: [CODE_REVIEW_2026-09-28.md](CODE_REVIEW_2026-09-28.md)) produced a hardening round, live-verified on Firebird 3.0 / 4.0 / 5.0 with every variant of the workload mix:
