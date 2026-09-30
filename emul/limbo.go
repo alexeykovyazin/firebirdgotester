@@ -61,6 +61,10 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 		}
 		ticker := time.NewTicker(gap)
 		defer ticker.Stop()
+		// firstSeen bounds the observed prepare→resolve latency: the sidecar
+		// polls every 2 s, so an age measured from the first scan that saw
+		// the tid upper-bounds the real limbo stay by one gap.
+		firstSeen := make(map[int64]time.Time)
 		for {
 			select {
 			case <-ctx.Done():
@@ -70,7 +74,16 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 				if err != nil || len(tids) == 0 {
 					continue
 				}
-				start := time.Now()
+				now := time.Now()
+				if counters != nil {
+					bumpMax(&counters.LimboPeak, int64(len(tids)))
+				}
+				for _, tid := range tids {
+					if _, seen := firstSeen[tid]; !seen {
+						firstSeen[tid] = now
+					}
+				}
+				start := now
 				for _, tid := range tids {
 					m := methods[rng.Intn(len(methods))]
 					var rerr error
@@ -105,7 +118,19 @@ func StartLimboRecovery(ctx context.Context, cfg *config.Config, opsL *opslog.Lo
 					}
 					if counters != nil {
 						counters.LimboResolved.Add(1)
+						switch m {
+						case limboCommit:
+							counters.LimboCommit.Add(1)
+						case limboRollback:
+							counters.LimboRollback.Add(1)
+						default:
+							counters.LimboTwoPhase.Add(1)
+						}
+						if first, ok := firstSeen[tid]; ok {
+							bumpMax(&counters.LimboMaxAgeSec, int64(time.Since(first).Seconds()))
+						}
 					}
+					delete(firstSeen, tid)
 					if opsL != nil {
 						opsL.Resolved(string(m), tid, time.Since(start))
 					}

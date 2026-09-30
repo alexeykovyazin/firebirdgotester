@@ -66,6 +66,9 @@ type EmulState struct {
 	invariant   string
 	invariantAt time.Time
 
+	// Invariant self-check counters (final summary, UI); guarded by mu.
+	inv InvCounters
+
 	memPeaks   Sample
 	memSamples []Sample
 	series     []SeriesPoint
@@ -224,6 +227,7 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 						// pooled conn): retry on the next tick. Warn once —
 						// a silent continue here hid a pool starvation for
 						// whole runs.
+						state.ObserveInvariant(InvBeginFail, err.Error())
 						if !beginWarned {
 							beginWarned = true
 							logf("[emul-inv] BeginTx failed, will keep retrying: %v", err)
@@ -238,16 +242,19 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 							// defect: retry next tick without growing
 							// failStreak (the failure counter must only
 							// track real check failures).
+							state.ObserveInvariant(InvLockConflict, err.Error())
 							logf("[emul-inv] lock conflict under NOWAIT, will retry: %v", err)
 							continue
 						}
 						permanent, msg := invariantFailure(err, failStreak)
 						if permanent {
+							state.ObserveInvariant(InvDisabled, msg)
 							state.SetInvariant(msg)
 							logf("[emul-inv] %s", msg)
 							return
 						}
 						failStreak++
+						state.ObserveInvariant(InvTransient, msg)
 						// Transient: retrying next tick. Keep the last
 						// completed verdict in the state — a retry message
 						// frozen into the final report read like a failure
@@ -259,10 +266,12 @@ func RunSidecars(ctx context.Context, db *sql.DB, monitorEvery, invariantEvery, 
 					if err := tx.Commit(); err != nil {
 						// A failing commit previously vanished: the UI kept
 						// showing a stale verdict with no trail. Log it.
+						state.ObserveInvariant(InvTransient, err.Error())
 						logf("[emul-inv] invariant commit failed, will retry: %v", err)
 						continue
 					}
 					failStreak = 0
+					state.ObserveInvariant(InvOK, "")
 					state.SetInvariant("ok")
 					logf("[emul-inv] stock and money invariants OK")
 				}
@@ -364,21 +373,71 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
+// InvCounters aggregates the invariant self-check loop outcomes.
+type InvCounters struct {
+	Checks     int64  `json:"checks"`    // observed ticks (any outcome)
+	OK         int64  `json:"ok"`        // stock+money balanced
+	Transient  int64  `json:"transient"` // begin/commit failures, NOWAIT conflicts, retriable errors
+	Hard       int64  `json:"hard"`      // counted failures that did not disable the loop
+	Disabled   bool   `json:"disabled"`  // loop permanently disabled
+	LastReason string `json:"lastReason,omitempty"`
+}
+
+// InvKind is one observable invariant-check outcome.
+type InvKind int
+
+const (
+	InvOK InvKind = iota
+	InvBeginFail
+	InvLockConflict
+	InvTransient
+	InvHard
+	InvDisabled
+)
+
+// ObserveInvariant folds one invariant-check outcome into the counters.
+func (s *EmulState) ObserveInvariant(kind InvKind, reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inv.Checks++
+	switch kind {
+	case InvOK:
+		s.inv.OK++
+	case InvBeginFail, InvLockConflict, InvTransient:
+		s.inv.Transient++
+	case InvHard:
+		s.inv.Hard++
+	case InvDisabled:
+		s.inv.Disabled = true
+	}
+	if reason != "" {
+		s.inv.LastReason = reason
+	}
+}
+
+// InvariantStats returns a copy of the invariant counters.
+func (s *EmulState) InvariantStats() InvCounters {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inv
+}
+
 // EmulStateJSON is the JSON projection carried in the session Snapshot and
 // served by the state endpoint.
 type EmulStateJSON struct {
-	ScorePerMin float64       `json:"scorePerMin"`
-	OKUnits     int64         `json:"okUnits"`
-	TotalUnits  int64         `json:"totalUnits"`
-	Phase       string        `json:"phase"`
-	Invariant   string        `json:"invariant"`
-	InvariantAt time.Time     `json:"invariantAt"`
-	MemPeaks    Sample        `json:"memPeaks"`
-	Series      []SeriesPoint `json:"series"`
-	PerUnit     []UnitStat    `json:"perUnit"`
-	WorkingMode string        `json:"workingMode,omitempty"`
-	StartedAt   time.Time     `json:"startedAt"`
-	Extended    *ExtendedJSON `json:"extended,omitempty"`
+	ScorePerMin    float64       `json:"scorePerMin"`
+	OKUnits        int64         `json:"okUnits"`
+	TotalUnits     int64         `json:"totalUnits"`
+	Phase          string        `json:"phase"`
+	Invariant      string        `json:"invariant"`
+	InvariantAt    time.Time     `json:"invariantAt"`
+	InvariantStats InvCounters   `json:"invariantStats"`
+	MemPeaks       Sample        `json:"memPeaks"`
+	Series         []SeriesPoint `json:"series"`
+	PerUnit        []UnitStat    `json:"perUnit"`
+	WorkingMode    string        `json:"workingMode,omitempty"`
+	StartedAt      time.Time     `json:"startedAt"`
+	Extended       *ExtendedJSON `json:"extended,omitempty"`
 }
 
 // ExtendedJSON is the extended-load sidecar activity snapshot (H5).
@@ -396,6 +455,11 @@ type ExtendedJSON struct {
 	TablesCreated  int64 `json:"tablesCreated"`
 	TablesDropped  int64 `json:"tablesDropped"`
 	LimboResolved  int64 `json:"limboResolved"`
+	LimboCommit    int64 `json:"limboCommit"`
+	LimboRollback  int64 `json:"limboRollback"`
+	LimboTwoPhase  int64 `json:"limboTwoPhase"`
+	LimboPeak      int64 `json:"limboPeak"`
+	LimboMaxAgeSec int64 `json:"limboMaxAgeSec"`
 }
 
 // JSON renders a capped, thread-safe copy of the state. perUnitAgg comes
@@ -407,16 +471,17 @@ func (s *EmulState) JSON(perUnitAgg map[string]OutcomeStats, registry []Unit) Em
 	defer s.mu.Unlock()
 
 	out := EmulStateJSON{
-		ScorePerMin: s.mainScorePerMinLocked(),
-		OKUnits:     s.okUnits,
-		TotalUnits:  s.totalUnits,
-		Phase:       s.phase,
-		Invariant:   s.invariant,
-		InvariantAt: s.invariantAt,
-		MemPeaks:    s.memPeaks,
-		WorkingMode: s.workingMode,
-		StartedAt:   s.startedAt,
-		Extended:    Extended().SnapshotJSON(),
+		ScorePerMin:    s.mainScorePerMinLocked(),
+		OKUnits:        s.okUnits,
+		TotalUnits:     s.totalUnits,
+		Phase:          s.phase,
+		Invariant:      s.invariant,
+		InvariantAt:    s.invariantAt,
+		InvariantStats: s.inv,
+		MemPeaks:       s.memPeaks,
+		WorkingMode:    s.workingMode,
+		StartedAt:      s.startedAt,
+		Extended:       Extended().SnapshotJSON(),
 	}
 	out.Series = make([]SeriesPoint, len(s.series))
 	copy(out.Series, s.series)

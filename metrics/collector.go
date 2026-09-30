@@ -43,6 +43,17 @@ type MetricsCollector struct {
 	// bookkeeping count and the real socket count.
 	openConnsFn     func() int
 	openConnections int
+	minOpenConns    int
+	maxOpenConns    int
+
+	// Per-minute load timeline for the final summary (whole run, capped).
+	minuteMu   sync.Mutex
+	minutes    []MinutePoint
+	minuteIdx  int // elapsed-minute index the open bucket belongs to
+	minOK      int64
+	minErr     int64
+	minLatMs   int64
+	minSamples int64
 
 	startTime time.Time // set at construction/Reset, read-only afterwards
 
@@ -123,10 +134,88 @@ func (mc *MetricsCollector) updateMetrics() {
 	// Update from cache
 	mc.updateFromCache()
 
+	// Fold this tick into the per-minute timeline
+	mc.observeMinute()
+
 	// Update timestamp
 	mc.aggMu.Lock()
 	mc.lastReport = time.Now()
 	mc.aggMu.Unlock()
+}
+
+// MinutePoint is one per-minute load bucket of the final-summary timeline.
+type MinutePoint struct {
+	Minute   int   `json:"minute"`   // 1-based minute of the run
+	OK       int64 `json:"ok"`       // successful transactions in this minute
+	Err      int64 `json:"err"`      // failed transactions in this minute
+	LatSumMs int64 `json:"latSumMs"` // estimated latency sum (avg*count per tick)
+	N        int64 `json:"n"`        // total transactions in this minute
+}
+
+const minuteCap = 1440 // a day-long run is the sane upper bound
+
+// observeMinute rolls 1-second collector ticks into per-minute buckets. The
+// latency sum is estimated from the tick's average (bucket-midpoint based) —
+// fine for a sparkline, not a substitute for the histogram.
+func (mc *MetricsCollector) observeMinute() {
+	mc.aggMu.RLock()
+	total := mc.totalOps
+	success := mc.successOps
+	avgMs := mc.avgLatency.Milliseconds()
+	start := mc.startTime
+	mc.aggMu.RUnlock()
+
+	idx := int(time.Since(start).Minutes())
+	dOK := success - mc.minOK
+	dErr := (total - success) - mc.minErr
+	dN := total - mc.minSamples
+	dLatMs := avgMs*total - mc.minLatMs
+
+	mc.minuteMu.Lock()
+	defer mc.minuteMu.Unlock()
+	if idx != mc.minuteIdx {
+		if idx > 0 {
+			mc.minutes = append(mc.minutes, MinutePoint{
+				Minute:   mc.minuteIdx + 1,
+				OK:       mc.minOK,
+				Err:      mc.minErr,
+				LatSumMs: mc.minLatMs,
+				N:        mc.minSamples,
+			})
+		}
+		if len(mc.minutes) > minuteCap {
+			mc.minutes = mc.minutes[len(mc.minutes)-minuteCap:]
+		}
+		mc.minuteIdx = idx
+	}
+	mc.minOK += dOK
+	mc.minErr += dErr
+	mc.minLatMs += dLatMs
+	mc.minSamples += dN
+}
+
+// MinuteTimeline returns the closed per-minute buckets plus the open one.
+func (mc *MetricsCollector) MinuteTimeline() []MinutePoint {
+	mc.minuteMu.Lock()
+	defer mc.minuteMu.Unlock()
+	out := make([]MinutePoint, len(mc.minutes), len(mc.minutes)+1)
+	copy(out, mc.minutes)
+	out = append(out, MinutePoint{
+		Minute:   mc.minuteIdx + 1,
+		OK:       mc.minOK,
+		Err:      mc.minErr,
+		LatSumMs: mc.minLatMs,
+		N:        mc.minSamples,
+	})
+	return out
+}
+
+// MinMaxOpenConns returns the observed range of open pool connections
+// (nonzero ticks only: the 0 before the first connect is not a real minimum).
+func (mc *MetricsCollector) MinMaxOpenConns() (min, max int) {
+	mc.aggMu.RLock()
+	defer mc.aggMu.RUnlock()
+	return mc.minOpenConns, mc.maxOpenConns
 }
 
 // updateFromWorkerMetrics updates metrics from the worker metrics collector
@@ -219,6 +308,14 @@ func (mc *MetricsCollector) updateFromScheduler() {
 	mc.openConnections = open
 	if mc.currentWorkers > mc.maxWorkers {
 		mc.maxWorkers = mc.currentWorkers
+	}
+	if open > 0 {
+		if mc.minOpenConns == 0 || open < mc.minOpenConns {
+			mc.minOpenConns = open
+		}
+		if open > mc.maxOpenConns {
+			mc.maxOpenConns = open
+		}
 	}
 	mc.aggMu.Unlock()
 }
@@ -412,10 +509,21 @@ func (mc *MetricsCollector) Reset() {
 	mc.maxWorkers = 0
 	mc.currentWorkers = 0
 	mc.openConnections = 0
+	mc.minOpenConns = 0
+	mc.maxOpenConns = 0
 	mc.startTime = time.Now()
 	mc.lastReport = time.Now()
 	mc.lastTotal = 0
 	mc.aggMu.Unlock()
+
+	mc.minuteMu.Lock()
+	mc.minutes = nil
+	mc.minuteIdx = 0
+	mc.minOK = 0
+	mc.minErr = 0
+	mc.minLatMs = 0
+	mc.minSamples = 0
+	mc.minuteMu.Unlock()
 
 	mc.errorMutex.Lock()
 	for k := range mc.errorCounts {

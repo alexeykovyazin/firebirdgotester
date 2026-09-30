@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -713,6 +714,18 @@ func (w *Worker) takePlannedDrop() bool {
 	return pd
 }
 
+// Pool-rebuild counters, package-level: workers come and go dynamically and
+// the final summary reads run totals, not per-worker values.
+var (
+	rebuildsOK     atomic.Int64
+	rebuildsFailed atomic.Int64
+)
+
+// RebuildCounts returns the in-place pool rebuild totals (success, failed).
+func RebuildCounts() (ok, failed int64) {
+	return rebuildsOK.Load(), rebuildsFailed.Load()
+}
+
 // rebuildConn replaces a dead pool in place via the stored connFactory.
 // Exit+respawn is not an option: the ramp scheduler never reaps exited
 // workers, so the load would silently shrink (V17).
@@ -723,6 +736,7 @@ func (w *Worker) rebuildConn() error {
 
 	fresh, err := w.connFactory.Open()
 	if err != nil || fresh == nil {
+		rebuildsFailed.Add(1)
 		return fmt.Errorf("worker %d pool rebuild failed: %w", w.id, err)
 	}
 
@@ -734,10 +748,12 @@ func (w *Worker) rebuildConn() error {
 		// closed), so close it and abort the rebuild instead.
 		w.mu.Unlock()
 		go func() { _ = w.connFactory.Close(fresh) }()
+		rebuildsFailed.Add(1)
 		return fmt.Errorf("worker %d pool rebuild aborted: worker stopped", w.id)
 	}
 	w.dbConn = fresh
 	w.mu.Unlock()
+	rebuildsOK.Add(1)
 
 	if old != nil {
 		go func() { _ = w.connFactory.Close(old) }()
@@ -865,6 +881,10 @@ type MetricsCollector struct {
 	// Per-unit oltp-emul aggregation (nil maps until RecordUnit is used).
 	unitAgg map[string]emul.OutcomeStats
 
+	// Distinct error message texts for the final summary top-N (bounded).
+	errTextMu sync.Mutex
+	errTexts  map[string]*ErrTextStat
+
 	errorStats *ops.ErrorStats
 	errorLog   *errlog.Logger
 	opsLog     *opslog.Logger
@@ -967,12 +987,80 @@ func (mc *MetricsCollector) RecordTransactionNamed(success bool, latency time.Du
 	}
 }
 
+// maxErrTexts bounds the distinct-message map; new kinds beyond the cap are
+// dropped (counted in the taxonomy, just not kept verbatim).
+const maxErrTexts = 200
+
+// ErrTextStat aggregates one distinct error message text.
+type ErrTextStat struct {
+	Count     int64     `json:"count"`
+	FirstSeen time.Time `json:"firstSeen"`
+	LastSeen  time.Time `json:"lastSeen"`
+}
+
+// TopErrorText is one entry of the final-summary error top list.
+type TopErrorText struct {
+	Message   string    `json:"message"`
+	Count     int64     `json:"count"`
+	FirstSeen time.Time `json:"firstSeen"`
+	LastSeen  time.Time `json:"lastSeen"`
+}
+
+// recordErrorText folds a raw error message into the distinct-text map.
+// Messages are truncated: some server texts echo row values.
+func (mc *MetricsCollector) recordErrorText(err error) {
+	if err == nil {
+		return
+	}
+	msg := err.Error()
+	if len(msg) > 300 {
+		msg = msg[:300]
+	}
+	now := time.Now()
+	mc.errTextMu.Lock()
+	defer mc.errTextMu.Unlock()
+	if mc.errTexts == nil {
+		mc.errTexts = make(map[string]*ErrTextStat)
+	}
+	st := mc.errTexts[msg]
+	if st == nil {
+		if len(mc.errTexts) >= maxErrTexts {
+			return
+		}
+		st = &ErrTextStat{FirstSeen: now}
+		mc.errTexts[msg] = st
+	}
+	st.Count++
+	st.LastSeen = now
+}
+
+// TopErrorTexts returns the n most frequent distinct error messages.
+func (mc *MetricsCollector) TopErrorTexts(n int) []TopErrorText {
+	mc.errTextMu.Lock()
+	out := make([]TopErrorText, 0, len(mc.errTexts))
+	for msg, st := range mc.errTexts {
+		out = append(out, TopErrorText{Message: msg, Count: st.Count, FirstSeen: st.FirstSeen, LastSeen: st.LastSeen})
+	}
+	mc.errTextMu.Unlock()
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Message < out[j].Message
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
 // RecordError records an error against the shared session taxonomy.
 // It does not increment txError — callers already count failures via RecordTransaction.
 func (mc *MetricsCollector) RecordError(err error) {
 	if mc.errorStats != nil {
 		mc.errorStats.RecordError(err)
 	}
+	mc.recordErrorText(err)
 }
 
 // SetErrorLogger attaches a file logger for SQL/command failures.
@@ -1251,7 +1339,11 @@ func (mc *MetricsCollector) Reset() {
 	}
 	mc.opMu.Lock()
 	mc.opCounts = make(map[string]int64)
+	mc.unitAgg = make(map[string]emul.OutcomeStats)
 	mc.opMu.Unlock()
+	mc.errTextMu.Lock()
+	mc.errTexts = make(map[string]*ErrTextStat)
+	mc.errTextMu.Unlock()
 	if mc.errorStats != nil {
 		mc.errorStats.Reset()
 	}

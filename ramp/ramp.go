@@ -65,10 +65,28 @@ type Scheduler struct {
 
 	liveConnMax atomic.Int64 // >0 overrides config ConnMax (live budget resize)
 
+	// Teardown/live counters for the final summary and the UI. Atomics:
+	// written from the run loop and the drain path, read concurrently.
+	reapedWorkers atomic.Int64 // self-exited workers removed from the set
+	stopFailures  atomic.Int64 // worker Stop() returned an error (usually the per-worker stop timeout)
+	drainNanos    atomic.Int64 // duration of the final drainWorkers in Stop()
+
+	// Phase spans record actual phase boundaries (final summary). Guarded by
+	// stateMu; phaseStart is zero until Start and between spans.
+	phaseSpans []PhaseSpan
+	phaseStart time.Time
+
 	stopping     atomic.Bool
 	started      atomic.Bool
 	runDone      chan struct{} // closed exactly once when run() exits (or Stop on a never-started scheduler)
 	runDoneClose sync.Once
+}
+
+// PhaseSpan is one closed phase interval (actual, not configured, duration).
+type PhaseSpan struct {
+	Phase string    `json:"phase"`
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
 }
 
 // Phase represents the current ramp phase
@@ -182,6 +200,9 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("scheduler already started")
 	}
 	s.startTime = time.Now()
+	s.stateMu.Lock()
+	s.phaseStart = time.Now()
+	s.stateMu.Unlock()
 	go s.run()
 	return nil
 }
@@ -189,6 +210,14 @@ func (s *Scheduler) Start() error {
 // closeRunDone closes runDone exactly once: run() on exit, or Stop on a
 // scheduler that was never started (whose run() will never run).
 func (s *Scheduler) closeRunDone() {
+	s.stateMu.Lock()
+	if !s.phaseStart.IsZero() {
+		s.phaseSpans = append(s.phaseSpans, PhaseSpan{
+			Phase: s.currentPhase.String(), Start: s.phaseStart, End: time.Now(),
+		})
+		s.phaseStart = time.Time{}
+	}
+	s.stateMu.Unlock()
 	s.runDoneClose.Do(func() { close(s.runDone) })
 }
 
@@ -206,7 +235,10 @@ func (s *Scheduler) Stop() error {
 	} else {
 		s.closeRunDone()
 	}
-	return s.drainWorkers()
+	t0 := time.Now()
+	err := s.drainWorkers()
+	s.drainNanos.Store(int64(time.Since(t0)))
+	return err
 }
 
 func (s *Scheduler) run() {
@@ -325,6 +357,16 @@ func (s *Scheduler) updatePhase() {
 			s.walkTarget = max
 		}
 		s.lastWalkAdjust = time.Now()
+	}
+
+	if next != prev {
+		s.stateMu.Lock()
+		now := time.Now()
+		if !s.phaseStart.IsZero() {
+			s.phaseSpans = append(s.phaseSpans, PhaseSpan{Phase: prev.String(), Start: s.phaseStart, End: now})
+		}
+		s.phaseStart = now
+		s.stateMu.Unlock()
 	}
 
 	s.stateMu.Lock()
@@ -496,6 +538,7 @@ func (s *Scheduler) ensureWorkerCount(target int) error {
 		for _, w := range dead {
 			_ = w.Stop() // no-op for an already-exited worker
 		}
+		s.reapedWorkers.Add(int64(len(dead)))
 		fmt.Printf("Reaped %d self-exited worker(s)\n", len(dead))
 	}
 
@@ -556,6 +599,7 @@ func (s *Scheduler) stopWorkers(workers []*worker.Worker) {
 		go func(w *worker.Worker) {
 			defer wg.Done()
 			if err := w.Stop(); err != nil {
+				s.stopFailures.Add(1)
 				fmt.Printf("Failed to remove worker %d: %v\n", w.GetID(), err)
 			}
 		}(w)
@@ -674,6 +718,32 @@ func (s *Scheduler) GetStats() string {
 
 	return fmt.Sprintf("Phase: %s (%.1f%%), Workers: %d, Elapsed: %v",
 		phase, progress, workerCount, s.GetElapsedTime())
+}
+
+// PhaseSpans returns the closed phase spans with their actual boundaries.
+// Used by the final summary and the UI; a copy, safe to iterate.
+func (s *Scheduler) PhaseSpans() []PhaseSpan {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	out := make([]PhaseSpan, len(s.phaseSpans))
+	copy(out, s.phaseSpans)
+	return out
+}
+
+// TeardownStats aggregates the worker-teardown counters of a run.
+type TeardownStats struct {
+	Reaped        int64         `json:"reaped"`        // self-exited workers removed from the set
+	StopFailures  int64         `json:"stopFailures"`  // worker Stop() errors, usually the per-worker stop timeout
+	DrainDuration time.Duration `json:"drainDuration"` // duration of the final drain
+}
+
+// Teardown returns the teardown counters (final summary, UI).
+func (s *Scheduler) Teardown() TeardownStats {
+	return TeardownStats{
+		Reaped:        s.reapedWorkers.Load(),
+		StopFailures:  s.stopFailures.Load(),
+		DrainDuration: time.Duration(s.drainNanos.Load()),
+	}
 }
 
 // SpikeManager handles spike-specific logic

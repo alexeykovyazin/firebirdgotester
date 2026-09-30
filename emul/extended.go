@@ -35,6 +35,25 @@ type ExtendedCounters struct {
 	LimboResolved   atomic.Int64
 	AutonValidated  atomic.Int64
 	AutonViolations atomic.Int64
+
+	// Limbo sidecar detail (final summary): resolution methods, the largest
+	// unresolved backlog seen in one scan, and the oldest observed
+	// first-seen→resolved gap.
+	LimboCommit    atomic.Int64
+	LimboRollback  atomic.Int64
+	LimboTwoPhase  atomic.Int64
+	LimboPeak      atomic.Int64
+	LimboMaxAgeSec atomic.Int64
+}
+
+// bumpMax keeps *dst at least v (CAS loop; contention is one sidecar tick).
+func bumpMax(dst *atomic.Int64, v int64) {
+	for {
+		cur := dst.Load()
+		if v <= cur || dst.CompareAndSwap(cur, v) {
+			return
+		}
+	}
 }
 
 // sequenceExists queries rdb$generators (creation is skipped when the object
@@ -297,7 +316,8 @@ func (c *ExtendedCounters) SnapshotJSON() *ExtendedJSON {
 		return nil
 	}
 	if c.HeavyRounds.Load()+c.BulkInserts.Load()+c.BulkUpdates.Load()+c.BulkDeletes.Load()+
-		c.ColumnsAdded.Load()+c.LimboResolved.Load() == 0 {
+		c.ColumnsAdded.Load()+c.LimboResolved.Load()+
+		c.LimboCommit.Load()+c.LimboRollback.Load()+c.LimboTwoPhase.Load() == 0 {
 		return nil
 	}
 	return &ExtendedJSON{
@@ -314,5 +334,10 @@ func (c *ExtendedCounters) SnapshotJSON() *ExtendedJSON {
 		TablesCreated:  c.TablesCreated.Load(),
 		TablesDropped:  c.TablesDropped.Load(),
 		LimboResolved:  c.LimboResolved.Load(),
+		LimboCommit:    c.LimboCommit.Load(),
+		LimboRollback:  c.LimboRollback.Load(),
+		LimboTwoPhase:  c.LimboTwoPhase.Load(),
+		LimboPeak:      c.LimboPeak.Load(),
+		LimboMaxAgeSec: c.LimboMaxAgeSec.Load(),
 	}
 }
