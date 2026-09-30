@@ -156,7 +156,9 @@ const minuteCap = 1440 // a day-long run is the sane upper bound
 
 // observeMinute rolls 1-second collector ticks into per-minute buckets. The
 // latency sum is estimated from the tick's average (bucket-midpoint based) —
-// fine for a sparkline, not a substitute for the histogram.
+// fine for a sparkline, not a substitute for the histogram. minOK/minErr/
+// minLatMs/minSamples hold the cumulative totals at the last minute boundary
+// (a rebase point), not the open bucket's contents.
 func (mc *MetricsCollector) observeMinute() {
 	mc.aggMu.RLock()
 	total := mc.totalOps
@@ -166,46 +168,56 @@ func (mc *MetricsCollector) observeMinute() {
 	mc.aggMu.RUnlock()
 
 	idx := int(time.Since(start).Minutes())
+
+	mc.minuteMu.Lock()
+	defer mc.minuteMu.Unlock()
+
+	// Workload accumulated since the last minute boundary — the content of
+	// the currently open minute.
 	dOK := success - mc.minOK
 	dErr := (total - success) - mc.minErr
 	dN := total - mc.minSamples
 	dLatMs := avgMs*total - mc.minLatMs
 
-	mc.minuteMu.Lock()
-	defer mc.minuteMu.Unlock()
 	if idx != mc.minuteIdx {
-		if idx > 0 {
-			mc.minutes = append(mc.minutes, MinutePoint{
-				Minute:   mc.minuteIdx + 1,
-				OK:       mc.minOK,
-				Err:      mc.minErr,
-				LatSumMs: mc.minLatMs,
-				N:        mc.minSamples,
-			})
-		}
+		// Minute boundary: close the open minute with its accumulated delta
+		// and rebase the cumulative pointers to now.
+		mc.minutes = append(mc.minutes, MinutePoint{
+			Minute:   mc.minuteIdx + 1,
+			OK:       dOK,
+			Err:      dErr,
+			LatSumMs: dLatMs,
+			N:        dN,
+		})
 		if len(mc.minutes) > minuteCap {
 			mc.minutes = mc.minutes[len(mc.minutes)-minuteCap:]
 		}
 		mc.minuteIdx = idx
+		mc.minOK += dOK
+		mc.minErr += dErr
+		mc.minLatMs += dLatMs
+		mc.minSamples += dN
 	}
-	mc.minOK += dOK
-	mc.minErr += dErr
-	mc.minLatMs += dLatMs
-	mc.minSamples += dN
 }
 
 // MinuteTimeline returns the closed per-minute buckets plus the open one.
 func (mc *MetricsCollector) MinuteTimeline() []MinutePoint {
+	mc.aggMu.RLock()
+	total := mc.totalOps
+	success := mc.successOps
+	avgMs := mc.avgLatency.Milliseconds()
+	mc.aggMu.RUnlock()
+
 	mc.minuteMu.Lock()
 	defer mc.minuteMu.Unlock()
 	out := make([]MinutePoint, len(mc.minutes), len(mc.minutes)+1)
 	copy(out, mc.minutes)
 	out = append(out, MinutePoint{
 		Minute:   mc.minuteIdx + 1,
-		OK:       mc.minOK,
-		Err:      mc.minErr,
-		LatSumMs: mc.minLatMs,
-		N:        mc.minSamples,
+		OK:       success - mc.minOK,
+		Err:      (total - success) - mc.minErr,
+		LatSumMs: avgMs*total - mc.minLatMs,
+		N:        total - mc.minSamples,
 	})
 	return out
 }

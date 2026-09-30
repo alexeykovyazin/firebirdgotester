@@ -7,6 +7,8 @@ import (
 	"fb-loadgen/worker"
 )
 
+// Two ticks on different elapsed minutes: the closed bucket must carry the
+// minute's DELTA (not the cumulative) and the open bucket the remainder.
 func TestCollectorMinuteTimelineAndConns(t *testing.T) {
 	mc := &MetricsCollector{startTime: time.Now().Add(-2 * time.Minute)}
 	mc.aggMu.Lock()
@@ -17,20 +19,38 @@ func TestCollectorMinuteTimelineAndConns(t *testing.T) {
 	mc.maxOpenConns = 20
 	mc.aggMu.Unlock()
 
-	mc.observeMinute()
+	mc.observeMinute() // first tick ever: closes minute 1 with all seen so far
 
 	tl := mc.MinuteTimeline()
 	if len(tl) != 2 {
 		t.Fatalf("got %d bucket(s), want 2 (closed minute 1 + open minute 3)", len(tl))
 	}
-	if tl[0].Minute != 1 || tl[0].OK != 0 || tl[0].N != 0 {
+	if tl[0].Minute != 1 || tl[0].OK != 90 || tl[0].Err != 10 || tl[0].N != 100 {
 		t.Fatalf("closed bucket wrong: %+v", tl[0])
 	}
-	if tl[1].Minute != 3 || tl[1].OK != 90 || tl[1].Err != 10 || tl[1].N != 100 {
-		t.Fatalf("open bucket wrong: %+v", tl[1])
+	if tl[1].Minute != 3 || tl[1].OK != 0 || tl[1].N != 0 {
+		t.Fatalf("open bucket should start empty: %+v", tl[1])
 	}
-	if tl[1].LatSumMs != 500 { // avg 5ms x 100 ops
-		t.Fatalf("LatSumMs = %d, want 500", tl[1].LatSumMs)
+	if tl[0].LatSumMs != 500 { // avg 5ms x 100 ops
+		t.Fatalf("LatSumMs = %d, want 500", tl[0].LatSumMs)
+	}
+
+	// More work in the same (open) minute: only the open bucket grows.
+	mc.aggMu.Lock()
+	mc.totalOps = 150
+	mc.successOps = 135
+	mc.aggMu.Unlock()
+	mc.observeMinute()
+
+	tl = mc.MinuteTimeline()
+	if len(tl) != 2 {
+		t.Fatalf("same minute must not close a bucket: got %d", len(tl))
+	}
+	if tl[0].OK != 90 || tl[0].N != 100 {
+		t.Fatalf("closed bucket must stay a delta: %+v", tl[0])
+	}
+	if tl[1].OK != 45 || tl[1].Err != 5 || tl[1].N != 50 {
+		t.Fatalf("open bucket wrong: %+v", tl[1])
 	}
 
 	if min, max := mc.MinMaxOpenConns(); min != 2 || max != 20 {
