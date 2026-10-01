@@ -45,11 +45,15 @@ func main() {
 		runLWMProbe(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "ddlload" {
+		runDDLLoad(os.Args[2:])
+		return
+	}
 	// Anything else that starts with a non-flag token is a typo'd subcommand
 	// (flag.Parse ignores positional args, so it would otherwise silently
 	// run the default benchmark against the default DSN).
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
-		fmt.Fprintf(os.Stderr, "Unknown subcommand %q (known: provision, lwmprobe)\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "Unknown subcommand %q (known: provision, lwmprobe, ddlload)\n", os.Args[1])
 		config.PrintUsage()
 		os.Exit(2)
 	}
