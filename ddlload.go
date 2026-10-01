@@ -690,6 +690,14 @@ func longWorker(ctx context.Context, connStr string, id int, hold time.Duration,
 		for time.Now().Before(deadline) {
 			select {
 			case <-stop:
+				// close the cursor immediately: on FB3 rows.Next() with a
+				// cancelled context may hang in the driver fetch (same
+				// cancel-not-honored family as the published LM report), and
+				// a hung Next() blocked the whole shutdown
+				rows.Close()
+				_ = tx.Rollback()
+				c.longRoll.Add(1)
+				return
 			case <-time.After(3 * time.Second):
 			}
 			if !rows.Next() {
