@@ -521,6 +521,47 @@ function codeBox(s, lines, x, y, w, h) {
   chip(s, "isolation families × read-only × wait / nowait / lock-timeout draw on top of the completion axis — emul-safe keeps every draw legal for the emul units", 0.55, 6.45, 12.25);
 }
 
+// ---------- 14f2. DDL under load ----------
+{
+  const s = baseSlide({ title: "DDL under load — widen, recompile, race",
+    kicker: "Metadata churn runs against the live workload: column type conversions, procedure signature flips and a dedicated varchar-widening scenario with active cursors.",
+    notes: "DDL phase 2 (DDL_EXTEND_PLAN_2026-10-01): --ddl-types runs ALTER COLUMN TYPE conversion cycles (VARCHAR length with NULL normalization, INTEGER<->BIGINT, NUMERIC precision, NOT NULL toggles) on a dedicated victim table; --ddl-procs flips SP_ELT_VICTIM between one- and two-argument signatures while a dynamic caller races the flips every 2 seconds. Expected metadata-race errors (is in use, lock conflict, count mismatch) are counted in the summary, never reported as unexpected. ddlload is a standalone scenario: a CLHISTNUM-shaped table with 12k rows, eleven regular/composite/mixed indexes, indexed and scan selects, random writes, TYPE OF COLUMN procedures, short transactions plus long transactions holding active cursors, and sequential +1 varchar widening to 1024 under the load. Verified on Firebird 3.0 / 4.0 / 5.0." });
+  const cards = [
+    ["--ddl-types — type conversion cycles", [
+      "ALTER TABLE EL_DDL_VICTIM",
+      "  ALTER COLUMN VAL TYPE VARCHAR(129)",
+      "",
+      "# VARCHAR length up/down with NULL normalize",
+      "# INTEGER <-> BIGINT, NUMERIC precision",
+      "# NOT NULL <-> NULL toggles",
+    ], "State model + re-discovery from rdb$relation_fields / rdb$fields survives restarts; conversion refusals are expected and counted."],
+    ["--ddl-procs — signature flips + racing caller", [
+      "ALTER PROCEDURE SP_ELT_VICTIM",
+      "  (IN1 INTEGER, IN2 VARCHAR(32))",
+      "  RETURNS (OUT1 INTEGER, OUT2 VARCHAR(32))",
+      "",
+      "# caller: SELECT OUT1, OUT2 FROM",
+      "#   SP_ELT_VICTIM(?, ?) every 2 s",
+    ], "Caller caches the signature from rdb$procedure_parameters and re-arms on a count mismatch. A 15-min run: 93-95 flips, 440+ calls, invariants OK."],
+    ["ddlload — varchar +1 widening under cursors", [
+      "fb-loadgen ddlload --dsn \"...\" \\",
+      "  --rows 12000 --workers 5 --long-workers 2 \\",
+      "  --varchar-max 1024 --varchar-step 1",
+      "",
+      "# short-tx + long-cursor transactions;",
+      "# sequential +1 ALTERs to 1024 under load",
+    ], "CLHISTNUM-shaped table, 11 indexes, TYPE OF COLUMN procedures; long transactions hold active cursors while the widths grow one byte at a time."],
+  ];
+  cards.forEach(([name, lines, cap], i) => {
+    const x = 0.55 + i * 4.28;
+    panel(s, x, 1.5, 4.05, 4.75);
+    s.addText(name, { x: x + 0.2, y: 1.64, w: 3.65, h: 0.62, fontSize: 11.5, bold: true, color: ACCENT, fontFace: "Segoe UI" });
+    codeBox(s, lines, x + 0.2, 2.32, 3.65, 1.85);
+    s.addText(cap, { x: x + 0.2, y: 4.3, w: 3.65, h: 1.85, fontSize: 9.5, color: TEXT, fontFace: "Segoe UI" });
+  });
+  chip(s, "expected metadata races are counted in the summary (typeAlter* / procAlter* / procCall* / ddlConflict) — never reported as unexpected", 0.55, 6.45, 12.25);
+}
+
 // ---------- 14g. field diagnostics ----------
 {
   const s = baseSlide({ title: "Field diagnostics — probe and reproduce what support asks for",
