@@ -54,6 +54,12 @@ func StartDDLSidecar(ctx context.Context, pool *sql.DB, cfg *config.Config, opsL
 		s.victimEnsure(ctx, pool)
 		s.victimDiscover(ctx, pool)
 		if s.cfg.AlterProcs {
+			s.v.mu.Lock()
+			missing := s.v.procSig == ""
+			s.v.mu.Unlock()
+			if missing {
+				fmt.Printf("[plusddl] warning: %s unavailable; signature churn will retry via ensure/discover\n", ddlvProc)
+			}
 			go s.procCallerLoop(ctx, pool, opsL, counters)
 		}
 		go s.victimTicker(ctx, pool, opsL, counters)

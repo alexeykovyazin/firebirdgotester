@@ -110,7 +110,7 @@ func bootstrapDDLVictim(ctx context.Context, db *sql.DB) {
 			return
 		}
 	}
-	if _, err := db.ExecContext(ctx, procVictimDDL("A")); err != nil && !isAlreadyExists(err) {
+	if _, err := db.ExecContext(ctx, procVictimCreateDDL()); err != nil && !isAlreadyExists(err) {
 		fmt.Printf("[plusddl] victim bootstrap: procedure not created (%v); sidecar will retry\n", err)
 	}
 }
@@ -142,7 +142,7 @@ func (s *ddlSidecar) victimEnsure(ctx context.Context, pool *sql.DB) {
 		})
 	}
 	if !objectExists(ctx, pool, "rdb$procedures", "rdb$procedure_name", ddlvProc) {
-		_ = s.lifecycleTx(ctx, pool, nil, func(tx *sql.Tx) error { return s.exec(ctx, tx, procVictimDDL("A")) })
+		_ = s.lifecycleTx(ctx, pool, nil, func(tx *sql.Tx) error { return s.exec(ctx, tx, procVictimCreateDDL()) })
 	}
 	var n int
 	if err := pool.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+ddlvTable).Scan(&n); err == nil && n == 0 {
@@ -232,8 +232,20 @@ func parseProcSig(inputParams int) string {
 
 // --- signature DDL (pure functions: golden-tested) ---------------------------
 
-// procVictimDDL returns the full ALTER PROCEDURE statement for a signature.
-func procVictimDDL(sig string) string {
+// procVictimCreateDDL creates SP_ELT_VICTIM with signature A (bootstrap /
+// sidecar ensure). Altering a missing procedure fails with "Procedure ...
+// not found", so the very first creation must be a CREATE.
+func procVictimCreateDDL() string {
+	return `CREATE PROCEDURE ` + ddlvProc + ` (IN1 INTEGER)
+RETURNS (OUT1 INTEGER)
+AS BEGIN
+  INSERT INTO ` + ddlvLog + ` (ID, TS, KIND, NOTE) VALUES (NEXT VALUE FOR ` + ddlvSeq + `, CURRENT_TIMESTAMP, 'A', 'sig-A');
+  OUT1 = IN1; END`
+}
+
+// procVictimAlterDDL returns the full ALTER PROCEDURE statement for a
+// signature (the flip step).
+func procVictimAlterDDL(sig string) string {
 	if sig == "B" {
 		return `ALTER PROCEDURE ` + ddlvProc + ` (IN1 INTEGER, IN2 VARCHAR(32))
 RETURNS (OUT1 INTEGER, OUT2 VARCHAR(32))
@@ -432,7 +444,7 @@ func (s *ddlSidecar) victimProcStep(ctx context.Context, pool *sql.DB, opsL *ops
 	if s.v.procSig == "A" {
 		sig = "B"
 	}
-	ddl := procVictimDDL(sig)
+	ddl := procVictimAlterDDL(sig)
 	s.v.mu.Unlock()
 
 	start := time.Now()

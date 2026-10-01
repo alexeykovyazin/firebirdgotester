@@ -7,7 +7,7 @@ import (
 )
 
 func TestProcVictimDDLGolden(t *testing.T) {
-	a := procVictimDDL("A")
+	a := procVictimAlterDDL("A")
 	for _, want := range []string{
 		"ALTER PROCEDURE SP_ELT_VICTIM (IN1 INTEGER)",
 		"RETURNS (OUT1 INTEGER)",
@@ -17,7 +17,7 @@ func TestProcVictimDDLGolden(t *testing.T) {
 			t.Fatalf("sig A missing %q:\n%s", want, a)
 		}
 	}
-	b := procVictimDDL("B")
+	b := procVictimAlterDDL("B")
 	for _, want := range []string{
 		"ALTER PROCEDURE SP_ELT_VICTIM (IN1 INTEGER, IN2 VARCHAR(32))",
 		"RETURNS (OUT1 INTEGER, OUT2 VARCHAR(32))",
