@@ -550,3 +550,14 @@ so replication-log reading habits (and grep patterns: `^\[\d+\] (?!COMMIT|ROLLBA
 START-without-terminal scans for in-flight/limbo txs) work on `ops.log` unchanged.
 The pairing check from L1 reduces to: within one segment, every `[N] START` has a terminal
 event line with the same `[N]`.
+
+## Phase 5 (2026-10-01): DDL phase-2 churn — types + procedure signatures
+
+Implemented per DDL_EXTEND_PLAN_2026-10-01.md: `--ddl-types` (ALTER COLUMN TYPE
+cycles on EL_DDL_VICTIM: VARCHAR length with NULL normalization, INTEGER<->BIGINT,
+NUMERIC precision, NOT NULL toggles) and `--ddl-procs` (ALTER PROCEDURE
+SP_ELT_VICTIM 1-arg <-> 2-arg flips with a concurrent dynamic caller,
+`--ddl-proc-call-every`). Expected metadata-race / conversion-refusal errors are
+classified by ddlExpectedError() and counted (typeAlter*, procAlter*, procCall*
+in ExtendedCounters/JSON/summary) — never unexpected. Victim objects are created
+lazily (bootstrap + sidecar ensure) only when the flags are on.

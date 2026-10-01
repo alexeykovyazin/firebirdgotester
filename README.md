@@ -790,6 +790,16 @@ op mix:
   CREATE TABLE (2–5 random columns, all six triggers BI/AI/BU/AU/BD/AD,
   grouped test DML 100/50/30) / DROP TABLE rounds, and deliberately rolled
   back DDL verified against `rdb$relation_fields`.
+- **`--ddl-types` / `--ddl-procs`** (DDL phase 2, `plusDDL.alterTypes` /
+  `plusDDL.alterProcs`, imply `--plusddl`): ALTER COLUMN TYPE conversion
+  cycles on a dedicated `EL_DDL_VICTIM` (VARCHAR length up/down with NULL
+  normalization, INTEGER↔BIGINT, NUMERIC precision, NOT NULL toggles) and
+  ALTER PROCEDURE signature flips on `SP_ELT_VICTIM` (1-arg ↔ 2-arg) with a
+  concurrent dynamic caller racing the flips (interval
+  `--ddl-proc-call-every`, default 2 s). Expected metadata-race errors
+  ("is in use", "lock conflict", signature mismatch, conversion refusals)
+  are counted (`typeAlter*`, `procAlter*`, `procCall*` counters in the
+  summary), never reported as unexpected.
 
 **Comparable scores:** the extended mix is on by default and changes the
 oltp-emul score by construction. For comparable score runs (e.g.
@@ -805,6 +815,9 @@ design, the fb_repl_print log format spec (§7) and the verified-facts table.
 | `--no-limbo` | Disable limbo transactions (no prepare-then-die, no recovery sidecar) | `false` |
 | `--plusddl` | Enable the DDL churn sidecar (implies `--extended-load`) | `false` |
 | `--ddl-every` | Seconds between DDL churn rounds | `60` |
+| `--ddl-types` | ALTER COLUMN TYPE conversion cycles on EL_DDL_VICTIM (implies `--plusddl`) | `false` |
+| `--ddl-procs` | ALTER PROCEDURE signature flips + racing caller (implies `--plusddl`) | `false` |
+| `--ddl-proc-call-every` | Seconds between victim-procedure calls | `2` |
 | `--allow-remote-unauthenticated` | Permit a non-loopback UI without `--ui-token` (insecure) | `false` |
 
 **Known interactions (all verified live on FB4/FB5):**
