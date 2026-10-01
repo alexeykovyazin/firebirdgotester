@@ -34,8 +34,9 @@ type ddlSidecar struct {
 	cfg          config.PlusDDL
 	rollbackFrac float64 // fraction of column DDLs deliberately rolled back (P8)
 	tables       []ddlWorkTable
-	tstN         int    // TST_<n> table counter
-	owned        string // a created table awaiting its drop round
+	tstN         int         // TST_<n> table counter
+	owned        string      // a created table awaiting its drop round
+	v            victimState // DDL phase-2 victim objects (ddlvictim.go)
 }
 
 // StartDDLSidecar launches the plusddl churn ticker. Discovery re-owns
@@ -46,6 +47,17 @@ func StartDDLSidecar(ctx context.Context, pool *sql.DB, cfg *config.Config, opsL
 	el.Normalize()
 	s := &ddlSidecar{cfg: el.PlusDDL, rollbackFrac: el.TxVariants.DDLRollbackFrac}
 	s.discover(ctx, pool)
+
+	// DDL phase-2 churn (types / procedure signatures): ensure the victim
+	// objects exist, discover their current metadata, then race.
+	if ddlVictimEnabled(s.cfg) {
+		s.victimEnsure(ctx, pool)
+		s.victimDiscover(ctx, pool)
+		if s.cfg.AlterProcs {
+			go s.procCallerLoop(ctx, pool, opsL, counters)
+		}
+		go s.victimTicker(ctx, pool, opsL, counters)
+	}
 
 	go func() {
 		// first round immediately, then every EverySec

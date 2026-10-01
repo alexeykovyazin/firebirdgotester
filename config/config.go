@@ -122,6 +122,9 @@ func ParseFlags() (*Config, error) {
 	flag.BoolVar(&cfg.ExtendedLoad.TxVariants.NoLimbo, "no-limbo", false, "Extended load: disable limbo transactions (no prepare-then-die completions, no recovery sidecar)")
 	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.Enabled, "plusddl", false, "Extended load: enable the DDL churn sidecar (ALTER TABLE/CREATE TABLE rounds); implies --extended-load")
 	flag.IntVar(&cfg.ExtendedLoad.PlusDDL.EverySec, "ddl-every", 60, "Extended load: seconds between DDL churn rounds")
+	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.AlterTypes, "ddl-types", false, "Extended load: ALTER COLUMN TYPE conversion cycles on EL_DDL_VICTIM (implies --plusddl)")
+	flag.BoolVar(&cfg.ExtendedLoad.PlusDDL.AlterProcs, "ddl-procs", false, "Extended load: ALTER PROCEDURE signature flips on SP_ELT_VICTIM with a concurrent dynamic caller (implies --plusddl)")
+	flag.IntVar(&cfg.ExtendedLoad.PlusDDL.ProcCallEverySec, "ddl-proc-call-every", 2, "Extended load: seconds between victim-procedure calls racing the signature flips")
 	flag.IntVar(&cfg.EmulInvariantEvery, "emul-invariant-every", 60, "oltp-emul: seconds between stock/money invariant self-checks (0 = off)")
 	flag.IntVar(&cfg.EmulMonitorEvery, "emul-monitor-every", 10, "oltp-emul: seconds between mon$ memory snapshots (0 = off)")
 
@@ -156,9 +159,7 @@ func ParseFlags() (*Config, error) {
 	flag.Parse()
 
 	cfg.normalizeConnAliases()
-	if cfg.ExtendedLoad.PlusDDL.Enabled {
-		cfg.ExtendedLoad.Enabled = true
-	}
+	cfg.ExtendedLoad.ApplyFlagImplications()
 	cfg.ExtendedLoad.ApplyCLIDefaults()
 	cfg.ExtendedLoad.Normalize()
 

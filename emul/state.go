@@ -442,24 +442,30 @@ type EmulStateJSON struct {
 
 // ExtendedJSON is the extended-load sidecar activity snapshot (H5).
 type ExtendedJSON struct {
-	HeavyRounds    int64 `json:"heavyRounds"`
-	HeavyFailures  int64 `json:"heavyFailures"`
-	BulkInserts    int64 `json:"bulkInserts"`
-	BulkUpdates    int64 `json:"bulkUpdates"`
-	BulkDeletes    int64 `json:"bulkDeletes"`
-	BulkFailures   int64 `json:"bulkFailures"`
-	BulkRows       int64 `json:"bulkRows"`
-	ColumnsAdded   int64 `json:"columnsAdded"`
-	ColumnsAltered int64 `json:"columnsAltered"`
-	ColumnsDropped int64 `json:"columnsDropped"`
-	TablesCreated  int64 `json:"tablesCreated"`
-	TablesDropped  int64 `json:"tablesDropped"`
-	LimboResolved  int64 `json:"limboResolved"`
-	LimboCommit    int64 `json:"limboCommit"`
-	LimboRollback  int64 `json:"limboRollback"`
-	LimboTwoPhase  int64 `json:"limboTwoPhase"`
-	LimboPeak      int64 `json:"limboPeak"`
-	LimboMaxAgeSec int64 `json:"limboMaxAgeSec"`
+	HeavyRounds           int64 `json:"heavyRounds"`
+	HeavyFailures         int64 `json:"heavyFailures"`
+	BulkInserts           int64 `json:"bulkInserts"`
+	BulkUpdates           int64 `json:"bulkUpdates"`
+	BulkDeletes           int64 `json:"bulkDeletes"`
+	BulkFailures          int64 `json:"bulkFailures"`
+	BulkRows              int64 `json:"bulkRows"`
+	ColumnsAdded          int64 `json:"columnsAdded"`
+	ColumnsAltered        int64 `json:"columnsAltered"`
+	ColumnsDropped        int64 `json:"columnsDropped"`
+	TablesCreated         int64 `json:"tablesCreated"`
+	TablesDropped         int64 `json:"tablesDropped"`
+	LimboResolved         int64 `json:"limboResolved"`
+	LimboCommit           int64 `json:"limboCommit"`
+	LimboRollback         int64 `json:"limboRollback"`
+	LimboTwoPhase         int64 `json:"limboTwoPhase"`
+	LimboPeak             int64 `json:"limboPeak"`
+	LimboMaxAgeSec        int64 `json:"limboMaxAgeSec"`
+	TypeAlterOK           int64 `json:"typeAlterOK"`
+	TypeAlterExpectedFail int64 `json:"typeAlterExpectedFail"`
+	ProcAlterOK           int64 `json:"procAlterOK"`
+	ProcAlterExpectedFail int64 `json:"procAlterExpectedFail"`
+	ProcCallOK            int64 `json:"procCallOK"`
+	ProcCallRaceErr       int64 `json:"procCallRaceErr"`
 }
 
 // JSON renders a capped, thread-safe copy of the state. perUnitAgg comes

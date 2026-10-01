@@ -83,6 +83,13 @@ type PlusDDL struct {
 	TestUpdateRows int      `json:"testUpdateRows"`
 	TestDeleteRows int      `json:"testDeleteRows"`
 	WorkTables     []string `json:"workTables"`
+
+	// DDL phase-2 churn (DDL_EXTEND_PLAN_2026-10-01): ALTER COLUMN TYPE
+	// conversion cycles and ALTER PROCEDURE signature flips with a concurrent
+	// dynamic caller. Off by default; both imply Enabled.
+	AlterTypes       bool `json:"alterTypes"`
+	AlterProcs       bool `json:"alterProcs"`
+	ProcCallEverySec int  `json:"procCallEverySec"`
 }
 
 // DefaultExtendedLoad returns the task-specified defaults.
@@ -118,13 +125,16 @@ func DefaultExtendedLoad() ExtendedLoad {
 			DDLRollbackFrac:         0.20,
 		},
 		PlusDDL: PlusDDL{
-			Enabled:        false,
-			EverySec:       60,
-			ColPrefix:      "TST_",
-			TestInsertRows: 100,
-			TestUpdateRows: 50,
-			TestDeleteRows: 30,
-			WorkTables:     []string{"WARES", "AGENTS", "DOC_STATES"},
+			Enabled:          false,
+			EverySec:         60,
+			ColPrefix:        "TST_",
+			TestInsertRows:   100,
+			TestUpdateRows:   50,
+			TestDeleteRows:   30,
+			WorkTables:       []string{"WARES", "AGENTS", "DOC_STATES"},
+			AlterTypes:       false,
+			AlterProcs:       false,
+			ProcCallEverySec: 2,
 		},
 	}
 }
@@ -259,6 +269,18 @@ func (c CompletionWeights) Total() int {
 	return c.Commit + c.Rollback + c.CommitRetaining + c.RollbackRetaining + c.TwoPhase + c.Limbo + c.ConnDrop
 }
 
+// ApplyFlagImplications enables the sidecar umbrella for the phase-2 DDL
+// leaves: --ddl-types/--ddl-procs ride on the plusddl sidecar, which rides on
+// the extended load. Called from ParseFlags after flag parsing.
+func (e *ExtendedLoad) ApplyFlagImplications() {
+	if e.PlusDDL.AlterTypes || e.PlusDDL.AlterProcs {
+		e.PlusDDL.Enabled = true
+	}
+	if e.PlusDDL.Enabled {
+		e.Enabled = true
+	}
+}
+
 // ApplyCLIDefaults fills the nested sections that individual flags cannot
 // express (CLI flags set leaves; a zero section gets the full default).
 func (e *ExtendedLoad) ApplyCLIDefaults() {
@@ -290,6 +312,37 @@ func (e *ExtendedLoad) ApplyCLIDefaults() {
 	if e.PlusDDL.EverySec == 0 && e.PlusDDL.ColPrefix == "" && len(e.PlusDDL.WorkTables) == 0 &&
 		e.PlusDDL.TestInsertRows == 0 && e.PlusDDL.TestUpdateRows == 0 && e.PlusDDL.TestDeleteRows == 0 &&
 		!e.PlusDDL.Enabled {
-		e.PlusDDL = def.PlusDDL
+		defPlus := def.PlusDDL
+		// CLI flags may have set the phase-2 leaves (--ddl-types/--ddl-procs):
+		// keep them over the defaults.
+		defPlus.AlterTypes = e.PlusDDL.AlterTypes
+		defPlus.AlterProcs = e.PlusDDL.AlterProcs
+		defPlus.ProcCallEverySec = e.PlusDDL.ProcCallEverySec
+		e.PlusDDL = defPlus
+	} else {
+		// partially set section (e.g. --ddl-types alone enables Enabled via
+		// ApplyFlagImplications): fill only the zero leaves field-wise, or the
+		// sidecar would tick at 0s (NewTicker panics) and churn no tables.
+		if e.PlusDDL.EverySec == 0 {
+			e.PlusDDL.EverySec = def.PlusDDL.EverySec
+		}
+		if e.PlusDDL.ColPrefix == "" {
+			e.PlusDDL.ColPrefix = def.PlusDDL.ColPrefix
+		}
+		if e.PlusDDL.TestInsertRows == 0 {
+			e.PlusDDL.TestInsertRows = def.PlusDDL.TestInsertRows
+		}
+		if e.PlusDDL.TestUpdateRows == 0 {
+			e.PlusDDL.TestUpdateRows = def.PlusDDL.TestUpdateRows
+		}
+		if e.PlusDDL.TestDeleteRows == 0 {
+			e.PlusDDL.TestDeleteRows = def.PlusDDL.TestDeleteRows
+		}
+		if len(e.PlusDDL.WorkTables) == 0 {
+			e.PlusDDL.WorkTables = def.PlusDDL.WorkTables
+		}
+	}
+	if e.PlusDDL.ProcCallEverySec <= 0 {
+		e.PlusDDL.ProcCallEverySec = def.PlusDDL.ProcCallEverySec
 	}
 }

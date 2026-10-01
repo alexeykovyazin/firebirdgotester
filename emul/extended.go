@@ -44,6 +44,17 @@ type ExtendedCounters struct {
 	LimboTwoPhase  atomic.Int64
 	LimboPeak      atomic.Int64
 	LimboMaxAgeSec atomic.Int64
+
+	// DDL phase-2 churn (DDL_EXTEND_PLAN_2026-10-01): ALTER COLUMN TYPE
+	// conversion cycles and ALTER PROCEDURE signature flips with a racing
+	// dynamic caller. Every non-OK DDL/call under this churn is expected by
+	// design (metadata races or legitimate data-conversion refusals).
+	TypeAlterOK           atomic.Int64
+	TypeAlterExpectedFail atomic.Int64
+	ProcAlterOK           atomic.Int64
+	ProcAlterExpectedFail atomic.Int64
+	ProcCallOK            atomic.Int64
+	ProcCallRaceErr       atomic.Int64
 }
 
 // bumpMax keeps *dst at least v (CAS loop; contention is one sidecar tick).
@@ -148,6 +159,13 @@ func BootstrapExtendedSchema(ctx context.Context, mainDB *sql.DB, cfg *config.Co
 	}
 	if err = createAutonomousSP(ctx, mainDB); err != nil {
 		return "", err
+	}
+
+	// DDL phase-2 victim objects (DDL_EXTEND_PLAN_2026-10-01): only when the
+	// churn is enabled; best-effort — the sidecar retries and reports through
+	// its counters.
+	if el.PlusDDL.Enabled && (el.PlusDDL.AlterTypes || el.PlusDDL.AlterProcs) {
+		bootstrapDDLVictim(ctx, mainDB)
 	}
 
 	// Aux database for the 2PC completion variant (engine-side two-phase via
@@ -317,27 +335,36 @@ func (c *ExtendedCounters) SnapshotJSON() *ExtendedJSON {
 	}
 	if c.HeavyRounds.Load()+c.BulkInserts.Load()+c.BulkUpdates.Load()+c.BulkDeletes.Load()+
 		c.ColumnsAdded.Load()+c.LimboResolved.Load()+
-		c.LimboCommit.Load()+c.LimboRollback.Load()+c.LimboTwoPhase.Load() == 0 {
+		c.LimboCommit.Load()+c.LimboRollback.Load()+c.LimboTwoPhase.Load()+
+		c.TypeAlterOK.Load()+c.TypeAlterExpectedFail.Load()+
+		c.ProcAlterOK.Load()+c.ProcAlterExpectedFail.Load()+
+		c.ProcCallOK.Load()+c.ProcCallRaceErr.Load() == 0 {
 		return nil
 	}
 	return &ExtendedJSON{
-		HeavyRounds:    c.HeavyRounds.Load(),
-		HeavyFailures:  c.HeavyFailures.Load(),
-		BulkInserts:    c.BulkInserts.Load(),
-		BulkUpdates:    c.BulkUpdates.Load(),
-		BulkDeletes:    c.BulkDeletes.Load(),
-		BulkFailures:   c.BulkFailures.Load(),
-		BulkRows:       c.BulkRows.Load(),
-		ColumnsAdded:   c.ColumnsAdded.Load(),
-		ColumnsAltered: c.ColumnsAltered.Load(),
-		ColumnsDropped: c.ColumnsDropped.Load(),
-		TablesCreated:  c.TablesCreated.Load(),
-		TablesDropped:  c.TablesDropped.Load(),
-		LimboResolved:  c.LimboResolved.Load(),
-		LimboCommit:    c.LimboCommit.Load(),
-		LimboRollback:  c.LimboRollback.Load(),
-		LimboTwoPhase:  c.LimboTwoPhase.Load(),
-		LimboPeak:      c.LimboPeak.Load(),
-		LimboMaxAgeSec: c.LimboMaxAgeSec.Load(),
+		HeavyRounds:           c.HeavyRounds.Load(),
+		HeavyFailures:         c.HeavyFailures.Load(),
+		BulkInserts:           c.BulkInserts.Load(),
+		BulkUpdates:           c.BulkUpdates.Load(),
+		BulkDeletes:           c.BulkDeletes.Load(),
+		BulkFailures:          c.BulkFailures.Load(),
+		BulkRows:              c.BulkRows.Load(),
+		ColumnsAdded:          c.ColumnsAdded.Load(),
+		ColumnsAltered:        c.ColumnsAltered.Load(),
+		ColumnsDropped:        c.ColumnsDropped.Load(),
+		TablesCreated:         c.TablesCreated.Load(),
+		TablesDropped:         c.TablesDropped.Load(),
+		LimboResolved:         c.LimboResolved.Load(),
+		LimboCommit:           c.LimboCommit.Load(),
+		LimboRollback:         c.LimboRollback.Load(),
+		LimboTwoPhase:         c.LimboTwoPhase.Load(),
+		LimboPeak:             c.LimboPeak.Load(),
+		LimboMaxAgeSec:        c.LimboMaxAgeSec.Load(),
+		TypeAlterOK:           c.TypeAlterOK.Load(),
+		TypeAlterExpectedFail: c.TypeAlterExpectedFail.Load(),
+		ProcAlterOK:           c.ProcAlterOK.Load(),
+		ProcAlterExpectedFail: c.ProcAlterExpectedFail.Load(),
+		ProcCallOK:            c.ProcCallOK.Load(),
+		ProcCallRaceErr:       c.ProcCallRaceErr.Load(),
 	}
 }

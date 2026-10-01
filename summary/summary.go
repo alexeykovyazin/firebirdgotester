@@ -372,6 +372,14 @@ func (s *Summary) Text() string {
 		w("  limbo: resolved=%d (commit=%d rollback=%d two_phase=%d) peakUnresolved=%d maxAgeSec=%d",
 			s.Extended.LimboResolved, s.Extended.LimboCommit, s.Extended.LimboRollback,
 			s.Extended.LimboTwoPhase, s.Extended.LimboPeak, s.Extended.LimboMaxAgeSec)
+		if s.Extended.TypeAlterOK > 0 || s.Extended.TypeAlterExpectedFail > 0 ||
+			s.Extended.ProcAlterOK > 0 || s.Extended.ProcAlterExpectedFail > 0 ||
+			s.Extended.ProcCallOK > 0 || s.Extended.ProcCallRaceErr > 0 {
+			w("  ddl2: type alters=%d (expected fail %d), proc sig alters=%d (expected fail %d), victim calls=%d (race err %d)",
+				s.Extended.TypeAlterOK, s.Extended.TypeAlterExpectedFail,
+				s.Extended.ProcAlterOK, s.Extended.ProcAlterExpectedFail,
+				s.Extended.ProcCallOK, s.Extended.ProcCallRaceErr)
+		}
 	}
 
 	if s.Emul != nil {
