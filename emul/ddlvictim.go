@@ -68,6 +68,7 @@ func ddlExpectedError(err error) bool {
 		"column unknown",
 		"unknown column",
 		"procedure unknown",
+		"is not selectable",
 		"is not defined",
 		"table unknown",
 		"too short",
@@ -240,7 +241,7 @@ func procVictimCreateDDL() string {
 RETURNS (OUT1 INTEGER)
 AS BEGIN
   INSERT INTO ` + ddlvLog + ` (ID, TS, KIND, NOTE) VALUES (NEXT VALUE FOR ` + ddlvSeq + `, CURRENT_TIMESTAMP, 'A', 'sig-A');
-  OUT1 = IN1; END`
+  OUT1 = IN1; SUSPEND; END`
 }
 
 // procVictimAlterDDL returns the full ALTER PROCEDURE statement for a
@@ -250,14 +251,14 @@ func procVictimAlterDDL(sig string) string {
 		return `ALTER PROCEDURE ` + ddlvProc + ` (IN1 INTEGER, IN2 VARCHAR(32))
 RETURNS (OUT1 INTEGER, OUT2 VARCHAR(32))
 AS BEGIN
-  INSERT INTO ` + ddlvLog + ` (ID, TS, KIND, NOTE) VALUES (NEXT VALUE FOR ` + ddlvSeq + `, CURRENT_TIMESTAMP, 'B', IN2);
-  OUT1 = IN1; OUT2 = IN2; END`
+  INSERT INTO ` + ddlvLog + ` (ID, TS, KIND, NOTE) VALUES (NEXT VALUE FOR ` + ddlvSeq + `, CURRENT_TIMESTAMP, 'B', :IN2);
+  OUT1 = IN1; OUT2 = IN2; SUSPEND; END`
 	}
 	return `ALTER PROCEDURE ` + ddlvProc + ` (IN1 INTEGER)
 RETURNS (OUT1 INTEGER)
 AS BEGIN
   INSERT INTO ` + ddlvLog + ` (ID, TS, KIND, NOTE) VALUES (NEXT VALUE FOR ` + ddlvSeq + `, CURRENT_TIMESTAMP, 'A', 'sig-A');
-  OUT1 = IN1; END`
+  OUT1 = IN1; SUSPEND; END`
 }
 
 // --- type steps (pure model functions: golden-tested) ------------------------

@@ -21,7 +21,7 @@ func TestProcVictimDDLGolden(t *testing.T) {
 	for _, want := range []string{
 		"ALTER PROCEDURE SP_ELT_VICTIM (IN1 INTEGER, IN2 VARCHAR(32))",
 		"RETURNS (OUT1 INTEGER, OUT2 VARCHAR(32))",
-		", 'B', IN2)",
+		", 'B', :IN2)",
 	} {
 		if !strings.Contains(b, want) {
 			t.Fatalf("sig B missing %q:\n%s", want, b)
@@ -100,6 +100,7 @@ func TestDDLEExpectedError(t *testing.T) {
 		"count of column list or variable list does not match SELECT list",
 		"Column unknown. VAL",
 		"Procedure SP_ELT_VICTIM is not defined",
+		"Procedure SP_ELT_VICTIM is not selectable (it does not contain a SUSPEND statement)",
 		"new length shorter than existing",
 		"attempt to store a value in a data type that is too short",
 		"deadlock update conflicts with concurrent update",
